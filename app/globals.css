@@ -815,6 +815,20 @@ body {
 .stage.resenha-stage .tile {
   min-height: 0;
 }
+.stage.resenha-with-screen {
+  max-width: min(1180px, 100%);
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  grid-template-rows: minmax(0, 1.25fr) minmax(0, .9fr);
+}
+.stage.resenha-with-screen .shared {
+  grid-column: 1 / -1;
+  min-height: 0;
+}
+.stage.resenha-with-screen .shared video { object-fit: contain; background: #050605; }
+@media (max-width: 700px) {
+  .stage.resenha-with-screen { grid-template-columns: 1fr; grid-template-rows: minmax(0, 1.25fr) minmax(0, .85fr) minmax(0, .85fr); }
+  .stage.resenha-with-screen .shared { grid-column: auto; }
+}
 .tile {
   position: relative;
   overflow: hidden;

@@ -1415,10 +1415,6 @@ export default function Home() {
     }
   }
   async function share() {
-    if (resenhaMode) {
-      setNotice("O Modo Resenha é só para câmeras. Desative-o para compartilhar a tela.");
-      return;
-    }
     if (sharing) {
       displayed.current?.getTracks().forEach((track) => track.stop());
       displayed.current = null;
@@ -2489,8 +2485,8 @@ export default function Home() {
           )}
         </aside>
       )}
-      <section className={"stage " + (resenhaMode ? "resenha-stage" : screenActive ? "screen-on" : "")}>
-        {screenActive && !resenhaMode && (
+      <section className={"stage " + (resenhaMode ? `resenha-stage${screenActive ? " resenha-with-screen" : ""}` : screenActive ? "screen-on" : "")}>
+        {screenActive && (
           <div className="tile shared">
             <video ref={sharing ? screen : remoteScreen} autoPlay playsInline />
             <label>

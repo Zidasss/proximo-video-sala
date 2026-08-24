@@ -64,6 +64,7 @@ export default function Home() {
     [backgroundMode, setBackgroundMode] = useState<"none" | "image" | "blur">(
       "none",
     ),
+    [skinSmooth, setSkinSmooth] = useState(false),
     [cameraEpoch, setCameraEpoch] = useState(0),
     [virtualEpoch, setVirtualEpoch] = useState(0);
   const [friend, setFriend] = useState(""),
@@ -96,6 +97,7 @@ export default function Home() {
     pipVideo = useRef<HTMLVideoElement | null>(null),
     pipFrame = useRef(0),
     peerRetry = useRef(0),
+    cameraCalls = useRef<MediaConnection[]>([]),
     settingsDrag = useRef<{
       x: number;
       y: number;
@@ -250,12 +252,12 @@ export default function Home() {
           locateFile: (file) =>
             `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
         });
-        segmenter.setOptions({ modelSelection: 1, selfieMode: false });
+        segmenter.setOptions({ modelSelection: 0, selfieMode: false });
         segmenter.onResults((results) => {
           if (!active || !context) return;
           context.save();
           context.clearRect(0, 0, canvas.width, canvas.height);
-          context.filter = "blur(2px)";
+          context.filter = "blur(1px)";
           context.drawImage(
             results.segmentationMask,
             0,
@@ -264,15 +266,20 @@ export default function Home() {
             canvas.height,
           );
           context.filter = "none";
-          context.globalCompositeOperation = "source-out";
+          context.globalCompositeOperation = "source-in";
+          context.filter = skinSmooth
+            ? "blur(.55px) brightness(1.025) saturate(.96)"
+            : "none";
+          context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
+          context.globalCompositeOperation = "destination-over";
           if (backgroundMode === "blur") {
-            context.filter = "blur(28px)";
+            context.filter = "blur(24px)";
             context.drawImage(
               results.image,
-              -28,
-              -28,
-              canvas.width + 56,
-              canvas.height + 56,
+              -24,
+              -24,
+              canvas.width + 48,
+              canvas.height + 48,
             );
             context.filter = "none";
           } else {
@@ -290,11 +297,10 @@ export default function Home() {
               height,
             );
           }
-          context.globalCompositeOperation = "destination-atop";
-          context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
           context.restore();
           if (!attached) {
             processedLocal.current = output;
+            replaceOutgoingVideo(output);
             if (mine.current) {
               mine.current.srcObject = output;
               void mine.current.play().catch(() => undefined);
@@ -315,6 +321,7 @@ export default function Home() {
           output.getTracks().forEach((track) => track.stop());
           if (processedLocal.current === output) {
             processedLocal.current = null;
+            if (local.current) replaceOutgoingVideo(local.current);
             setVirtualEpoch((epoch) => epoch + 1);
           }
         };
@@ -333,7 +340,7 @@ export default function Home() {
       active = false;
       stop?.();
     };
-  }, [background, backgroundMode, cameraEpoch, inRoom]);
+  }, [background, backgroundMode, skinSmooth, cameraEpoch, inRoom]);
   useEffect(() => {
     if (mode === "host" && connection.current?.open)
       connection.current.send({
@@ -426,8 +433,27 @@ export default function Home() {
     setFriend(remoteName || "Seu amigo");
     setNotice("Conectado com seu amigo.");
   }
+  function callStream(stream: MediaStream) {
+    const video =
+      processedLocal.current?.getVideoTracks()[0] || stream.getVideoTracks()[0];
+    return new MediaStream([
+      ...(video ? [video] : []),
+      ...stream.getAudioTracks(),
+    ]);
+  }
+  function replaceOutgoingVideo(stream: MediaStream) {
+    const track = stream.getVideoTracks()[0];
+    if (!track) return;
+    cameraCalls.current.forEach((call) =>
+      call.peerConnection
+        ?.getSenders()
+        .filter((sender) => sender.track?.kind === "video")
+        .forEach((sender) => void sender.replaceTrack(track)),
+    );
+  }
   function useCall(call: MediaConnection, fallback: string) {
     remoteId.current = call.peer;
+    if (!cameraCalls.current.includes(call)) cameraCalls.current.push(call);
     call.on("stream", (stream) =>
       showRemote(stream, String(call.metadata?.name || fallback)),
     );
@@ -436,6 +462,9 @@ export default function Home() {
         "A chamada caiu. Atualize os dois navegadores e tente novamente.",
       ),
     );
+    call.on("close", () => {
+      cameraCalls.current = cameraCalls.current.filter((item) => item !== call);
+    });
   }
   function useData(conn: DataConnection) {
     connection.current = conn;
@@ -517,7 +546,7 @@ export default function Home() {
         });
         return;
       }
-      call.answer(stream);
+      call.answer(callStream(stream));
       useCall(call, String(call.metadata?.name || "Seu amigo"));
     });
     client.on("open", () => {
@@ -526,7 +555,7 @@ export default function Home() {
         setNotice("Sala pronta. Copie o convite e mantenha esta aba aberta.");
         return;
       }
-      const call = client.call(hostId(room, pin), stream, {
+      const call = client.call(hostId(room, pin), callStream(stream), {
         metadata: { name, kind: "camera" },
       });
       useCall(call, owner || "Anfitrião");
@@ -1323,6 +1352,16 @@ export default function Home() {
                         ◌ Desfocar
                       </button>
                     </div>
+                    <label className="menu-switch">
+                      <input
+                        type="checkbox"
+                        checked={skinSmooth}
+                        onChange={(event) =>
+                          setSkinSmooth(event.target.checked)
+                        }
+                      />
+                      <span>Suavizar pele (leve)</span>
+                    </label>
                   </div>
                 </details>
                 <details>

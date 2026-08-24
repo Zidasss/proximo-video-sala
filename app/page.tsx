@@ -529,7 +529,9 @@ export default function Home() {
       void audio.close();
       speakingRef.current = { mine: false, friend: false };
     };
-  }, [inRoom, friend]);
+  // Trocar microfone recria local.current; a análise precisa acompanhar o
+  // stream novo para a moldura de quem fala não desaparecer.
+  }, [inRoom, friend, cameraEpoch]);
 
   async function devicesList() {
     const list = await navigator.mediaDevices.enumerateDevices();
@@ -1026,9 +1028,9 @@ export default function Home() {
     ) => {
       if (!active) return;
       context.save();
-      context.strokeStyle = "#b9ff4d";
+      context.strokeStyle = "#ff6b5c";
       context.lineWidth = 10;
-      context.shadowColor = "#b9ff4d";
+      context.shadowColor = "#ff6b5c";
       context.shadowBlur = 18;
       context.strokeRect(x + 5, y + 5, width - 10, height - 10);
       context.restore();

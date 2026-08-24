@@ -11,6 +11,10 @@
 .offline-cameras.offline-vertical { width: min(430px, 58vw); aspect-ratio: 9 / 16; }
 .offline-cameras.offline-square { width: min(650px, 65vw); aspect-ratio: 1; }
 .offline-overlay-preview { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: fill; pointer-events: none; }
+.safe-area-guides { position: absolute; inset: 13% 8%; border: 1px dashed #ffffff88; border-radius: 10px; pointer-events: none; z-index: 8; box-shadow: inset 0 0 0 9999px #ff6b5c08; }
+.safe-area-guides i { position: absolute; left: 0; right: 0; top: 18%; border-top: 1px dashed #ffffff55; }.safe-area-guides span { position: absolute; top: 5px; left: 8px; padding: 3px 6px; border-radius: 4px; background: #111b; color: #fff9; font: 700 9px Inter, sans-serif; }
+.timeline-zoom { display: grid; gap: 2px; min-width: 100px; color: #aaa; font-size: 10px; }.timeline-zoom input { width: 100px; }
+.timeline-lanes { overflow: visible; min-width: 100%; }
 .mic-tuning { margin-top: 10px; padding: 10px; border: 1px solid #ffffff1e; border-radius: 9px; background: #ffffff08; }.mic-tuning .menu-field input { width: 100%; accent-color: #ff6b5c; }.mic-meter { height: 7px; overflow: hidden; margin: 8px 0; border-radius: 99px; background: #0c0d0d; }.mic-meter i { display: block; height: 100%; border-radius: inherit; background: linear-gradient(90deg, #aefa60, #ffbd5c 70%, #ff6b5c); transition: width .08s linear; }.mic-tuning small { display: block; margin-top: 7px; color: #95918d; font-size: 10px; line-height: 1.35; }
 .call footer .edit-recording { border-color: #ff8879; color: #ffb3a9; }
 .clip-editor { min-height: 100vh; color: #f7f3ef; background: radial-gradient(circle at 58% 34%, #312225 0, #151314 42%, #0d0e0e 80%); }

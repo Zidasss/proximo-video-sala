@@ -3101,6 +3101,8 @@ function ClipEditorV2({
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
     [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
     [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
+    [timelineZoom, setTimelineZoom] = useState(1),
+    [safeGuides, setSafeGuides] = useState(true),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
     [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
@@ -3109,6 +3111,8 @@ function ClipEditorV2({
     [exportFormat, setExportFormat] = useState<ExportFormat>("mp4"),
     [exporting, setExporting] = useState(false),
     [notice, setNotice] = useState("");
+  const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; start: number; end: number }>>([]);
+  const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; start: number; end: number }>>([]);
   const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
   const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
@@ -3139,14 +3143,25 @@ function ClipEditorV2({
     const tenths = Math.floor((safe % 1) * 10);
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
   };
-  const updateLayer = (id: string, patch: Partial<TextLayer>) =>
+  const remember = () => { history.current = [...history.current.slice(-24), { layers, illustrations, start, end }]; future.current = []; };
+  const undo = () => { const previous = history.current.pop(); if (!previous) return; future.current.push({ layers, illustrations, start, end }); setLayers(previous.layers); setIllustrations(previous.illustrations); setStart(previous.start); setEnd(previous.end); };
+  const redo = () => { const next = future.current.pop(); if (!next) return; history.current.push({ layers, illustrations, start, end }); setLayers(next.layers); setIllustrations(next.illustrations); setStart(next.start); setEnd(next.end); };
+  const updateLayer = (id: string, patch: Partial<TextLayer>) => {
+    remember();
     setLayers((items) =>
       items.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
     );
-  const updateIllustration = (id: string, patch: Partial<IllustrationLayer>) =>
+  };
+  const updateIllustration = (id: string, patch: Partial<IllustrationLayer>) => {
+    remember();
     setIllustrations((items) =>
       items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
+  };
+  useEffect(() => {
+    if (!clip) return;
+    try { localStorage.setItem("klip-editor-draft", JSON.stringify({ name: clip.name, start, end, videoFadeIn, videoFadeOut, exportAspect, exportResolution, layers, illustrations })); } catch { /* storage may be unavailable */ }
+  }, [clip, start, end, videoFadeIn, videoFadeOut, exportAspect, exportResolution, layers, illustrations]);
   const layerOpacity = (layer: TimedLayer, at: number) => {
     if (at < layer.start || at > layer.end) return 0;
     let opacity = 1;
@@ -3691,6 +3706,7 @@ function ClipEditorV2({
               if (!text || layerOpacity(layer, current) <= 0) return null;
               return <div key={layer.id} className={`caption-overlay ${selected?.id === layer.id ? "selected-layer" : ""} ${layer.background ? "with-background" : ""}`} onPointerDown={(event) => beginLayerDrag(event, layer)} onPointerMove={moveLayerDrag} onPointerUp={() => { layerDrag.current = null; }} onPointerCancel={() => { layerDrag.current = null; }} style={previewStyle(layer)}><span>{text}</span><small>Arraste</small></div>;
             })}
+            {safeGuides && exportAspect === "vertical" && <div className="safe-area-guides" aria-label="Área segura para TikTok, Reels e Shorts"><i /><span>Área segura</span></div>}
           </div>
           <p className="stage-help">Clique em um texto para selecionar. Arraste para posicionar. O resultado exportado segue esta prévia.</p>
           {notice && <p className="editor-notice">{notice}</p>}
@@ -3700,13 +3716,17 @@ function ClipEditorV2({
       <section className="timeline-panel multi-timeline">
         <div className="timeline-top">
           <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div>
+          <button disabled={!history.current.length} onClick={undo} title="Desfazer">↶ Desfazer</button>
+          <button disabled={!future.current.length} onClick={redo} title="Refazer">↷ Refazer</button>
+          <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>
+          <button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button>
           <button disabled={!clip} onClick={() => video.current?.paused ? void video.current?.play() : video.current?.pause()}>{video.current?.paused === false ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
           <button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button>
           <button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button>
           <button disabled={!clip} onClick={() => seek(start)}>↶ Início</button>
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
-        <div className="timeline-lanes">
+        <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} title="Clique para mover o cursor; use Começar/Terminar aqui para cortar"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><i className="cut-marker start-marker" style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }} /><i className="cut-marker end-marker" style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }} /></div></div>
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>

@@ -20,7 +20,7 @@ export default function Home() {
   useEffect(() => () => { media.current?.getTracks().forEach(t => t.stop()); display.current?.getTracks().forEach(t => t.stop()); recorder.current?.stop(); }, []);
   async function loadDevices() { const list = await navigator.mediaDevices.enumerateDevices(); setDevices(list.filter(d => d.kind === "videoinput")); }
   async function join(selectedId = deviceId) {
-    try { media.current?.getTracks().forEach(t => t.stop()); const stream = await navigator.mediaDevices.getUserMedia(constraints(quality, selectedId || undefined)); media.current = stream; setInRoom(true); await loadDevices(); }
+    try { media.current?.getTracks().forEach(t => t.stop()); const stream = await navigator.mediaDevices.getUserMedia(constraints(quality, selectedId || undefined)); media.current = stream; if (camera.current) { camera.current.srcObject = stream; await camera.current.play().catch(() => undefined); } setInRoom(true); await loadDevices(); }
     catch { setNotice("Permita o uso da câmera e do microfone. Verifique também se outro app não está usando a webcam."); }
   }
   function setTrack(kind: "audio" | "video", enabled: boolean) { media.current?.getTracks().filter(t => t.kind === kind).forEach(t => t.enabled = enabled); }

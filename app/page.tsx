@@ -125,6 +125,7 @@ export default function Home() {
     [tiktokTop, setTiktokTop] = useState(0.325),
     [dragging, setDragging] = useState(""),
     [background, setBackground] = useState(""),
+    [backgroundVideo, setBackgroundVideo] = useState(""),
     [backgroundLabel, setBackgroundLabel] = useState(""),
     [backgroundMode, setBackgroundMode] = useState<
       "none" | "image" | "blur" | "remove"
@@ -346,11 +347,16 @@ export default function Home() {
       inferenceContext = inferenceCanvas.getContext("2d", { alpha: false }),
       foregroundCanvas = document.createElement("canvas"),
       foregroundContext = foregroundCanvas.getContext("2d"),
-      image = new Image();
+      image = new Image(),
+      backdropVideo = document.createElement("video");
     source.srcObject = local.current;
     source.muted = true;
     source.playsInline = true;
     image.src = background;
+    backdropVideo.src = backgroundVideo;
+    backdropVideo.muted = true;
+    backdropVideo.loop = true;
+    backdropVideo.playsInline = true;
     const run = async () => {
       await source.play();
       if (!active || !context || !maskContext || !inferenceContext || !foregroundContext) return;
@@ -358,13 +364,32 @@ export default function Home() {
       canvas.height = source.videoHeight || 720;
       foregroundCanvas.width = canvas.width;
       foregroundCanvas.height = canvas.height;
-      if (backgroundMode === "image") {
+      if (backgroundMode === "image" && backgroundVideo) {
+        await new Promise<void>((resolve, reject) => {
+          if (backdropVideo.readyState >= 2) return resolve();
+          backdropVideo.onloadeddata = () => resolve();
+          backdropVideo.onerror = () => reject(new Error("background video"));
+        });
+        await backdropVideo.play();
+      } else if (backgroundMode === "image") {
         await new Promise<void>((resolve, reject) => {
           if (image.complete && image.naturalWidth) return resolve();
           image.onload = () => resolve();
           image.onerror = () => reject(new Error("background image"));
         });
       }
+      const drawImageBackground = (target: CanvasRenderingContext2D) => {
+        const sourceBackground = backgroundVideo ? backdropVideo : image;
+        const sourceWidth = backgroundVideo ? backdropVideo.videoWidth : image.naturalWidth;
+        const sourceHeight = backgroundVideo ? backdropVideo.videoHeight : image.naturalHeight;
+        const scale = Math.max(
+          canvas.width / (sourceWidth || canvas.width),
+          canvas.height / (sourceHeight || canvas.height),
+        );
+        const width = (sourceWidth || canvas.width) * scale;
+        const height = (sourceHeight || canvas.height) * scale;
+        target.drawImage(sourceBackground, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+      };
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
       const output = canvas.captureStream(30);
       try {
@@ -417,10 +442,7 @@ export default function Home() {
               context.drawImage(source, -strength, -strength, canvas.width + strength * 2, canvas.height + strength * 2);
               context.filter = "none";
             } else if (backgroundMode === "image") {
-              const scale = Math.max(canvas.width / (image.naturalWidth || canvas.width), canvas.height / (image.naturalHeight || canvas.height));
-              const width = (image.naturalWidth || canvas.width) * scale,
-                height = (image.naturalHeight || canvas.height) * scale;
-              context.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+              drawImageBackground(context);
             }
             if (hasMask) {
               foregroundContext.clearRect(0, 0, foregroundCanvas.width, foregroundCanvas.height);
@@ -610,19 +632,7 @@ export default function Home() {
             );
             context.filter = "none";
           } else if (backgroundMode === "image") {
-            const scale = Math.max(
-                canvas.width / (image.naturalWidth || canvas.width),
-                canvas.height / (image.naturalHeight || canvas.height),
-              ),
-              width = (image.naturalWidth || canvas.width) * scale,
-              height = (image.naturalHeight || canvas.height) * scale;
-            context.drawImage(
-              image,
-              (canvas.width - width) / 2,
-              (canvas.height - height) / 2,
-              width,
-              height,
-            );
+            drawImageBackground(context);
           }
           if (hasMask) {
             // A máscara fica em uma camada separada. Aplicá-la direto sobre
@@ -725,6 +735,7 @@ export default function Home() {
     };
   }, [
     background,
+    backgroundVideo,
     backgroundMode,
     mattingQuality,
     skinSmooth,
@@ -1284,14 +1295,24 @@ export default function Home() {
   }
   function chooseBackground(file?: File) {
     if (!file) return;
+    const video = file.type === "video/mp4" || /\.mp4$/i.test(file.name);
     const animated = file.type === "image/gif" || /\.gif$/i.test(file.name);
-    if (!file.type.startsWith("image/")) {
-      setNotice("Escolha uma imagem ou GIF para o fundo da câmera.");
+    if (!file.type.startsWith("image/") && !video) {
+      setNotice("Escolha uma imagem, GIF ou MP4 para o fundo da câmera.");
+      return;
+    }
+    if (video) {
+      setBackgroundVideo(URL.createObjectURL(file));
+      setBackground("");
+      setBackgroundLabel(`Vídeo animado · ${file.name}`);
+      setBackgroundMode("image");
+      setNotice("Vídeo MP4 aplicado como fundo animado, sem precisar converter para GIF.");
       return;
     }
     const reader = new FileReader();
     reader.onload = () => {
       setBackground(String(reader.result));
+      setBackgroundVideo("");
       setBackgroundLabel(`${animated ? "GIF animado" : "Imagem"} · ${file.name}`);
       setBackgroundMode("image");
       setNotice(
@@ -2047,17 +2068,17 @@ export default function Home() {
                         ▧ Escolher imagem
                         <input
                           type="file"
-                          accept="image/*"
+                          accept="image/*,video/mp4,.mp4"
                           onChange={(event) =>
                             chooseBackground(event.target.files?.[0])
                           }
                         />
                       </label>
                       <label className="background-upload animated-background-upload">
-                        ✦ Subir GIF animado
+                        ✦ Subir GIF ou MP4 animado
                         <input
                           type="file"
-                          accept="image/gif,.gif"
+                          accept="image/gif,.gif,video/mp4,.mp4"
                           onChange={(event) =>
                             chooseBackground(event.target.files?.[0])
                           }
@@ -2093,7 +2114,7 @@ export default function Home() {
                         ? "IA Premium: recorte temporal de alta qualidade · ideal para GPUs fortes"
                         : "Recorte leve: mais rápido, indicado para computadores comuns"}
                     </p>
-                    {backgroundLabel && <p className="background-file-note">● {backgroundLabel}{/GIF animado/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
+                    {backgroundLabel && <p className="background-file-note">● {backgroundLabel}{/(GIF animado|Vídeo animado)/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
                     {backgroundMode === "blur" && (
                       <label className="menu-field blur-control">
                         Intensidade do desfoque: {blurAmount}px

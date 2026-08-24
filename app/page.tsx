@@ -275,7 +275,9 @@ export default function Home() {
       if (!active || !context) return;
       canvas.width = source.videoWidth || 1280;
       canvas.height = source.videoHeight || 720;
-      const output = canvas.captureStream(30);
+      // Fundo virtual já recebe uma máscara limitada; 20 fps reduz bastante a
+      // carga da webcam, do encoder e da chamada sem deixar o movimento duro.
+      const output = canvas.captureStream(20);
       try {
         const { SelfieSegmentation } =
           await import("@mediapipe/selfie_segmentation");

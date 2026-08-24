@@ -13,6 +13,7 @@ type SavedCall = {
   mode: "host" | "guest";
   quality: Quality;
   deviceId: string;
+  audioInputId?: string;
   startedAt: number;
 };
 type EditorClip = { url: string; name: string };
@@ -22,6 +23,7 @@ const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
 const constraints = (
   quality: Quality,
   deviceId?: string,
+  audioInputId?: string,
 ): MediaStreamConstraints => ({
   video: {
     width: { ideal: quality === "1080" ? 1920 : 1280 },
@@ -30,6 +32,7 @@ const constraints = (
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   },
   audio: {
+    ...(audioInputId ? { deviceId: { exact: audioInputId } } : {}),
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
@@ -49,8 +52,13 @@ export default function Home() {
   const [mode, setMode] = useState<"host" | "guest">("host");
   const [quality, setQuality] = useState<Quality>("1080"),
     [deviceId, setDeviceId] = useState(""),
-    [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+    [devices, setDevices] = useState<MediaDeviceInfo[]>([]),
+    [audioInputs, setAudioInputs] = useState<MediaDeviceInfo[]>([]),
+    [audioOutputs, setAudioOutputs] = useState<MediaDeviceInfo[]>([]),
+    [audioInputId, setAudioInputId] = useState(""),
+    [audioOutputId, setAudioOutputId] = useState("");
   const [mic, setMic] = useState(true),
+    [noiseSuppression, setNoiseSuppression] = useState(true),
     [cameraOn, setCameraOn] = useState(true),
     [sharing, setSharing] = useState(false),
     [remoteSharing, setRemoteSharing] = useState(false),
@@ -156,6 +164,7 @@ export default function Home() {
           setMode(saved.mode);
           setQuality(saved.quality);
           setDeviceId(saved.deviceId);
+          setAudioInputId(saved.audioInputId || "");
           setRestoreCall(saved);
           setNotice("Restaurando sua chamada…");
         } else {
@@ -192,6 +201,15 @@ export default function Home() {
     const timer = window.setInterval(tick, 1000);
     return () => window.clearInterval(timer);
   }, [inRoom, callStartedAt]);
+  useEffect(() => {
+    if (!audioOutputId) return;
+    [theirs.current, remoteScreen.current].forEach((player) => {
+      if (player && "setSinkId" in player)
+        void (player as HTMLVideoElement & { setSinkId: (id: string) => Promise<void> })
+          .setSinkId(audioOutputId)
+          .catch(() => undefined);
+    });
+  }, [audioOutputId, friend, remoteSharing]);
   useEffect(
     () => () => {
       peer.current?.destroy();
@@ -264,9 +282,9 @@ export default function Home() {
           locateFile: (file) =>
             `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
         });
-        // Modelo landscape é bem mais leve para webcams 16:9 e deixa CPU para
-        // a chamada, tela compartilhada e gravação.
-        segmenter.setOptions({ modelSelection: 1, selfieMode: false });
+        // O modelo geral trabalha com uma máscara quadrada mais detalhada e
+        // preserva melhor mãos, cabelo e braços no fundo virtual.
+        segmenter.setOptions({ modelSelection: 0, selfieMode: false });
         segmenter.onResults((results) => {
           if (!active || !context) return;
           context.save();
@@ -457,11 +475,15 @@ export default function Home() {
   async function devicesList() {
     const list = await navigator.mediaDevices.enumerateDevices();
     setDevices(list.filter((item) => item.kind === "videoinput"));
+    setAudioInputs(list.filter((item) => item.kind === "audioinput"));
+    setAudioOutputs(list.filter((item) => item.kind === "audiooutput"));
   }
   function showRemote(stream: MediaStream, remoteName: string) {
     remote.current = stream;
     if (theirs.current) {
       theirs.current.srcObject = stream;
+      if (audioOutputId && "setSinkId" in theirs.current)
+        void (theirs.current as HTMLVideoElement & { setSinkId: (id: string) => Promise<void> }).setSinkId(audioOutputId).catch(() => undefined);
       void theirs.current.play().catch(() => undefined);
     }
     setFriend(remoteName || "Seu amigo");
@@ -630,7 +652,7 @@ export default function Home() {
         );
     });
   }
-  async function join(chosen = deviceId) {
+  async function join(chosen = deviceId, chosenAudio = audioInputId) {
     if (!name.trim()) {
       setNotice("Informe seu nome antes de entrar na sala.");
       return;
@@ -639,7 +661,7 @@ export default function Home() {
     try {
       local.current?.getTracks().forEach((track) => track.stop());
       const stream = await navigator.mediaDevices.getUserMedia(
-        constraints(quality, chosen || undefined),
+        constraints(quality, chosen || undefined, chosenAudio || undefined),
       );
       local.current = stream;
       setCameraEpoch((value) => value + 1);
@@ -660,6 +682,7 @@ export default function Home() {
         mode,
         quality,
         deviceId: chosen || "",
+        audioInputId: chosenAudio || "",
         startedAt,
       };
       sessionStorage.setItem("klip-active-call", JSON.stringify(saved));
@@ -679,6 +702,25 @@ export default function Home() {
     setDeviceId(id);
     await join(id);
   }
+  async function selectAudioInput(id: string) {
+    setAudioInputId(id);
+    await join(deviceId, id);
+  }
+  async function selectAudioOutput(id: string) {
+    setAudioOutputId(id);
+    const players = [theirs.current, remoteScreen.current];
+    try {
+      await Promise.all(
+        players.map((player) => {
+          if (!player || !("setSinkId" in player)) return Promise.resolve();
+          return (player as HTMLVideoElement & { setSinkId: (sink: string) => Promise<void> }).setSinkId(id);
+        }),
+      );
+      setNotice("Saída de áudio atualizada.");
+    } catch {
+      setNotice("Este navegador não permite escolher a saída de áudio.");
+    }
+  }
   function toggle(kind: "audio" | "video", value: boolean) {
     local.current
       ?.getTracks()
@@ -686,6 +728,20 @@ export default function Home() {
       .forEach((track) => {
         track.enabled = value;
       });
+  }
+  async function toggleNoiseSuppression(enabled: boolean) {
+    setNoiseSuppression(enabled);
+    const track = local.current?.getAudioTracks()[0];
+    try {
+      await track?.applyConstraints({
+        echoCancellation: true,
+        noiseSuppression: enabled,
+        autoGainControl: true,
+      });
+      setNotice(enabled ? "Supressão de ruído ativada." : "Supressão de ruído desativada.");
+    } catch {
+      setNotice("Este microfone não permite alterar a supressão de ruído em tempo real.");
+    }
   }
   async function share() {
     if (sharing) {
@@ -1405,6 +1461,38 @@ export default function Home() {
                         ))}
                       </select>
                     </label>
+                    <label className="menu-field">
+                      Microfone
+                      <select
+                        value={audioInputId}
+                        onChange={(event) =>
+                          void selectAudioInput(event.target.value)
+                        }
+                      >
+                        <option value="">Microfone padrão</option>
+                        {audioInputs.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.label || "Microfone"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <label className="menu-field">
+                      Saída de áudio
+                      <select
+                        value={audioOutputId}
+                        onChange={(event) =>
+                          void selectAudioOutput(event.target.value)
+                        }
+                      >
+                        <option value="">Saída padrão do sistema</option>
+                        {audioOutputs.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.label || "Fone / alto-falante"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
                     <div className="setting-actions">
                       <label className="background-upload">
                         ▧ Escolher imagem
@@ -1450,6 +1538,16 @@ export default function Home() {
                         }
                       />
                       <span>Suavizar pele (leve)</span>
+                    </label>
+                    <label className="menu-switch">
+                      <input
+                        type="checkbox"
+                        checked={noiseSuppression}
+                        onChange={(event) =>
+                          void toggleNoiseSuppression(event.target.checked)
+                        }
+                      />
+                      <span>Supressão de ruído</span>
                     </label>
                   </div>
                 </details>
@@ -1806,16 +1904,25 @@ function ClipEditor({
     [font, setFont] = useState("Inter"),
     [captionColor, setCaptionColor] = useState("#ffffff"),
     [captionSize, setCaptionSize] = useState(58),
+    [captionX, setCaptionX] = useState(50),
     [captionY, setCaptionY] = useState(76),
     [captionAlign, setCaptionAlign] = useState<"left" | "center" | "right">(
       "center",
     ),
     [exporting, setExporting] = useState(false),
     [notice, setNotice] = useState("");
-  const time = (value: number) =>
-    `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(
-      Math.floor(value % 60),
+  const captionDrag = useRef<{
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const time = (value: number) => {
+    const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+    return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(
+      Math.floor(safe % 60),
     ).padStart(2, "0")}`;
+  };
   function selectFile(file?: File) {
     if (!file) return;
     if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
@@ -1831,6 +1938,36 @@ function ClipEditor({
     if (!video.current) return;
     video.current.currentTime = value;
     setCurrent(value);
+  }
+  function setVideoDuration(element: HTMLVideoElement) {
+    const value = element.duration;
+    if (Number.isFinite(value) && value > 0) {
+      setDuration(value);
+      setEnd(value);
+      return;
+    }
+    // Gravações WebM frequentemente chegam sem duração no metadata. Este seek
+    // faz o navegador calcular a duração real antes de montar a linha do tempo.
+    element.currentTime = 1e101;
+  }
+  function startCaptionDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const stage = event.currentTarget.parentElement;
+    if (!stage) return;
+    captionDrag.current = {
+      x: captionX,
+      y: captionY,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveCaptionDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = captionDrag.current;
+    const stage = event.currentTarget.parentElement;
+    if (!drag || !stage) return;
+    const bounds = stage.getBoundingClientRect();
+    setCaptionX(Math.max(8, Math.min(92, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)));
+    setCaptionY(Math.max(6, Math.min(94, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)));
   }
   async function exportReel() {
     const source = video.current;
@@ -1872,7 +2009,7 @@ function ClipEditor({
         context.textBaseline = "middle";
         context.lineWidth = Math.max(4, captionSize / 11);
         context.strokeStyle = "rgba(0,0,0,.72)";
-        const x = captionAlign === "left" ? 62 : captionAlign === "right" ? 1018 : 540;
+        const x = (captionX / 100) * canvas.width;
         const y = (captionY / 100) * canvas.height;
         context.strokeText(caption, x, y, 930);
         context.fillText(caption, x, y, 930);
@@ -1931,8 +2068,8 @@ function ClipEditor({
         </aside>
         <section className="editor-stage-wrap">
           <div className="editor-stage">
-            {clip ? <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => { const value = event.currentTarget.duration; setDuration(value); setEnd(value); }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /> : <div className="editor-empty"><b>Arraste sua história para cá.</b><span>Envie uma gravação, entrevista ou gameplay.</span></div>}
-            {clip && caption && <div className="caption-overlay" style={{ fontFamily: font, color: captionColor, fontSize: `${Math.round(captionSize / 2.25)}px`, top: `${captionY}%`, textAlign: captionAlign }}>{caption}</div>}
+            {clip ? <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { if (Number.isFinite(event.currentTarget.duration) && event.currentTarget.duration > 0) { setDuration(event.currentTarget.duration); setEnd(event.currentTarget.duration); if (event.currentTarget.currentTime > event.currentTarget.duration) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /> : <div className="editor-empty"><b>Arraste sua história para cá.</b><span>Envie uma gravação, entrevista ou gameplay.</span></div>}
+            {clip && caption && <div className="caption-overlay" onPointerDown={startCaptionDrag} onPointerMove={moveCaptionDrag} onPointerUp={() => { captionDrag.current = null; }} onPointerCancel={() => { captionDrag.current = null; }} style={{ fontFamily: font, color: captionColor, fontSize: `${Math.round(captionSize / 2.25)}px`, left: `${captionX}%`, top: `${captionY}%`, textAlign: captionAlign }}><span>{caption}</span><small>Arraste</small></div>}
           </div>
           {notice && <p className="editor-notice">{notice}</p>}
         </section>

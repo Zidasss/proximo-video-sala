@@ -5,6 +5,7 @@ import Peer, { DataConnection, MediaConnection } from "peerjs";
 
 type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
+type ExportAspect = "original" | "vertical" | "landscape" | "square";
 type Msg = { name: string; text: string };
 type SavedCall = {
   room: string;
@@ -2983,6 +2984,9 @@ function ClipEditorV2({
     [videoFadeIn, setVideoFadeIn] = useState(0),
     [videoFadeOut, setVideoFadeOut] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
+    [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
+    [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
+    [sourceAspect, setSourceAspect] = useState(9 / 16),
     [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
     [selectedId, setSelectedId] = useState(""),
@@ -3121,6 +3125,8 @@ function ClipEditorV2({
   }
   function setVideoDuration(element: HTMLVideoElement) {
     const value = element.duration;
+    if (element.videoWidth && element.videoHeight)
+      setSourceAspect(element.videoWidth / element.videoHeight);
     if (Number.isFinite(value) && value > 0) {
       setDuration(value);
       setEnd(value);
@@ -3286,8 +3292,20 @@ function ClipEditorV2({
       setExporting(false);
       return;
     }
-    canvas.width = 1080;
-    canvas.height = 1920;
+    const sourceWidth = source.videoWidth || 1920;
+    const sourceHeight = source.videoHeight || 1080;
+    const aspect = exportAspect === "vertical" ? 9 / 16 : exportAspect === "landscape" ? 16 / 9 : 1;
+    const original = exportAspect === "original";
+    let outputWidth = original ? sourceWidth : aspect >= 1 ? 1920 : 1080;
+    let outputHeight = original ? sourceHeight : Math.round(outputWidth / aspect);
+    if (exportResolution !== "source") {
+      const limit = Number(exportResolution);
+      const scale = Math.min(1, limit / Math.max(outputWidth, outputHeight));
+      outputWidth = Math.max(2, Math.round(outputWidth * scale));
+      outputHeight = Math.max(2, Math.round(outputHeight * scale));
+    }
+    canvas.width = outputWidth;
+    canvas.height = outputHeight;
     const output = canvas.captureStream(30);
     const captured = (
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
@@ -3439,6 +3457,17 @@ function ClipEditorV2({
             <option value="mp4">MP4</option>
             <option value="webm">WebM</option>
           </select>
+          <select className="export-format" aria-label="Formato do vídeo" value={exportAspect} onChange={(event) => setExportAspect(event.target.value as ExportAspect)}>
+            <option value="original">Original (preservar)</option>
+            <option value="vertical">Vertical 9:16</option>
+            <option value="landscape">Horizontal 16:9</option>
+            <option value="square">Quadrado 1:1</option>
+          </select>
+          <select className="export-format" aria-label="Resolução do vídeo" value={exportResolution} onChange={(event) => setExportResolution(event.target.value as "source" | "1080" | "720")}>
+            <option value="source">Resolução original</option>
+            <option value="1080">Até 1080p</option>
+            <option value="720">Até 720p</option>
+          </select>
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
             {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
           </button>
@@ -3520,8 +3549,8 @@ function ClipEditorV2({
         </aside>
 
         <section className="editor-stage-wrap">
-          <div className="stage-meta"><span>Prévia vertical · 1080 × 1920</span><b>{time(current)}</b></div>
-          <div className="editor-stage">
+          <div className="stage-meta"><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>
+          <div className="editor-stage" style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
               <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} />
             ) : (

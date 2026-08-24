@@ -50,10 +50,17 @@ type IllustrationLayer = {
   fit: "cover" | "contain";
 };
 type TimedLayer = Pick<IllustrationLayer, "start" | "end" | "fadeIn" | "fadeOut">;
+type ConnectionStats = {
+  fps: number;
+  bitrateKbps: number;
+  packetLoss: number;
+  jitterMs: number;
+  rttMs: number;
+};
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.14.0";
+const APP_VERSION = "v0.15.0";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -127,6 +134,8 @@ export default function Home() {
     [background, setBackground] = useState(""),
     [backgroundVideo, setBackgroundVideo] = useState(""),
     [backgroundLabel, setBackgroundLabel] = useState(""),
+    [webcamText, setWebcamText] = useState(""),
+    [webcamTextPosition, setWebcamTextPosition] = useState<"top" | "bottom">("top"),
     [backgroundMode, setBackgroundMode] = useState<
       "none" | "image" | "blur" | "remove"
     >(
@@ -144,6 +153,14 @@ export default function Home() {
     [speaking, setSpeaking] = useState({ mine: false, friend: false }),
     [notice, setNotice] = useState(""),
     [chatOpen, setChatOpen] = useState(false),
+    [connectionOpen, setConnectionOpen] = useState(false),
+    [connectionStats, setConnectionStats] = useState<ConnectionStats>({
+      fps: 0,
+      bitrateKbps: 0,
+      packetLoss: 0,
+      jitterMs: 0,
+      rttMs: 0,
+    }),
     [settingsOpen, setSettingsOpen] = useState(false),
     [settingsOffset, setSettingsOffset] = useState({ x: 0, y: 0 }),
     [settingsMinimized, setSettingsMinimized] = useState(false),
@@ -160,7 +177,8 @@ export default function Home() {
     remoteDisplayed = useRef<MediaStream | null>(null),
     processedLocal = useRef<MediaStream | null>(null),
     processedAudio = useRef<MediaStream | null>(null),
-    blurAmountRef = useRef(16);
+    blurAmountRef = useRef(16),
+    connectionSample = useRef({ bytes: 0, at: 0 });
   const peer = useRef<Peer | null>(null),
     connection = useRef<DataConnection | null>(null),
     remoteId = useRef(""),
@@ -329,7 +347,7 @@ export default function Home() {
     virtualEpoch,
   ]);
   useEffect(() => {
-    if (!inRoom || backgroundMode === "none" || !local.current) return;
+    if (!inRoom || (backgroundMode === "none" && !webcamText.trim()) || !local.current) return;
     let active = true,
       segmentationFrame = 0,
       renderFrame = 0,
@@ -337,7 +355,21 @@ export default function Home() {
       lastInferenceAt = 0,
       inferenceDuration = 24,
       attached = false,
-      hasMask = false;
+      hasMask = false,
+      lastAnimatedRenderAt = 0;
+    // Fundo animado exige composição a cada quadro. Limitamos apenas essa
+    // composição a 24 fps: a webcam continua em boa fluidez, mas sobra GPU e
+    // banda para o WebRTC não congelar o vídeo visto pelo amigo.
+    const animatedBackdrop =
+      backgroundMode === "image" &&
+      (Boolean(backgroundVideo) || /GIF animado/.test(backgroundLabel));
+    const shouldSkipAnimatedRender = () => {
+      if (!animatedBackdrop) return false;
+      const now = performance.now();
+      if (now - lastAnimatedRenderAt < 1000 / 24) return true;
+      lastAnimatedRenderAt = now;
+      return false;
+    };
     const source = document.createElement("video"),
       canvas = document.createElement("canvas"),
       context = canvas.getContext("2d"),
@@ -391,8 +423,60 @@ export default function Home() {
         target.drawImage(sourceBackground, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
       };
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
-      const output = canvas.captureStream(30);
+      const output = canvas.captureStream(animatedBackdrop ? 24 : 30);
+      const attachOverlayOutput = () => {
+        if (attached) return;
+        processedLocal.current = output;
+        replaceOutgoingVideo(output);
+        refreshCameraForPeer();
+        if (mine.current) {
+          mine.current.srcObject = output;
+          void mine.current.play().catch(() => undefined);
+        }
+        setVirtualEpoch((epoch) => epoch + 1);
+        attached = true;
+      };
+      const drawWebcamText = () => {
+        const text = webcamText.trim();
+        if (!text || !context) return;
+        const fontSize = Math.max(26, Math.round(canvas.width * 0.047));
+        context.save();
+        context.font = `800 ${fontSize}px Inter, Arial, sans-serif`;
+        context.textAlign = "center";
+        context.textBaseline = "middle";
+        const paddingX = fontSize * 0.58;
+        const width = Math.min(canvas.width - 32, context.measureText(text).width + paddingX * 2);
+        const height = fontSize * 1.72;
+        const x = (canvas.width - width) / 2;
+        const y = webcamTextPosition === "top" ? 24 : canvas.height - height - 24;
+        context.fillStyle = "rgba(17,14,16,.74)";
+        context.beginPath();
+        context.roundRect(x, y, width, height, height / 2);
+        context.fill();
+        context.fillStyle = "#fff7f3";
+        context.fillText(text, canvas.width / 2, y + height / 2, canvas.width - 56);
+        context.restore();
+      };
       try {
+        if (backgroundMode === "none") {
+          const renderOverlay = () => {
+            if (!active || !context) return;
+            context.drawImage(source, 0, 0, canvas.width, canvas.height);
+            drawWebcamText();
+            attachOverlayOutput();
+            renderFrame = requestAnimationFrame(renderOverlay);
+          };
+          renderOverlay();
+          return () => {
+            cancelAnimationFrame(renderFrame);
+            output.getTracks().forEach((track) => track.stop());
+            if (processedLocal.current === output) {
+              processedLocal.current = null;
+              if (local.current) replaceOutgoingVideo(local.current);
+              setVirtualEpoch((epoch) => epoch + 1);
+            }
+          };
+        }
         if (mattingQuality === "premium") {
           setNotice("Preparando IA Premium na GPU…");
           const tf = await import("@tensorflow/tfjs");
@@ -435,6 +519,10 @@ export default function Home() {
           };
           const renderPremium = () => {
             if (!active || !context) return;
+            if (shouldSkipAnimatedRender()) {
+              renderFrame = requestAnimationFrame(renderPremium);
+              return;
+            }
             context.clearRect(0, 0, canvas.width, canvas.height);
             if (backgroundMode === "blur") {
               const strength = blurAmountRef.current;
@@ -461,6 +549,7 @@ export default function Home() {
               // premium ainda está sendo preparada.
               context.drawImage(source, 0, 0, canvas.width, canvas.height);
             }
+            drawWebcamText();
             renderFrame = requestAnimationFrame(renderPremium);
           };
           const inferPremium = async () => {
@@ -619,6 +708,10 @@ export default function Home() {
         worker.postMessage({ type: "init" });
         const render = () => {
           if (!active || !context) return;
+          if (shouldSkipAnimatedRender()) {
+            renderFrame = requestAnimationFrame(render);
+            return;
+          }
           context.clearRect(0, 0, canvas.width, canvas.height);
           if (backgroundMode === "blur") {
             const strength = blurAmountRef.current;
@@ -668,6 +761,7 @@ export default function Home() {
             foregroundContext.restore();
             context.drawImage(foregroundCanvas, 0, 0, canvas.width, canvas.height);
           }
+          drawWebcamText();
           renderFrame = requestAnimationFrame(render);
         };
         const next = () => {
@@ -736,12 +830,75 @@ export default function Home() {
   }, [
     background,
     backgroundVideo,
+    backgroundLabel,
     backgroundMode,
+    webcamText,
+    webcamTextPosition,
     mattingQuality,
     skinSmooth,
     cameraEpoch,
     inRoom,
   ]);
+  const refreshConnectionStats = async () => {
+    const calls = cameraCalls.current as Array<
+      MediaConnection & { peerConnection?: RTCPeerConnection }
+    >;
+    const peerConnection = calls.find((call) => call.peerConnection)?.peerConnection;
+    if (!peerConnection) {
+      setConnectionStats({ fps: 0, bitrateKbps: 0, packetLoss: 0, jitterMs: 0, rttMs: 0 });
+      return;
+    }
+    try {
+      const report = await peerConnection.getStats();
+      let fps = 0;
+      let bytes = 0;
+      let received = 0;
+      let lost = 0;
+      let jitterMs = 0;
+      let rttMs = 0;
+      report.forEach((raw) => {
+        const item = raw as RTCStats & Record<string, unknown>;
+        const kind = String(item.kind || item.mediaType || "");
+        if ((item.type === "inbound-rtp" || item.type === "outbound-rtp") && kind === "video") {
+          fps = Math.max(fps, Number(item.framesPerSecond || 0));
+          bytes += Number(item.bytesReceived || item.bytesSent || 0);
+          if (item.type === "inbound-rtp") {
+            received += Number(item.packetsReceived || 0);
+            lost += Math.max(0, Number(item.packetsLost || 0));
+            jitterMs = Math.max(jitterMs, Number(item.jitter || 0) * 1000);
+          }
+        }
+        if (
+          item.type === "candidate-pair" &&
+          (item.state === "succeeded" || item.nominated === true)
+        ) {
+          rttMs = Math.max(rttMs, Number(item.currentRoundTripTime || 0) * 1000);
+        }
+      });
+      const now = performance.now();
+      const prior = connectionSample.current;
+      const bitrateKbps =
+        prior.at && now > prior.at
+          ? Math.max(0, ((bytes - prior.bytes) * 8) / (now - prior.at))
+          : 0;
+      connectionSample.current = { bytes, at: now };
+      setConnectionStats({
+        fps: Math.round(fps),
+        bitrateKbps: Math.round(bitrateKbps),
+        packetLoss: received + lost ? Number(((lost / (received + lost)) * 100).toFixed(2)) : 0,
+        jitterMs: Math.round(jitterMs),
+        rttMs: Math.round(rttMs),
+      });
+    } catch {
+      setNotice("Não foi possível ler as estatísticas da chamada agora.");
+    }
+  };
+  useEffect(() => {
+    if (!connectionOpen || !inRoom) return;
+    void refreshConnectionStats();
+    const interval = window.setInterval(() => void refreshConnectionStats(), 2000);
+    return () => window.clearInterval(interval);
+  }, [connectionOpen, inRoom]);
   useEffect(() => {
     if (mode === "host" && connection.current?.open)
       connection.current.send({
@@ -1951,6 +2108,16 @@ export default function Home() {
             ▤ Chat
           </button>
           <button
+            className={connectionOpen ? "connection-open" : "connection-toggle"}
+            onClick={() => {
+              const next = !connectionOpen;
+              setConnectionOpen(next);
+              if (next) void refreshConnectionStats();
+            }}
+          >
+            ◌ Status
+          </button>
+          <button
             className={settingsOpen ? "settings-open" : "settings"}
             onClick={() => {
               const next = !settingsOpen;
@@ -2115,6 +2282,21 @@ export default function Home() {
                         : "Recorte leve: mais rápido, indicado para computadores comuns"}
                     </p>
                     {backgroundLabel && <p className="background-file-note">● {backgroundLabel}{/(GIF animado|Vídeo animado)/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
+                    <div className="webcam-text-layer">
+                      <b>Camada na webcam</b>
+                      <small>Texto no vídeo, para a chamada e a gravação.</small>
+                      <input
+                        value={webcamText}
+                        maxLength={80}
+                        onChange={(event) => setWebcamText(event.target.value)}
+                        placeholder="Ex.: AO VIVO · Episódio 01"
+                      />
+                      <div>
+                        <button className={webcamTextPosition === "top" ? "selected" : ""} onClick={() => setWebcamTextPosition("top")}>Em cima</button>
+                        <button className={webcamTextPosition === "bottom" ? "selected" : ""} onClick={() => setWebcamTextPosition("bottom")}>Embaixo</button>
+                        <button onClick={() => setWebcamText("")}>Limpar</button>
+                      </div>
+                    </div>
                     {backgroundMode === "blur" && (
                       <label className="menu-field blur-control">
                         Intensidade do desfoque: {blurAmount}px
@@ -2476,6 +2658,22 @@ export default function Home() {
             />
             <button onClick={send}>Enviar</button>
           </div>
+        </aside>
+      )}
+      {connectionOpen && (
+        <aside className="connection-panel" aria-label="Status da conexão">
+          <div className="connection-title">
+            <div><b>Status da conexão</b><small>Atualiza a cada 2 segundos</small></div>
+            <button onClick={() => setConnectionOpen(false)} aria-label="Fechar status">×</button>
+          </div>
+          <div className="connection-grid">
+            <div><small>FPS do vídeo</small><b>{connectionStats.fps || "—"}<em> fps</em></b></div>
+            <div><small>Bitrate</small><b>{connectionStats.bitrateKbps || "—"}<em> kb/s</em></b></div>
+            <div><small>Perda de pacotes</small><b className={connectionStats.packetLoss > 2 ? "warning" : ""}>{connectionStats.packetLoss}<em>%</em></b></div>
+            <div><small>Latência / jitter</small><b>{connectionStats.rttMs || "—"}<em> / {connectionStats.jitterMs} ms</em></b></div>
+          </div>
+          <p>Para fundo animado, até 24 fps é normal: assim a chamada preserva GPU e estabilidade.</p>
+          <button className="refresh-connection" onClick={() => void refreshConnectionStats()}>↻ Atualizar agora</button>
         </aside>
       )}
       {notice && (

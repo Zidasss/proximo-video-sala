@@ -74,7 +74,9 @@ export default function Home() {
     [tiktokTop, setTiktokTop] = useState(0.325),
     [dragging, setDragging] = useState(""),
     [background, setBackground] = useState(""),
-    [backgroundMode, setBackgroundMode] = useState<"none" | "image" | "blur">(
+    [backgroundMode, setBackgroundMode] = useState<
+      "none" | "image" | "blur" | "remove"
+    >(
       "none",
     ),
     [skinSmooth, setSkinSmooth] = useState(false),
@@ -333,7 +335,7 @@ export default function Home() {
               canvas.height + strength * 2,
             );
             context.filter = "none";
-          } else {
+          } else if (backgroundMode === "image") {
             const scale = Math.max(
                 canvas.width / (image.naturalWidth || canvas.width),
                 canvas.height / (image.naturalHeight || canvas.height),
@@ -819,6 +821,14 @@ export default function Home() {
   }
   function toggleBlur() {
     const next = backgroundMode === "blur" ? "none" : "blur";
+    setBackgroundMode(next);
+    if (next === "none" && mine.current && local.current) {
+      mine.current.srcObject = local.current;
+      void mine.current.play().catch(() => undefined);
+    }
+  }
+  function toggleBackgroundRemoval() {
+    const next = backgroundMode === "remove" ? "none" : "remove";
     setBackgroundMode(next);
     if (next === "none" && mine.current && local.current) {
       mine.current.srcObject = local.current;
@@ -1524,6 +1534,14 @@ export default function Home() {
                         onClick={toggleBlur}
                       >
                         ◌ Desfocar
+                      </button>
+                      <button
+                        className={
+                          backgroundMode === "remove" ? "format on" : "format"
+                        }
+                        onClick={toggleBackgroundRemoval}
+                      >
+                        ◒ Remover fundo
                       </button>
                     </div>
                     {backgroundMode === "blur" && (

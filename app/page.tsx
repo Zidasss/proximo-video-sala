@@ -77,6 +77,8 @@ export default function Home() {
     recordChunks = useRef<Blob[]>([]),
     cutRequested = useRef(false),
     speakingRef = useRef({ mine: false, friend: false }),
+    pipVideo = useRef<HTMLVideoElement | null>(null),
+    pipFrame = useRef(0),
     settingsDrag = useRef<{
       x: number;
       y: number;
@@ -817,6 +819,125 @@ export default function Home() {
   function endPreviewDrag() {
     previewDrag.current = null;
   }
+  async function openPictureInPicture() {
+    if (!document.pictureInPictureEnabled) {
+      setNotice("Picture-in-Picture não está disponível neste navegador.");
+      return;
+    }
+    if (document.pictureInPictureElement) {
+      await document.exitPictureInPicture();
+      return;
+    }
+    const canvas = document.createElement("canvas"),
+      context = canvas.getContext("2d");
+    if (!context) return;
+    canvas.width = vertical ? 540 : 960;
+    canvas.height = vertical ? 960 : 540;
+    const cover = (
+      video: HTMLVideoElement | null,
+      x: number,
+      y: number,
+      width: number,
+      height: number,
+    ) => {
+      if (!video?.videoWidth) return;
+      const scale = Math.max(
+          width / video.videoWidth,
+          height / video.videoHeight,
+        ),
+        drawWidth = video.videoWidth * scale,
+        drawHeight = video.videoHeight * scale;
+      context.save();
+      context.beginPath();
+      context.rect(x, y, width, height);
+      context.clip();
+      context.drawImage(
+        video,
+        x + (width - drawWidth) / 2,
+        y + (height - drawHeight) / 2,
+        drawWidth,
+        drawHeight,
+      );
+      context.restore();
+    };
+    const draw = () => {
+      context.fillStyle = "#151616";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      if (vertical) {
+        const topHeight = canvas.height * tiktokTop,
+          gap = 6,
+          half = (canvas.width - gap) / 2,
+          first = topOrder === "mine-first" ? mine.current : theirs.current,
+          second = topOrder === "mine-first" ? theirs.current : mine.current,
+          screenVideo = sharing ? screen.current : remoteScreen.current;
+        cover(first, 0, 0, half, topHeight);
+        cover(second, half + gap, 0, half, topHeight);
+        cover(
+          screenVideo,
+          0,
+          topHeight + gap,
+          canvas.width,
+          canvas.height - topHeight - gap,
+        );
+      } else {
+        cover(
+          sharing
+            ? screen.current
+            : remoteSharing
+              ? remoteScreen.current
+              : mine.current,
+          0,
+          0,
+          canvas.width,
+          canvas.height,
+        );
+        cover(
+          mine.current,
+          canvas.width * 0.7,
+          canvas.height * 0.65,
+          canvas.width * 0.28,
+          canvas.height * 0.3,
+        );
+        cover(
+          theirs.current,
+          18,
+          canvas.height * 0.71,
+          canvas.width * 0.24,
+          canvas.height * 0.26,
+        );
+      }
+      pipFrame.current = requestAnimationFrame(draw);
+    };
+    const video = document.createElement("video");
+    video.muted = true;
+    video.playsInline = true;
+    video.srcObject = canvas.captureStream(30);
+    video.style.cssText = "position:fixed;left:-9999px;width:1px;height:1px";
+    document.body.append(video);
+    pipVideo.current = video;
+    video.addEventListener(
+      "leavepictureinpicture",
+      () => {
+        cancelAnimationFrame(pipFrame.current);
+        video.remove();
+        if (pipVideo.current === video) pipVideo.current = null;
+      },
+      { once: true },
+    );
+    draw();
+    try {
+      await video.play();
+      await video.requestPictureInPicture();
+      setNotice("Prévia aberta em Picture-in-Picture.");
+    } catch {
+      cancelAnimationFrame(pipFrame.current);
+      video.remove();
+      pipVideo.current = null;
+      setNotice(
+        "Não foi possível abrir o Picture-in-Picture. Tente pelo Chrome.",
+      );
+    }
+  }
   if (!inRoom)
     return (
       <main className="landing">
@@ -989,7 +1110,10 @@ export default function Home() {
                 onClick={() => {
                   const next = !settingsMinimized;
                   setSettingsMinimized(next);
-                  if (next) setPreviewOpen(true);
+                  if (next) {
+                    setPreviewOpen(true);
+                    void openPictureInPicture();
+                  }
                 }}
                 aria-label={
                   settingsMinimized ? "Expandir ajustes" : "Minimizar ajustes"
@@ -1171,7 +1295,10 @@ export default function Home() {
             <span>Prévia para salvar · 9:16</span>
             <div className="window-actions">
               <button
-                onClick={() => setPreviewMinimized(!previewMinimized)}
+                onClick={() => {
+                  setPreviewMinimized(!previewMinimized);
+                  if (!previewMinimized) void openPictureInPicture();
+                }}
                 aria-label={
                   previewMinimized ? "Expandir prévia" : "Minimizar prévia"
                 }

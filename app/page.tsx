@@ -37,6 +37,7 @@ const constraints = (
 
 export default function Home() {
   const [inRoom, setInRoom] = useState(false);
+  const [booting, setBooting] = useState(true);
   const [room, setRoom] = useState("------"),
     [pin, setPin] = useState("----");
   const [name, setName] = useState(""),
@@ -122,6 +123,7 @@ export default function Home() {
       setPin(invitedPin);
       setOwner((query.get("anfitriao") || "Anfitrião").slice(0, 40));
       setMode("guest");
+      setBooting(false);
     } else {
       try {
         const saved = JSON.parse(
@@ -144,10 +146,12 @@ export default function Home() {
         } else {
           setRoom(code(6));
           setPin(code(4));
+          setBooting(false);
         }
       } catch {
         setRoom(code(6));
         setPin(code(4));
+        setBooting(false);
       }
     }
   }, []);
@@ -161,7 +165,7 @@ export default function Home() {
       mode !== restoreCall.mode
     )
       return;
-    void join(restoreCall.deviceId);
+    void join(restoreCall.deviceId).finally(() => setBooting(false));
   }, [restoreCall, inRoom, room, pin, name, mode]);
   useEffect(() => {
     if (!inRoom || !callStartedAt) return;
@@ -537,6 +541,7 @@ export default function Home() {
       setNotice("Informe seu nome antes de entrar na sala.");
       return;
     }
+    if (!inRoom) setBooting(true);
     try {
       local.current?.getTracks().forEach((track) => track.stop());
       const stream = await navigator.mediaDevices.getUserMedia(
@@ -568,7 +573,9 @@ export default function Home() {
       setInRoom(true);
       await devicesList();
       startPeer(stream);
+      setBooting(false);
     } catch {
+      setBooting(false);
       setNotice(
         "Permita câmera e microfone. Feche outros aplicativos que possam estar usando a webcam.",
       );
@@ -1044,6 +1051,18 @@ export default function Home() {
       );
     }
   }
+  if (booting)
+    return (
+      <main className="loading-screen">
+        <div className="loading-mark">
+          <i />
+          <i />
+        </div>
+        <h1>Klip</h1>
+        <p>Recuperando sua sala…</p>
+        <span />
+      </main>
+    );
   if (!inRoom)
     return (
       <main className="landing">

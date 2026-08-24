@@ -882,6 +882,67 @@ body {
 }
 
 /* Klip — Premium Splice identity */
+.loading-screen {
+  min-height: 100vh;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 12px;
+  background:
+    radial-gradient(circle at 50% 42%, #48231f 0, transparent 25%), #111414;
+  color: #fff8f4;
+}
+.loading-screen h1 {
+  margin: 0;
+  font-size: 34px;
+  letter-spacing: -2px;
+}
+.loading-screen p {
+  margin: 0;
+  color: #ffd3ca;
+  font-size: 15px;
+}
+.loading-screen > span {
+  width: 150px;
+  height: 4px;
+  border-radius: 999px;
+  background: #4b302c;
+  overflow: hidden;
+}
+.loading-screen > span::after {
+  content: "";
+  display: block;
+  width: 42%;
+  height: 100%;
+  border-radius: inherit;
+  background: #ff654f;
+  animation: klip-loading 1s ease-in-out infinite alternate;
+}
+.loading-mark {
+  width: 48px;
+  height: 48px;
+  position: relative;
+}
+.loading-mark i {
+  position: absolute;
+  width: 18px;
+  height: 48px;
+  border-radius: 9px 4px;
+  transform: rotate(-45deg);
+}
+.loading-mark i:first-child {
+  left: 7px;
+  background: #ff654f;
+}
+.loading-mark i:last-child {
+  left: 23px;
+  background: #ffc1b4;
+}
+@keyframes klip-loading {
+  to {
+    transform: translateX(135%);
+  }
+}
 .brand {
   color: #f7f0eb;
   letter-spacing: -1.8px;

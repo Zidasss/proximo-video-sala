@@ -65,6 +65,7 @@ export default function Home() {
       "none",
     ),
     [skinSmooth, setSkinSmooth] = useState(false),
+    [blurAmount, setBlurAmount] = useState(16),
     [cameraEpoch, setCameraEpoch] = useState(0),
     [virtualEpoch, setVirtualEpoch] = useState(0);
   const [friend, setFriend] = useState(""),
@@ -257,7 +258,9 @@ export default function Home() {
           if (!active || !context) return;
           context.save();
           context.clearRect(0, 0, canvas.width, canvas.height);
-          context.filter = "blur(1px)";
+          // A borda da máscara recebe só um anti-alias discreto. Um blur alto
+          // aqui vaza o fundo sobre a pessoa e deixa o resultado "recortado".
+          context.filter = "blur(.35px)";
           context.drawImage(
             results.segmentationMask,
             0,
@@ -268,18 +271,18 @@ export default function Home() {
           context.filter = "none";
           context.globalCompositeOperation = "source-in";
           context.filter = skinSmooth
-            ? "blur(.55px) brightness(1.025) saturate(.96)"
+            ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)"
             : "none";
           context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
           context.globalCompositeOperation = "destination-over";
           if (backgroundMode === "blur") {
-            context.filter = "blur(24px)";
+            context.filter = `blur(${blurAmount}px) brightness(.9) saturate(.93)`;
             context.drawImage(
               results.image,
-              -24,
-              -24,
-              canvas.width + 48,
-              canvas.height + 48,
+              -blurAmount,
+              -blurAmount,
+              canvas.width + blurAmount * 2,
+              canvas.height + blurAmount * 2,
             );
             context.filter = "none";
           } else {
@@ -301,6 +304,10 @@ export default function Home() {
           if (!attached) {
             processedLocal.current = output;
             replaceOutgoingVideo(output);
+            // Alguns navegadores/implementações WebRTC não aplicam replaceTrack
+            // numa chamada que já estava negociada. Uma chamada curta de atualização
+            // garante que o outro participante passe a receber a câmera processada.
+            refreshCameraForPeer();
             if (mine.current) {
               mine.current.srcObject = output;
               void mine.current.play().catch(() => undefined);
@@ -340,7 +347,14 @@ export default function Home() {
       active = false;
       stop?.();
     };
-  }, [background, backgroundMode, skinSmooth, cameraEpoch, inRoom]);
+  }, [
+    background,
+    backgroundMode,
+    skinSmooth,
+    blurAmount,
+    cameraEpoch,
+    inRoom,
+  ]);
   useEffect(() => {
     if (mode === "host" && connection.current?.open)
       connection.current.send({
@@ -450,6 +464,16 @@ export default function Home() {
         .filter((sender) => sender.track?.kind === "video")
         .forEach((sender) => void sender.replaceTrack(track)),
     );
+  }
+  function refreshCameraForPeer() {
+    const client = peer.current;
+    if (!client || !remoteId.current || !local.current) return;
+    const updatedCall = client.call(
+      remoteId.current,
+      callStream(local.current),
+      { metadata: { name, kind: "camera", refresh: true } },
+    );
+    useCall(updatedCall, friend || "Seu amigo");
   }
   function useCall(call: MediaConnection, fallback: string) {
     remoteId.current = call.peer;
@@ -1352,6 +1376,20 @@ export default function Home() {
                         ◌ Desfocar
                       </button>
                     </div>
+                    {backgroundMode === "blur" && (
+                      <label className="menu-field blur-control">
+                        Intensidade do desfoque: {blurAmount}px
+                        <input
+                          type="range"
+                          min="6"
+                          max="26"
+                          value={blurAmount}
+                          onChange={(event) =>
+                            setBlurAmount(Number(event.target.value))
+                          }
+                        />
+                      </label>
+                    )}
                     <label className="menu-switch">
                       <input
                         type="checkbox"

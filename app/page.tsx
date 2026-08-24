@@ -20,7 +20,7 @@ type EditorClip = { url: string; name: string };
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.10.0";
+const APP_VERSION = "v0.11.0";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -276,6 +276,7 @@ export default function Home() {
       segmentationFrame = 0,
       renderFrame = 0,
       lastInferenceAt = 0,
+      inferenceDuration = 24,
       attached = false,
       hasMask = false;
     const source = document.createElement("video"),
@@ -295,8 +296,6 @@ export default function Home() {
       if (!active || !context || !maskContext || !foregroundContext) return;
       canvas.width = source.videoWidth || 1280;
       canvas.height = source.videoHeight || 720;
-      maskCanvas.width = canvas.width;
-      maskCanvas.height = canvas.height;
       foregroundCanvas.width = canvas.width;
       foregroundCanvas.height = canvas.height;
       if (backgroundMode === "image") {
@@ -309,28 +308,124 @@ export default function Home() {
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
       const output = canvas.captureStream(30);
       try {
-        const { SelfieSegmentation } =
-          await import("@mediapipe/selfie_segmentation");
-        const segmenter = new SelfieSegmentation({
-          locateFile: (file) =>
-            `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
-        });
-        // O modelo geral trabalha com uma máscara quadrada mais detalhada e
-        // preserva melhor mãos, cabelo e braços no fundo virtual.
-        segmenter.setOptions({ modelSelection: 0, selfieMode: false });
-        segmenter.onResults((results) => {
-          if (!active) return;
-          maskContext.save();
-          maskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
-          maskContext.filter = "blur(.35px)";
-          maskContext.drawImage(
-            results.segmentationMask,
-            0,
-            0,
-            maskCanvas.width,
-            maskCanvas.height,
+        const { FilesetResolver, ImageSegmenter } = await import(
+          "@mediapipe/tasks-vision"
+        );
+        const vision = await FilesetResolver.forVisionTasks(
+          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm",
+        );
+        const options = {
+          baseOptions: {
+            modelAssetPath:
+              "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
+            delegate: "GPU" as const,
+          },
+          runningMode: "VIDEO" as const,
+          outputConfidenceMasks: true,
+          outputCategoryMask: false,
+          canvas: document.createElement("canvas"),
+        };
+        let segmenter;
+        try {
+          segmenter = await ImageSegmenter.createFromOptions(vision, options);
+        } catch {
+          // Máquinas sem WebGL continuam funcionando, só usando a CPU.
+          segmenter = await ImageSegmenter.createFromOptions(vision, {
+            ...options,
+            baseOptions: { ...options.baseOptions, delegate: "CPU" },
+            canvas: undefined,
+          });
+        }
+        const labels = segmenter.getLabels().map((label) => label.toLowerCase()),
+          backgroundIndex = Math.max(0, labels.indexOf("background")),
+          labeledAccessoryIndex = labels.findIndex((label) =>
+            /other|accessor/.test(label),
           );
-          maskContext.restore();
+        let previousAlpha: Float32Array | null = null,
+          coreConfidence: Float32Array | null = null,
+          maskPixels: ImageData | null = null;
+        const updateMask = (results: {
+          confidenceMasks?: Array<{
+            width: number;
+            height: number;
+            getAsFloat32Array: () => Float32Array;
+          }>;
+        }) => {
+          if (!active || !results.confidenceMasks?.length) return;
+          const masks = results.confidenceMasks,
+            width = masks[0].width,
+            height = masks[0].height,
+            total = width * height,
+            backgroundConfidence = masks[backgroundIndex].getAsFloat32Array(),
+            accessoryIndex =
+              labeledAccessoryIndex >= 0
+                ? labeledAccessoryIndex
+                : masks.length >= 6
+                  ? 5
+                  : -1,
+            accessoryConfidence =
+              accessoryIndex >= 0
+                ? masks[accessoryIndex].getAsFloat32Array()
+                : null;
+          if (
+            !maskPixels ||
+            maskPixels.width !== width ||
+            maskPixels.height !== height
+          ) {
+            maskCanvas.width = width;
+            maskCanvas.height = height;
+            maskPixels = maskContext.createImageData(width, height);
+            previousAlpha = new Float32Array(total);
+            coreConfidence = new Float32Array(total);
+          }
+          const core = coreConfidence!;
+          // A soma das classes humanas exclui o fundo e a classe genérica
+          // "others", que no modelo antigo deixava estantes e objetos inteiros.
+          for (let index = 0; index < total; index += 1) {
+            let confidence = 1 - backgroundConfidence[index];
+            if (accessoryConfidence)
+              confidence = Math.max(0, confidence - accessoryConfidence[index]);
+            core[index] = confidence;
+          }
+          const alpha = maskPixels.data,
+            previous = previousAlpha!;
+          for (let index = 0; index < total; index += 1) {
+            let confidence = core[index];
+            const accessory = accessoryConfidence?.[index] ?? 0;
+            if (accessory > 0.42) {
+              const x = index % width,
+                nearPerson =
+                  core[Math.max(0, index - width * 5)] > 0.34 ||
+                  core[Math.min(total - 1, index + width * 5)] > 0.34 ||
+                  core[index - Math.min(5, x)] > 0.34 ||
+                  core[index + Math.min(5, width - x - 1)] > 0.34;
+              if (nearPerson)
+                confidence = Math.max(
+                  confidence,
+                  accessory * 0.88,
+                );
+            }
+            // Curva suave, mas firme: confiança baixa vira fundo em vez de
+            // criar os retângulos/"fantasmas" vistos nas imagens do teste.
+            const normalized = Math.max(
+                0,
+                Math.min(1, (confidence - 0.25) / 0.43),
+              ),
+              target = normalized * normalized * (3 - 2 * normalized),
+              stabilized =
+                target < 0.055
+                  ? 0
+                  : target > previous[index]
+                    ? previous[index] * 0.12 + target * 0.88
+                    : previous[index] * 0.28 + target * 0.72;
+            previous[index] = stabilized;
+            const offset = index * 4;
+            alpha[offset] = 255;
+            alpha[offset + 1] = 255;
+            alpha[offset + 2] = 255;
+            alpha[offset + 3] = Math.round(stabilized * 255);
+          }
+          maskContext.putImageData(maskPixels, 0, 0);
           hasMask = true;
           if (!attached) {
             processedLocal.current = output;
@@ -343,7 +438,7 @@ export default function Home() {
             setVirtualEpoch((epoch) => epoch + 1);
             attached = true;
           }
-        });
+        };
         const render = () => {
           if (!active || !context) return;
           context.clearRect(0, 0, canvas.width, canvas.height);
@@ -383,6 +478,9 @@ export default function Home() {
               foregroundCanvas.height,
             );
             foregroundContext.save();
+            foregroundContext.imageSmoothingEnabled = true;
+            foregroundContext.imageSmoothingQuality = "high";
+            foregroundContext.filter = "blur(1.15px)";
             foregroundContext.drawImage(
               maskCanvas,
               0,
@@ -408,13 +506,17 @@ export default function Home() {
         };
         const next = async () => {
           if (!active) return;
-          // A máscara acompanha bem o movimento; a imagem acima continua em 30 fps.
-          if (performance.now() - lastInferenceAt < 50) {
+          // A imagem continua em 30 fps. A análise se adapta ao computador e
+          // nunca tenta ocupar continuamente a thread da chamada.
+          const minimumGap = Math.max(46, Math.min(105, inferenceDuration * 1.8));
+          if (performance.now() - lastInferenceAt < minimumGap) {
             segmentationFrame = requestAnimationFrame(() => void next());
             return;
           }
-          lastInferenceAt = performance.now();
-          await segmenter.send({ image: source });
+          const started = performance.now();
+          lastInferenceAt = started;
+          segmenter.segmentForVideo(source, started, updateMask);
+          inferenceDuration = performance.now() - started;
           segmentationFrame = requestAnimationFrame(() => void next());
         };
         render();
@@ -422,7 +524,7 @@ export default function Home() {
         return () => {
           cancelAnimationFrame(segmentationFrame);
           cancelAnimationFrame(renderFrame);
-          void segmenter.close();
+          segmenter.close();
           output.getTracks().forEach((track) => track.stop());
           if (processedLocal.current === output) {
             processedLocal.current = null;
@@ -439,7 +541,8 @@ export default function Home() {
     };
     let stop: (() => void) | undefined;
     void run().then((cleanup) => {
-      stop = cleanup;
+      if (!active) cleanup?.();
+      else stop = cleanup;
     });
     return () => {
       active = false;

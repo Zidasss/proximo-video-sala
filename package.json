@@ -15,7 +15,7 @@
     "db:generate": "drizzle-kit generate"
   },
   "dependencies": {
-    "@mediapipe/selfie_segmentation": "^0.1.1675465747",
+    "@mediapipe/tasks-vision": "^1.0.1",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "peerjs": "^1.5.5",

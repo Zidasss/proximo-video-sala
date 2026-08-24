@@ -1054,7 +1054,17 @@ export default function Home() {
     parameters.encodings.forEach((encoding) => {
       encoding.maxBitrate = quality === "1080" ? 8_000_000 : 4_500_000;
       encoding.maxFramerate = 30;
-      encoding.scaleResolutionDownBy = 1;
+      // Uma webcam 4K não deve obrigar o WebRTC a codificar 4K para uma
+      // chamada configurada em Full HD. A câmera continua nítida, mas o
+      // encoder envia no máximo 1080p e mantém a CPU/GPU disponíveis para a
+      // composição e os overlays.
+      const settings = sender.track?.getSettings();
+      const width = settings?.width || 1920;
+      const height = settings?.height || 1080;
+      encoding.scaleResolutionDownBy =
+        quality === "1080"
+          ? Math.max(1, width / 1920, height / 1080)
+          : Math.max(1, width / 1280, height / 720);
     });
     parameters.degradationPreference = "balanced";
     void sender.setParameters(parameters).catch(() => undefined);

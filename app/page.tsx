@@ -125,6 +125,7 @@ export default function Home() {
     [tiktokTop, setTiktokTop] = useState(0.325),
     [dragging, setDragging] = useState(""),
     [background, setBackground] = useState(""),
+    [backgroundLabel, setBackgroundLabel] = useState(""),
     [backgroundMode, setBackgroundMode] = useState<
       "none" | "image" | "blur" | "remove"
     >(
@@ -1283,10 +1284,21 @@ export default function Home() {
   }
   function chooseBackground(file?: File) {
     if (!file) return;
+    const animated = file.type === "image/gif" || /\.gif$/i.test(file.name);
+    if (!file.type.startsWith("image/")) {
+      setNotice("Escolha uma imagem ou GIF para o fundo da câmera.");
+      return;
+    }
     const reader = new FileReader();
     reader.onload = () => {
       setBackground(String(reader.result));
+      setBackgroundLabel(`${animated ? "GIF animado" : "Imagem"} · ${file.name}`);
       setBackgroundMode("image");
+      setNotice(
+        animated
+          ? "GIF animado aplicado. Ele aparece atrás da câmera e também na gravação."
+          : "Imagem de fundo aplicada à câmera.",
+      );
     };
     reader.readAsDataURL(file);
   }
@@ -2041,6 +2053,16 @@ export default function Home() {
                           }
                         />
                       </label>
+                      <label className="background-upload animated-background-upload">
+                        ✦ Subir GIF animado
+                        <input
+                          type="file"
+                          accept="image/gif,.gif"
+                          onChange={(event) =>
+                            chooseBackground(event.target.files?.[0])
+                          }
+                        />
+                      </label>
                       <button
                         className={
                           backgroundMode === "blur" ? "format on" : "format"
@@ -2071,6 +2093,7 @@ export default function Home() {
                         ? "IA Premium: recorte temporal de alta qualidade · ideal para GPUs fortes"
                         : "Recorte leve: mais rápido, indicado para computadores comuns"}
                     </p>
+                    {backgroundLabel && <p className="background-file-note">● {backgroundLabel}{/GIF animado/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
                     {backgroundMode === "blur" && (
                       <label className="menu-field blur-control">
                         Intensidade do desfoque: {blurAmount}px

@@ -1049,3 +1049,63 @@ body {
 .preview-screen {
   font-size: 12px;
 }
+.tiktok-preview {
+  width: 380px;
+  max-width: calc(100vw - 24px);
+  min-width: 280px;
+  min-height: 160px;
+  overflow: auto;
+  resize: both;
+  border-color: #70473f;
+  background: #211c1b;
+}
+.settings-panel {
+  min-width: 360px;
+  min-height: 100px;
+  overflow: auto;
+  resize: both;
+}
+.settings-panel.minimized,
+.tiktok-preview.minimized {
+  min-height: 0;
+  height: auto;
+  overflow: hidden;
+  resize: none;
+}
+.preview-title {
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+  padding: 3px 2px 10px;
+  align-items: center;
+}
+.settings-title:active,
+.preview-title:active {
+  cursor: grabbing;
+}
+.window-actions {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.window-actions button {
+  min-width: 25px;
+  padding: 0 4px;
+}
+.preview-slider {
+  font-size: 14px;
+}
+.tiktok-preview small {
+  font-size: 12px;
+  line-height: 1.5;
+}
+@media (max-width: 700px) {
+  .tiktok-preview {
+    width: 340px;
+    max-width: calc(100vw - 20px);
+    min-width: 240px;
+  }
+  .settings-panel {
+    min-width: 280px;
+  }
+}

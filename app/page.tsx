@@ -61,6 +61,9 @@ export default function Home() {
     [chatOpen, setChatOpen] = useState(false),
     [settingsOpen, setSettingsOpen] = useState(false),
     [settingsOffset, setSettingsOffset] = useState({ x: 0, y: 0 }),
+    [settingsMinimized, setSettingsMinimized] = useState(false),
+    [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 }),
+    [previewMinimized, setPreviewMinimized] = useState(false),
     [draft, setDraft] = useState(""),
     [messages, setMessages] = useState<Msg[]>([]);
   const local = useRef<MediaStream | null>(null),
@@ -75,6 +78,12 @@ export default function Home() {
     cutRequested = useRef(false),
     speakingRef = useRef({ mine: false, friend: false }),
     settingsDrag = useRef<{
+      x: number;
+      y: number;
+      startX: number;
+      startY: number;
+    } | null>(null),
+    previewDrag = useRef<{
       x: number;
       y: number;
       startX: number;
@@ -787,6 +796,27 @@ export default function Home() {
   function endSettingsDrag() {
     settingsDrag.current = null;
   }
+  function startPreviewDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button")) return;
+    previewDrag.current = {
+      x: previewOffset.x,
+      y: previewOffset.y,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function movePreviewDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = previewDrag.current;
+    if (!drag) return;
+    setPreviewOffset({
+      x: drag.x + event.clientX - drag.startX,
+      y: drag.y + event.clientY - drag.startY,
+    });
+  }
+  function endPreviewDrag() {
+    previewDrag.current = null;
+  }
   if (!inRoom)
     return (
       <main className="landing">
@@ -927,7 +957,6 @@ export default function Home() {
             onClick={() => {
               const next = !settingsOpen;
               setSettingsOpen(next);
-              if (next) setPreviewOpen(false);
             }}
           >
             ⚙ Ajustes
@@ -936,7 +965,7 @@ export default function Home() {
       </header>
       {settingsOpen && (
         <aside
-          className="settings-panel"
+          className={"settings-panel " + (settingsMinimized ? "minimized" : "")}
           style={{
             transform: `translate(${settingsOffset.x}px, ${settingsOffset.y}px)`,
           }}
@@ -955,103 +984,128 @@ export default function Home() {
                 que será salvo.
               </small>
             </div>
-            <button onClick={() => setSettingsOpen(false)}>×</button>
-          </div>
-          <div className="settings-grid">
-            <label>
-              <b>Câmera</b>
-              <select
-                value={deviceId}
-                onChange={(event) => void selectCamera(event.target.value)}
-                aria-label="Escolher webcam"
+            <div className="window-actions">
+              <button
+                onClick={() => setSettingsMinimized(!settingsMinimized)}
+                aria-label={
+                  settingsMinimized ? "Expandir ajustes" : "Minimizar ajustes"
+                }
               >
-                <option value="">Webcam padrão</option>
-                {devices.map((device) => (
-                  <option key={device.deviceId} value={device.deviceId}>
-                    {device.label || "Webcam"}
-                  </option>
-                ))}
-              </select>
-            </label>
-            <div>
-              <b>Fundo da câmera</b>
-              <div className="setting-actions">
-                <label className="background-upload">
-                  ▧ Escolher imagem
-                  <input
-                    type="file"
-                    accept="image/*"
-                    onChange={(event) =>
-                      chooseBackground(event.target.files?.[0])
-                    }
-                  />
-                </label>
-                <button
-                  className={backgroundMode === "blur" ? "format on" : "format"}
-                  onClick={toggleBlur}
-                >
-                  ◌ Desfocar
-                </button>
-              </div>
-            </div>
-            <div>
-              <b>Vídeo para Reels</b>
-              <div className="setting-actions">
-                <button
-                  className={vertical ? "format on" : "format"}
-                  onClick={() => {
-                    setVertical(!vertical);
-                    setPreviewOpen(true);
-                    setSettingsOpen(false);
-                  }}
-                >
-                  ▯ Formato vertical
-                </button>
-                <button
-                  className="format"
-                  onClick={() => {
-                    setVertical(true);
-                    setPreviewOpen(!previewOpen);
-                    setSettingsOpen(false);
-                  }}
-                >
-                  ▣ Abrir prévia
-                </button>
-              </div>
-            </div>
-            <div>
-              <b>Layout vertical</b>
-              <div className="setting-actions">
-                <button
-                  className="format"
-                  onClick={() =>
-                    mode === "host" &&
-                    setTopOrder(
-                      topOrder === "mine-first" ? "friend-first" : "mine-first",
-                    )
-                  }
-                  disabled={mode === "guest"}
-                >
-                  ⇄ Trocar câmeras
-                </button>
-                <button
-                  className="format"
-                  onClick={() =>
-                    mode === "host" &&
-                    setScreenPosition(
-                      screenPosition === "bottom" ? "top" : "bottom",
-                    )
-                  }
-                  disabled={mode === "guest"}
-                >
-                  ⇅ Tela {screenPosition === "bottom" ? "embaixo" : "em cima"}
-                </button>
-              </div>
+                —
+              </button>
+              <button
+                onClick={() => setSettingsOpen(false)}
+                aria-label="Fechar ajustes"
+              >
+                ×
+              </button>
             </div>
           </div>
-          <button className="session-refresh" onClick={() => location.reload()}>
-            ↻ Recarregar sessão
-          </button>
+          {!settingsMinimized && (
+            <>
+              <div className="settings-grid">
+                <label>
+                  <b>Câmera</b>
+                  <select
+                    value={deviceId}
+                    onChange={(event) => void selectCamera(event.target.value)}
+                    aria-label="Escolher webcam"
+                  >
+                    <option value="">Webcam padrão</option>
+                    {devices.map((device) => (
+                      <option key={device.deviceId} value={device.deviceId}>
+                        {device.label || "Webcam"}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+                <div>
+                  <b>Fundo da câmera</b>
+                  <div className="setting-actions">
+                    <label className="background-upload">
+                      ▧ Escolher imagem
+                      <input
+                        type="file"
+                        accept="image/*"
+                        onChange={(event) =>
+                          chooseBackground(event.target.files?.[0])
+                        }
+                      />
+                    </label>
+                    <button
+                      className={
+                        backgroundMode === "blur" ? "format on" : "format"
+                      }
+                      onClick={toggleBlur}
+                    >
+                      ◌ Desfocar
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <b>Vídeo para Reels</b>
+                  <div className="setting-actions">
+                    <button
+                      className={vertical ? "format on" : "format"}
+                      onClick={() => {
+                        setVertical(!vertical);
+                        setPreviewOpen(true);
+                      }}
+                    >
+                      ▯ Formato vertical
+                    </button>
+                    <button
+                      className="format"
+                      onClick={() => {
+                        setVertical(true);
+                        setPreviewOpen(!previewOpen);
+                      }}
+                    >
+                      ▣ Abrir prévia
+                    </button>
+                  </div>
+                </div>
+                <div>
+                  <b>Layout vertical</b>
+                  <div className="setting-actions">
+                    <button
+                      className="format"
+                      onClick={() =>
+                        mode === "host" &&
+                        setTopOrder(
+                          topOrder === "mine-first"
+                            ? "friend-first"
+                            : "mine-first",
+                        )
+                      }
+                      disabled={mode === "guest"}
+                    >
+                      ⇄ Trocar câmeras
+                    </button>
+                    <button
+                      className="format"
+                      onClick={() =>
+                        mode === "host" &&
+                        setScreenPosition(
+                          screenPosition === "bottom" ? "top" : "bottom",
+                        )
+                      }
+                      disabled={mode === "guest"}
+                    >
+                      ⇅ Tela{" "}
+                      {screenPosition === "bottom" ? "embaixo" : "em cima"}
+                    </button>
+                  </div>
+                </div>
+              </div>
+              <button
+                className="session-refresh"
+                onClick={() => location.reload()}
+              >
+                ↻ Recarregar sessão
+              </button>
+            </>
+          )}
         </aside>
       )}
       <section className={"stage " + (screenActive ? "screen-on" : "")}>
@@ -1097,75 +1151,109 @@ export default function Home() {
         </div>
       </section>
       {previewOpen && (
-        <aside className="tiktok-preview">
-          <div className="preview-title">
-            Prévia para salvar · 9:16{" "}
-            <button onClick={() => setPreviewOpen(false)}>×</button>
-          </div>
-          <div className={"preview-canvas screen-" + screenPosition}>
-            <div
-              className={"preview-top " + topOrder}
-              style={{ height: `${tiktokTop * 100}%` }}
-            >
-              <video
-                draggable
-                onDragStart={() => setDragging("mine")}
-                onDragEnd={() => setDragging("")}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (mode === "host" && dragging === "friend")
-                    setTopOrder(
-                      topOrder === "mine-first" ? "friend-first" : "mine-first",
-                    );
-                }}
-                ref={previewMine}
-                autoPlay
-                muted
-                playsInline
-              />
-              <video
-                draggable
-                onDragStart={() => setDragging("friend")}
-                onDragEnd={() => setDragging("")}
-                onDragOver={(event) => event.preventDefault()}
-                onDrop={() => {
-                  if (mode === "host" && dragging === "mine")
-                    setTopOrder(
-                      topOrder === "mine-first" ? "friend-first" : "mine-first",
-                    );
-                }}
-                ref={previewFriend}
-                autoPlay
-                playsInline
-              />
-            </div>
-            <div
-              className="preview-screen"
-              style={{ height: `${(1 - tiktokTop) * 100}%` }}
-            >
-              {sharing || remoteSharing ? (
-                <video ref={previewScreen} autoPlay playsInline />
-              ) : (
-                <span>A tela compartilhada aparecerá aqui</span>
-              )}
+        <aside
+          className={"tiktok-preview " + (previewMinimized ? "minimized" : "")}
+          style={{
+            transform: `translate(${previewOffset.x}px, ${previewOffset.y}px)`,
+          }}
+        >
+          <div
+            className="preview-title"
+            onPointerDown={startPreviewDrag}
+            onPointerMove={movePreviewDrag}
+            onPointerUp={endPreviewDrag}
+            onPointerCancel={endPreviewDrag}
+          >
+            <span>Prévia para salvar · 9:16</span>
+            <div className="window-actions">
+              <button
+                onClick={() => setPreviewMinimized(!previewMinimized)}
+                aria-label={
+                  previewMinimized ? "Expandir prévia" : "Minimizar prévia"
+                }
+              >
+                —
+              </button>
+              <button
+                onClick={() => setPreviewOpen(false)}
+                aria-label="Fechar prévia"
+              >
+                ×
+              </button>
             </div>
           </div>
-          <label className="preview-slider">
-            Tamanho das câmeras
-            <input
-              type="range"
-              min="0.2"
-              max="0.5"
-              step="0.01"
-              value={tiktokTop}
-              disabled={mode === "guest"}
-              onChange={(event) => setTiktokTop(Number(event.target.value))}
-            />
-          </label>
-          <small>
-            Arraste uma câmera sobre a outra para trocar de lado. O tamanho da
-            prévia será usado na gravação.
-          </small>
+          {!previewMinimized && (
+            <>
+              <div className={"preview-canvas screen-" + screenPosition}>
+                <div
+                  className={"preview-top " + topOrder}
+                  style={{ height: `${tiktokTop * 100}%` }}
+                >
+                  <video
+                    draggable
+                    onDragStart={() => setDragging("mine")}
+                    onDragEnd={() => setDragging("")}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (mode === "host" && dragging === "friend")
+                        setTopOrder(
+                          topOrder === "mine-first"
+                            ? "friend-first"
+                            : "mine-first",
+                        );
+                    }}
+                    ref={previewMine}
+                    autoPlay
+                    muted
+                    playsInline
+                  />
+                  <video
+                    draggable
+                    onDragStart={() => setDragging("friend")}
+                    onDragEnd={() => setDragging("")}
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={() => {
+                      if (mode === "host" && dragging === "mine")
+                        setTopOrder(
+                          topOrder === "mine-first"
+                            ? "friend-first"
+                            : "mine-first",
+                        );
+                    }}
+                    ref={previewFriend}
+                    autoPlay
+                    playsInline
+                  />
+                </div>
+                <div
+                  className="preview-screen"
+                  style={{ height: `${(1 - tiktokTop) * 100}%` }}
+                >
+                  {sharing || remoteSharing ? (
+                    <video ref={previewScreen} autoPlay playsInline />
+                  ) : (
+                    <span>A tela compartilhada aparecerá aqui</span>
+                  )}
+                </div>
+              </div>
+              <label className="preview-slider">
+                Tamanho das câmeras
+                <input
+                  type="range"
+                  min="0.2"
+                  max="0.5"
+                  step="0.01"
+                  value={tiktokTop}
+                  disabled={mode === "guest"}
+                  onChange={(event) => setTiktokTop(Number(event.target.value))}
+                />
+              </label>
+              <small>
+                Arraste uma câmera sobre a outra para trocar de lado. O tamanho
+                da prévia será usado na gravação.
+              </small>
+            </>
+          )}
         </aside>
       )}
       {chatOpen && (

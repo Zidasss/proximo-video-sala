@@ -673,13 +673,36 @@ export default function Home() {
       }
       requestAnimationFrame(draw);
     };
-    const output = canvas.captureStream(30),
+    const output = canvas.captureStream(30);
+    // O canvas contém a imagem final; este destino mistura todos os áudios da chamada.
+    // Assim o arquivo salvo preserva microfone, voz do amigo e áudio da tela compartilhada.
+    let recordingAudio: AudioContext | null = null;
+    try {
+      recordingAudio = new AudioContext();
+      const destination = recordingAudio.createMediaStreamDestination();
+      [local.current, remote.current, displayed.current, remoteDisplayed.current].forEach(
+        (stream) => {
+          if (!stream?.getAudioTracks().length) return;
+          recordingAudio!
+            .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
+            .connect(destination);
+        },
+      );
+      const mixedTrack = destination.stream.getAudioTracks()[0];
+      if (mixedTrack) output.addTrack(mixedTrack);
+      void recordingAudio.resume();
+    } catch {
+      recordingAudio = null;
+      setNotice("O vídeo será gravado; o navegador não liberou a mixagem de áudio.");
+    }
+    const
       mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
         ? "video/webm;codecs=vp9,opus"
         : "video/webm";
     const rec = new MediaRecorder(output, {
       mimeType: mime,
       videoBitsPerSecond: quality === "1080" ? 12_000_000 : 6_000_000,
+      audioBitsPerSecond: 192_000,
     });
     recorder.current = rec;
     recordChunks.current = [];
@@ -705,12 +728,13 @@ export default function Home() {
       cutRequested.current = false;
       setRecording(false);
       setRecordSeconds(0);
+      void recordingAudio?.close();
       connection.current?.send({ kind: "recording", active: false });
     };
     rec.start(1000);
     setRecording(true);
     connection.current?.send({ kind: "recording", active: true });
-    setNotice("● Gravando localmente. Seu amigo foi avisado.");
+    setNotice("● Gravando localmente com áudio. Seu amigo foi avisado.");
     draw();
   }
   function leave() {

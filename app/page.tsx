@@ -1256,100 +1256,129 @@ export default function Home() {
           </div>
           {!settingsMinimized && (
             <>
-              <div className="settings-grid">
-                <label>
-                  <b>Câmera</b>
-                  <select
-                    value={deviceId}
-                    onChange={(event) => void selectCamera(event.target.value)}
-                    aria-label="Escolher webcam"
-                  >
-                    <option value="">Webcam padrão</option>
-                    {devices.map((device) => (
-                      <option key={device.deviceId} value={device.deviceId}>
-                        {device.label || "Webcam"}
-                      </option>
-                    ))}
-                  </select>
-                </label>
-                <div>
-                  <b>Fundo da câmera</b>
-                  <div className="setting-actions">
-                    <label className="background-upload">
-                      ▧ Escolher imagem
-                      <input
-                        type="file"
-                        accept="image/*"
+              <div className="settings-menu">
+                <details open>
+                  <summary>
+                    <span>▣</span>
+                    <div>
+                      <b>Câmera e fundo</b>
+                      <small>Webcam, imagem e desfoque</small>
+                    </div>
+                  </summary>
+                  <div className="menu-content">
+                    <label className="menu-field">
+                      Webcam
+                      <select
+                        value={deviceId}
                         onChange={(event) =>
-                          chooseBackground(event.target.files?.[0])
+                          void selectCamera(event.target.value)
                         }
+                        aria-label="Escolher webcam"
+                      >
+                        <option value="">Webcam padrão</option>
+                        {devices.map((device) => (
+                          <option key={device.deviceId} value={device.deviceId}>
+                            {device.label || "Webcam"}
+                          </option>
+                        ))}
+                      </select>
+                    </label>
+                    <div className="setting-actions">
+                      <label className="background-upload">
+                        ▧ Escolher imagem
+                        <input
+                          type="file"
+                          accept="image/*"
+                          onChange={(event) =>
+                            chooseBackground(event.target.files?.[0])
+                          }
+                        />
+                      </label>
+                      <button
+                        className={
+                          backgroundMode === "blur" ? "format on" : "format"
+                        }
+                        onClick={toggleBlur}
+                      >
+                        ◌ Desfocar
+                      </button>
+                    </div>
+                  </div>
+                </details>
+                <details>
+                  <summary>
+                    <span>▯</span>
+                    <div>
+                      <b>Reels e prévia</b>
+                      <small>Formato para salvar e edição visual</small>
+                    </div>
+                  </summary>
+                  <div className="menu-content">
+                    <label className="menu-switch">
+                      <input
+                        type="checkbox"
+                        checked={vertical}
+                        onChange={(event) => {
+                          setVertical(event.target.checked);
+                          if (event.target.checked) setPreviewOpen(true);
+                        }}
                       />
+                      <span>Usar formato vertical 9:16</span>
                     </label>
                     <button
-                      className={
-                        backgroundMode === "blur" ? "format on" : "format"
-                      }
-                      onClick={toggleBlur}
-                    >
-                      ◌ Desfocar
-                    </button>
-                  </div>
-                </div>
-                <div>
-                  <b>Vídeo para Reels</b>
-                  <div className="setting-actions">
-                    <button
-                      className={vertical ? "format on" : "format"}
-                      onClick={() => {
-                        setVertical(!vertical);
-                        setPreviewOpen(true);
-                      }}
-                    >
-                      ▯ Formato vertical
-                    </button>
-                    <button
-                      className="format"
+                      className="open-preview"
                       onClick={() => {
                         setVertical(true);
                         setPreviewOpen(!previewOpen);
                       }}
                     >
-                      ▣ Abrir prévia
+                      ▣ {previewOpen ? "Fechar prévia" : "Abrir prévia"}
                     </button>
                   </div>
-                </div>
-                <div>
-                  <b>Layout vertical</b>
-                  <div className="setting-actions">
-                    <button
-                      className="format"
-                      onClick={() =>
-                        mode === "host" &&
-                        setTopOrder(
-                          topOrder === "mine-first"
-                            ? "friend-first"
-                            : "mine-first",
-                        )
-                      }
-                      disabled={mode === "guest"}
-                    >
-                      ⇄ Trocar câmeras
-                    </button>
-                    <button
-                      className="format"
-                      onClick={() =>
-                        mode === "host" &&
-                        setScreenPosition(
-                          screenPosition === "bottom" ? "top" : "bottom",
-                        )
-                      }
-                      disabled={mode === "guest"}
-                    >
-                      ⇅ Tela{" "}
-                      {screenPosition === "bottom" ? "embaixo" : "em cima"}
-                    </button>
+                </details>
+                <details>
+                  <summary>
+                    <span>⇄</span>
+                    <div>
+                      <b>Layout vertical</b>
+                      <small>Defina a ordem das câmeras e da tela</small>
+                    </div>
+                  </summary>
+                  <div className="menu-content layout-selects">
+                    <label>
+                      Ordem das câmeras
+                      <select
+                        value={topOrder}
+                        disabled={mode === "guest"}
+                        onChange={(event) =>
+                          setTopOrder(
+                            event.target.value as "mine-first" | "friend-first",
+                          )
+                        }
+                      >
+                        <option value="mine-first">
+                          Minha câmera à esquerda
+                        </option>
+                        <option value="friend-first">Amigo à esquerda</option>
+                      </select>
+                    </label>
+                    <label>
+                      Posição da tela
+                      <select
+                        value={screenPosition}
+                        disabled={mode === "guest"}
+                        onChange={(event) =>
+                          setScreenPosition(
+                            event.target.value as "top" | "bottom",
+                          )
+                        }
+                      >
+                        <option value="bottom">Tela embaixo</option>
+                        <option value="top">Tela em cima</option>
+                      </select>
+                    </label>
                   </div>
-                </div>
+                </details>
               </div>
               <button
                 className="session-refresh"

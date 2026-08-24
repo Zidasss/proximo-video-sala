@@ -1138,6 +1138,110 @@ body {
   overflow: hidden;
   resize: none;
 }
+.settings-menu {
+  display: grid;
+  gap: 8px;
+  padding: 16px 0;
+}
+.settings-menu details {
+  border: 1px solid #5a3d37;
+  border-radius: 10px;
+  background: #29211f;
+  overflow: hidden;
+}
+.settings-menu summary {
+  list-style: none;
+  display: flex;
+  align-items: center;
+  gap: 11px;
+  padding: 13px;
+  cursor: pointer;
+}
+.settings-menu summary::-webkit-details-marker {
+  display: none;
+}
+.settings-menu summary > span {
+  color: #ff8c7e;
+  font-size: 18px;
+  width: 22px;
+  text-align: center;
+}
+.settings-menu summary b {
+  font-size: 14px;
+  display: block;
+}
+.settings-menu summary small {
+  display: block;
+  margin-top: 2px;
+  color: #c9aaa2;
+  font-size: 12px;
+}
+.settings-menu summary::after {
+  content: "⌄";
+  margin-left: auto;
+  color: #ffc1b4;
+}
+.settings-menu details[open] summary::after {
+  transform: rotate(180deg);
+}
+.menu-content {
+  padding: 0 13px 14px 46px;
+  display: grid;
+  gap: 11px;
+}
+.menu-field,
+.layout-selects label {
+  display: grid;
+  gap: 6px;
+  color: #e5cfc8;
+  font-size: 13px;
+}
+.menu-content select {
+  width: 100%;
+  background: #181817;
+  color: #fff8f4;
+  border: 1px solid #684740;
+  border-radius: 8px;
+  padding: 10px;
+  font-size: 14px;
+}
+.menu-switch {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: #f6e4df;
+  font-size: 14px;
+}
+.menu-switch input {
+  accent-color: #ff654f;
+  width: 17px;
+  height: 17px;
+}
+.open-preview {
+  border: 1px solid #ff8c7e;
+  border-radius: 8px;
+  background: transparent;
+  color: #ffd8cf;
+  padding: 10px;
+  font-size: 14px;
+  cursor: pointer;
+  text-align: left;
+}
+.layout-selects {
+  grid-template-columns: 1fr 1fr;
+  padding-left: 46px;
+}
+@media (max-width: 600px) {
+  .layout-selects {
+    grid-template-columns: 1fr;
+  }
+  .menu-content {
+    padding-left: 13px;
+  }
+  .settings-menu summary > span {
+    display: none;
+  }
+}
 .preview-title {
   cursor: grab;
   user-select: none;

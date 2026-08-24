@@ -861,3 +861,70 @@ body {
     font-size: 9px;
   }
 }
+
+/* Klip — Premium Splice identity */
+.brand {
+  color: #f7f0eb;
+  letter-spacing: -1.8px;
+}
+.brand .brand-mark {
+  width: 28px;
+  height: 28px;
+  display: inline-block;
+  position: relative;
+  vertical-align: -5px;
+  margin-right: 8px;
+}
+.brand .brand-mark i {
+  position: absolute;
+  display: block;
+  border-radius: 7px 3px 7px 3px;
+  transform: rotate(-45deg);
+}
+.brand .brand-mark i:first-child {
+  width: 13px;
+  height: 28px;
+  left: 4px;
+  top: 0;
+  background: #ff654f;
+}
+.brand .brand-mark i:last-child {
+  width: 13px;
+  height: 29px;
+  left: 13px;
+  top: 0;
+  background: linear-gradient(135deg, #ffc1b4, #ff654f);
+  opacity: 0.95;
+}
+.eyebrow,
+.hero em,
+.tile label b {
+  color: #ff8c7e;
+}
+.room i {
+  background: #ff654f;
+}
+.join input:focus {
+  outline-color: #ff8c7e;
+}
+.join > button b {
+  color: #ff8c7e;
+}
+.format.on,
+.settings-open {
+  background: #ff654f;
+  border-color: #ff654f;
+  color: #fffaf6;
+}
+.call footer .active {
+  background: #ff8c7e;
+  color: #241817;
+}
+.call footer .recording {
+  background: #ff4f43;
+}
+.tile.speaking {
+  box-shadow:
+    0 0 0 4px #ff654f,
+    0 0 26px #ff654faa;
+}

@@ -764,7 +764,11 @@ export default function Home() {
       <main className="landing">
         <nav>
           <div className="brand">
-            <span>◇</span>próximo
+            <span className="brand-mark" aria-hidden="true">
+              <i />
+              <i />
+            </span>
+            Klip
           </div>
         </nav>
         <section className="hero">
@@ -871,7 +875,11 @@ export default function Home() {
     <main className="call">
       <header>
         <div className="brand">
-          <span>◇</span>próximo
+          <span className="brand-mark" aria-hidden="true">
+            <i />
+            <i />
+          </span>
+          Klip
         </div>
         <div className="room">
           <i /> sala {room} · senha {pin}

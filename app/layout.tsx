@@ -13,8 +13,8 @@ const geistMono = Geist_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "Próximo — videochamadas privadas",
-  description: "Uma sala simples para conversar por vídeo, voz e tela.",
+  title: "Klip — converse, grave e publique",
+  description: "Videochamadas privadas que viram clipes prontos para publicar.",
   icons: {
     icon: "/favicon.svg",
     shortcut: "/favicon.svg",

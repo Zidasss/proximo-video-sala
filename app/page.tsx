@@ -259,12 +259,16 @@ export default function Home() {
   useEffect(() => {
     if (!inRoom || backgroundMode === "none" || !local.current) return;
     let active = true,
-      frame = 0,
+      segmentationFrame = 0,
+      renderFrame = 0,
       lastInferenceAt = 0,
-      attached = false;
+      attached = false,
+      hasMask = false;
     const source = document.createElement("video"),
       canvas = document.createElement("canvas"),
       context = canvas.getContext("2d"),
+      maskCanvas = document.createElement("canvas"),
+      maskContext = maskCanvas.getContext("2d"),
       image = new Image();
     source.srcObject = local.current;
     source.muted = true;
@@ -272,12 +276,13 @@ export default function Home() {
     image.src = background;
     const run = async () => {
       await source.play();
-      if (!active || !context) return;
+      if (!active || !context || !maskContext) return;
       canvas.width = source.videoWidth || 1280;
       canvas.height = source.videoHeight || 720;
-      // Fundo virtual já recebe uma máscara limitada; 20 fps reduz bastante a
-      // carga da webcam, do encoder e da chamada sem deixar o movimento duro.
-      const output = canvas.captureStream(20);
+      maskCanvas.width = canvas.width;
+      maskCanvas.height = canvas.height;
+      // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
+      const output = canvas.captureStream(30);
       try {
         const { SelfieSegmentation } =
           await import("@mediapipe/selfie_segmentation");
@@ -289,31 +294,39 @@ export default function Home() {
         // preserva melhor mãos, cabelo e braços no fundo virtual.
         segmenter.setOptions({ modelSelection: 0, selfieMode: false });
         segmenter.onResults((results) => {
-          if (!active || !context) return;
-          context.save();
-          context.clearRect(0, 0, canvas.width, canvas.height);
-          // A borda da máscara recebe só um anti-alias discreto. Um blur alto
-          // aqui vaza o fundo sobre a pessoa e deixa o resultado "recortado".
-          context.filter = "blur(.35px)";
-          context.drawImage(
+          if (!active) return;
+          maskContext.save();
+          maskContext.clearRect(0, 0, maskCanvas.width, maskCanvas.height);
+          maskContext.filter = "blur(.35px)";
+          maskContext.drawImage(
             results.segmentationMask,
             0,
             0,
-            canvas.width,
-            canvas.height,
+            maskCanvas.width,
+            maskCanvas.height,
           );
-          context.filter = "none";
-          context.globalCompositeOperation = "source-in";
-          context.filter = skinSmooth
-            ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)"
-            : "none";
-          context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
-          context.globalCompositeOperation = "destination-over";
+          maskContext.restore();
+          hasMask = true;
+          if (!attached) {
+            processedLocal.current = output;
+            replaceOutgoingVideo(output);
+            refreshCameraForPeer();
+            if (mine.current) {
+              mine.current.srcObject = output;
+              void mine.current.play().catch(() => undefined);
+            }
+            setVirtualEpoch((epoch) => epoch + 1);
+            attached = true;
+          }
+        });
+        const render = () => {
+          if (!active || !context) return;
+          context.clearRect(0, 0, canvas.width, canvas.height);
           if (backgroundMode === "blur") {
             const strength = blurAmountRef.current;
             context.filter = `blur(${strength}px) brightness(.9) saturate(.93)`;
             context.drawImage(
-              results.image,
+              source,
               -strength,
               -strength,
               canvas.width + strength * 2,
@@ -335,37 +348,34 @@ export default function Home() {
               height,
             );
           }
-          context.restore();
-          if (!attached) {
-            processedLocal.current = output;
-            replaceOutgoingVideo(output);
-            // Alguns navegadores/implementações WebRTC não aplicam replaceTrack
-            // numa chamada que já estava negociada. Uma chamada curta de atualização
-            // garante que o outro participante passe a receber a câmera processada.
-            refreshCameraForPeer();
-            if (mine.current) {
-              mine.current.srcObject = output;
-              void mine.current.play().catch(() => undefined);
-            }
-            setVirtualEpoch((epoch) => epoch + 1);
-            attached = true;
+          if (hasMask) {
+            context.save();
+            context.drawImage(maskCanvas, 0, 0, canvas.width, canvas.height);
+            context.globalCompositeOperation = "source-in";
+            context.filter = skinSmooth
+              ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)"
+              : "none";
+            context.drawImage(source, 0, 0, canvas.width, canvas.height);
+            context.restore();
           }
-        });
+          renderFrame = requestAnimationFrame(render);
+        };
         const next = async () => {
           if (!active) return;
-          // A máscara em até 10 fps é estável para vídeo e deixa CPU suficiente
-          // para a chamada WebRTC. O canvas continua emitindo a 30 fps.
-          if (performance.now() - lastInferenceAt < 100) {
-            frame = requestAnimationFrame(() => void next());
+          // A máscara acompanha bem o movimento; a imagem acima continua em 30 fps.
+          if (performance.now() - lastInferenceAt < 50) {
+            segmentationFrame = requestAnimationFrame(() => void next());
             return;
           }
           lastInferenceAt = performance.now();
           await segmenter.send({ image: source });
-          frame = requestAnimationFrame(() => void next());
+          segmentationFrame = requestAnimationFrame(() => void next());
         };
+        render();
         void next();
         return () => {
-          cancelAnimationFrame(frame);
+          cancelAnimationFrame(segmentationFrame);
+          cancelAnimationFrame(renderFrame);
           void segmenter.close();
           output.getTracks().forEach((track) => track.stop());
           if (processedLocal.current === output) {

@@ -1757,6 +1757,12 @@ export default function Home() {
           <b>{recording ? `● ${timeLabel(recordSeconds)}` : "●"}</b>
           <small>{recording ? "Parar e salvar" : "Gravar local"}</small>
         </button>
+        {editorClip && !recording && (
+          <button className="edit-recording" onClick={() => setEditorOpen(true)}>
+            <b>✦</b>
+            <small>Editar gravação</small>
+          </button>
+        )}
         {recording && (
           <button className="clip" onClick={saveClip}>
             <b>✂</b>

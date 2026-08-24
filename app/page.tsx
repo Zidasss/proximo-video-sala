@@ -271,6 +271,8 @@ export default function Home() {
       context = canvas.getContext("2d"),
       maskCanvas = document.createElement("canvas"),
       maskContext = maskCanvas.getContext("2d"),
+      foregroundCanvas = document.createElement("canvas"),
+      foregroundContext = foregroundCanvas.getContext("2d"),
       image = new Image();
     source.srcObject = local.current;
     source.muted = true;
@@ -278,11 +280,20 @@ export default function Home() {
     image.src = background;
     const run = async () => {
       await source.play();
-      if (!active || !context || !maskContext) return;
+      if (!active || !context || !maskContext || !foregroundContext) return;
       canvas.width = source.videoWidth || 1280;
       canvas.height = source.videoHeight || 720;
       maskCanvas.width = canvas.width;
       maskCanvas.height = canvas.height;
+      foregroundCanvas.width = canvas.width;
+      foregroundCanvas.height = canvas.height;
+      if (backgroundMode === "image") {
+        await new Promise<void>((resolve, reject) => {
+          if (image.complete && image.naturalWidth) return resolve();
+          image.onload = () => resolve();
+          image.onerror = () => reject(new Error("background image"));
+        });
+      }
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
       const output = canvas.captureStream(30);
       try {
@@ -351,14 +362,35 @@ export default function Home() {
             );
           }
           if (hasMask) {
-            context.save();
-            context.drawImage(maskCanvas, 0, 0, canvas.width, canvas.height);
-            context.globalCompositeOperation = "source-in";
-            context.filter = skinSmooth
+            // A máscara fica em uma camada separada. Aplicá-la direto sobre
+            // canvas opaco faria source-in cobrir o fundo inteiro.
+            foregroundContext.clearRect(
+              0,
+              0,
+              foregroundCanvas.width,
+              foregroundCanvas.height,
+            );
+            foregroundContext.save();
+            foregroundContext.drawImage(
+              maskCanvas,
+              0,
+              0,
+              foregroundCanvas.width,
+              foregroundCanvas.height,
+            );
+            foregroundContext.globalCompositeOperation = "source-in";
+            foregroundContext.filter = skinSmooth
               ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)"
               : "none";
-            context.drawImage(source, 0, 0, canvas.width, canvas.height);
-            context.restore();
+            foregroundContext.drawImage(
+              source,
+              0,
+              0,
+              foregroundCanvas.width,
+              foregroundCanvas.height,
+            );
+            foregroundContext.restore();
+            context.drawImage(foregroundCanvas, 0, 0, canvas.width, canvas.height);
           }
           renderFrame = requestAnimationFrame(render);
         };

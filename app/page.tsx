@@ -20,7 +20,7 @@ type EditorClip = { url: string; name: string };
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.11.0";
+const APP_VERSION = "v0.11.1";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -308,65 +308,40 @@ export default function Home() {
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
       const output = canvas.captureStream(30);
       try {
-        const { FilesetResolver, ImageSegmenter } = await import(
-          "@mediapipe/tasks-vision"
+        const worker = new Worker(
+          new URL("./workers/person-segmentation.worker.ts", import.meta.url),
+          { type: "module", name: "klip-person-segmentation" },
         );
-        const vision = await FilesetResolver.forVisionTasks(
-          "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm",
-        );
-        const options = {
-          baseOptions: {
-            modelAssetPath:
-              "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite",
-            delegate: "GPU" as const,
-          },
-          runningMode: "VIDEO" as const,
-          outputConfidenceMasks: true,
-          outputCategoryMask: false,
-          canvas: document.createElement("canvas"),
-        };
-        let segmenter;
-        try {
-          segmenter = await ImageSegmenter.createFromOptions(vision, options);
-        } catch {
-          // Máquinas sem WebGL continuam funcionando, só usando a CPU.
-          segmenter = await ImageSegmenter.createFromOptions(vision, {
-            ...options,
-            baseOptions: { ...options.baseOptions, delegate: "CPU" },
-            canvas: undefined,
-          });
-        }
-        const labels = segmenter.getLabels().map((label) => label.toLowerCase()),
-          backgroundIndex = Math.max(0, labels.indexOf("background")),
-          labeledAccessoryIndex = labels.findIndex((label) =>
-            /other|accessor/.test(label),
-          );
-        let previousAlpha: Float32Array | null = null,
-          coreConfidence: Float32Array | null = null,
+        let workerReady = false,
+          workerBusy = false,
           maskPixels: ImageData | null = null;
-        const updateMask = (results: {
-          confidenceMasks?: Array<{
-            width: number;
-            height: number;
-            getAsFloat32Array: () => Float32Array;
-          }>;
-        }) => {
-          if (!active || !results.confidenceMasks?.length) return;
-          const masks = results.confidenceMasks,
-            width = masks[0].width,
-            height = masks[0].height,
-            total = width * height,
-            backgroundConfidence = masks[backgroundIndex].getAsFloat32Array(),
-            accessoryIndex =
-              labeledAccessoryIndex >= 0
-                ? labeledAccessoryIndex
-                : masks.length >= 6
-                  ? 5
-                  : -1,
-            accessoryConfidence =
-              accessoryIndex >= 0
-                ? masks[accessoryIndex].getAsFloat32Array()
-                : null;
+        worker.onmessage = (
+          event: MessageEvent<
+            | { type: "ready" }
+            | {
+                type: "mask";
+                alpha: ArrayBuffer;
+                width: number;
+                height: number;
+                inferenceMs: number;
+              }
+            | { type: "error"; message: string }
+          >,
+        ) => {
+          if (!active) return;
+          if (event.data.type === "ready") {
+            workerReady = true;
+            return;
+          }
+          workerBusy = false;
+          if (event.data.type === "error") {
+            setNotice(
+              "Não foi possível aplicar o recorte por IA. A câmera continua normal.",
+            );
+            return;
+          }
+          inferenceDuration = event.data.inferenceMs;
+          const { width, height } = event.data;
           if (
             !maskPixels ||
             maskPixels.width !== width ||
@@ -375,55 +350,16 @@ export default function Home() {
             maskCanvas.width = width;
             maskCanvas.height = height;
             maskPixels = maskContext.createImageData(width, height);
-            previousAlpha = new Float32Array(total);
-            coreConfidence = new Float32Array(total);
-          }
-          const core = coreConfidence!;
-          // A soma das classes humanas exclui o fundo e a classe genérica
-          // "others", que no modelo antigo deixava estantes e objetos inteiros.
-          for (let index = 0; index < total; index += 1) {
-            let confidence = 1 - backgroundConfidence[index];
-            if (accessoryConfidence)
-              confidence = Math.max(0, confidence - accessoryConfidence[index]);
-            core[index] = confidence;
-          }
-          const alpha = maskPixels.data,
-            previous = previousAlpha!;
-          for (let index = 0; index < total; index += 1) {
-            let confidence = core[index];
-            const accessory = accessoryConfidence?.[index] ?? 0;
-            if (accessory > 0.42) {
-              const x = index % width,
-                nearPerson =
-                  core[Math.max(0, index - width * 5)] > 0.34 ||
-                  core[Math.min(total - 1, index + width * 5)] > 0.34 ||
-                  core[index - Math.min(5, x)] > 0.34 ||
-                  core[index + Math.min(5, width - x - 1)] > 0.34;
-              if (nearPerson)
-                confidence = Math.max(
-                  confidence,
-                  accessory * 0.88,
-                );
+            for (let offset = 0; offset < maskPixels.data.length; offset += 4) {
+              maskPixels.data[offset] = 255;
+              maskPixels.data[offset + 1] = 255;
+              maskPixels.data[offset + 2] = 255;
             }
-            // Curva suave, mas firme: confiança baixa vira fundo em vez de
-            // criar os retângulos/"fantasmas" vistos nas imagens do teste.
-            const normalized = Math.max(
-                0,
-                Math.min(1, (confidence - 0.25) / 0.43),
-              ),
-              target = normalized * normalized * (3 - 2 * normalized),
-              stabilized =
-                target < 0.055
-                  ? 0
-                  : target > previous[index]
-                    ? previous[index] * 0.12 + target * 0.88
-                    : previous[index] * 0.28 + target * 0.72;
-            previous[index] = stabilized;
+          }
+          const receivedAlpha = new Uint8ClampedArray(event.data.alpha);
+          for (let index = 0; index < receivedAlpha.length; index += 1) {
             const offset = index * 4;
-            alpha[offset] = 255;
-            alpha[offset + 1] = 255;
-            alpha[offset + 2] = 255;
-            alpha[offset + 3] = Math.round(stabilized * 255);
+            maskPixels.data[offset + 3] = receivedAlpha[index];
           }
           maskContext.putImageData(maskPixels, 0, 0);
           hasMask = true;
@@ -439,6 +375,13 @@ export default function Home() {
             attached = true;
           }
         };
+        worker.onerror = () => {
+          workerBusy = false;
+          setNotice(
+            "Não foi possível aplicar o recorte por IA. A câmera continua normal.",
+          );
+        };
+        worker.postMessage({ type: "init" });
         const render = () => {
           if (!active || !context) return;
           context.clearRect(0, 0, canvas.width, canvas.height);
@@ -504,27 +447,46 @@ export default function Home() {
           }
           renderFrame = requestAnimationFrame(render);
         };
-        const next = async () => {
+        const next = () => {
           if (!active) return;
-          // A imagem continua em 30 fps. A análise se adapta ao computador e
-          // nunca tenta ocupar continuamente a thread da chamada.
-          const minimumGap = Math.max(46, Math.min(105, inferenceDuration * 1.8));
-          if (performance.now() - lastInferenceAt < minimumGap) {
-            segmentationFrame = requestAnimationFrame(() => void next());
-            return;
+          // O Worker recebe no máximo um frame por vez. Enquanto a IA analisa,
+          // o render, os controles e o áudio permanecem livres a 30 fps.
+          const now = performance.now();
+          const minimumGap = Math.max(
+            46,
+            Math.min(120, inferenceDuration * 1.25),
+          );
+          if (
+            workerReady &&
+            !workerBusy &&
+            now - lastInferenceAt >= minimumGap
+          ) {
+            workerBusy = true;
+            lastInferenceAt = now;
+            void createImageBitmap(source)
+              .then((bitmap) => {
+                if (!active) {
+                  bitmap.close();
+                  return;
+                }
+                worker.postMessage(
+                  { type: "segment", bitmap, timestamp: now },
+                  [bitmap],
+                );
+              })
+              .catch(() => {
+                workerBusy = false;
+              });
           }
-          const started = performance.now();
-          lastInferenceAt = started;
-          segmenter.segmentForVideo(source, started, updateMask);
-          inferenceDuration = performance.now() - started;
-          segmentationFrame = requestAnimationFrame(() => void next());
+          segmentationFrame = requestAnimationFrame(next);
         };
         render();
-        void next();
+        next();
         return () => {
           cancelAnimationFrame(segmentationFrame);
           cancelAnimationFrame(renderFrame);
-          segmenter.close();
+          worker.postMessage({ type: "close" });
+          worker.terminate();
           output.getTracks().forEach((track) => track.stop());
           if (processedLocal.current === output) {
             processedLocal.current = null;

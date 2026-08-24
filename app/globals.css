@@ -36,6 +36,7 @@
 .illustration-inspector { margin-bottom: 18px; }
 .layer-inspector { padding-top: 15px; border-top: 1px solid #ffffff17; }
 .inspector-title { display: flex; align-items: center; justify-content: space-between; margin-bottom: 9px; font-size: 12px; }
+.inspector-actions { display: flex; gap: 5px; }
 .inspector-title button { border-color: #ff71604d; color: #ff9185; padding: 5px 8px; }
 .effect-grid { display: grid; grid-template-columns: 1.35fr .8fr .8fr; gap: 7px; margin-top: 12px; }
 .effect-grid label { color: #aaa5a0; font-size: 10px; }
@@ -57,6 +58,7 @@
 .illustration-overlay small { display: none; position: absolute; right: 5px; top: 5px; border-radius: 5px; padding: 3px 5px; background: #eeb75c; color: #251d0d; font: 800 9px Inter, sans-serif; }
 .illustration-overlay:hover small, .illustration-overlay.selected-illustration small { display: block; }
 .illustration-overlay.selected-illustration { outline: 1px dashed #ffe1a0; outline-offset: 5px; }
+.illustration-resize-handle { position: absolute; z-index: 4; right: -5px; bottom: -5px; display: grid; place-items: center; width: 25px; height: 25px; border: 2px solid #171212; border-radius: 50%; background: #eeb75c; color: #251d0d; font-size: 15px; font-weight: 900; cursor: nwse-resize; touch-action: none; box-shadow: 0 3px 10px #000b; }
 .multi-timeline { position: relative; padding: 18px 20px 20px; }
 .multi-timeline .timeline-ruler { margin: 18px 0 5px 74px; }
 .timeline-lanes { position: relative; display: grid; gap: 5px; }

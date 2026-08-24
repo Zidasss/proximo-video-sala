@@ -3011,6 +3011,7 @@ function ClipEditorV2({
     startX: number;
     startY: number;
   } | null>(null);
+  const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
 
   useEffect(() => {
     if (!selectedId && layers[0]) setSelectedId(layers[0].id);
@@ -3110,6 +3111,18 @@ function ClipEditorV2({
     setIllustrations((items) => items.filter((item) => item.id !== selectedIllustration.id));
     setSelectedIllustrationId("");
   }
+  function duplicateIllustration() {
+    if (!selectedIllustration) return;
+    const copy: IllustrationLayer = {
+      ...selectedIllustration,
+      id: crypto.randomUUID(),
+      x: Math.min(88, selectedIllustration.x + 6),
+      y: Math.min(88, selectedIllustration.y + 6),
+    };
+    setIllustrations((items) => [...items, copy]);
+    setSelectedIllustrationId(copy.id);
+    setNotice("Camada duplicada. Arraste, redimensione e escolha o período dela.");
+  }
   function setVideoDuration(element: HTMLVideoElement) {
     const value = element.duration;
     if (Number.isFinite(value) && value > 0) {
@@ -3206,6 +3219,7 @@ function ClipEditorV2({
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function moveIllustrationDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if (illustrationResize.current) return;
     const drag = illustrationDrag.current;
     const stage = event.currentTarget.parentElement;
     if (!drag || !stage) return;
@@ -3213,6 +3227,21 @@ function ClipEditorV2({
     updateIllustration(drag.id, {
       x: Math.max(8, Math.min(92, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
       y: Math.max(8, Math.min(92, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
+    });
+  }
+  function beginIllustrationResize(event: React.PointerEvent<HTMLDivElement>, item: IllustrationLayer) {
+    event.stopPropagation();
+    setSelectedIllustrationId(item.id);
+    illustrationResize.current = { id: item.id, size: item.size, startX: event.clientX };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveIllustrationResize(event: React.PointerEvent<HTMLDivElement>) {
+    const resize = illustrationResize.current;
+    const stage = event.currentTarget.parentElement?.parentElement;
+    if (!resize || !stage) return;
+    const bounds = stage.getBoundingClientRect();
+    updateIllustration(resize.id, {
+      size: Math.max(18, Math.min(90, resize.size + ((event.clientX - resize.startX) / bounds.width) * 100)),
     });
   }
   function previewStyle(layer: TextLayer): React.CSSProperties {
@@ -3445,7 +3474,7 @@ function ClipEditorV2({
             ))}
           </div>}
           {selectedIllustration && <div className="layer-inspector illustration-inspector">
-            <div className="inspector-title"><b>Ilustração selecionada</b><button onClick={removeIllustration}>Excluir</button></div>
+            <div className="inspector-title"><b>Ilustração selecionada</b><div className="inspector-actions"><button onClick={duplicateIllustration}>Duplicar</button><button onClick={removeIllustration}>Excluir</button></div></div>
             <label className="range-label">Tamanho · {selectedIllustration.size}%<input type="range" min="18" max="86" value={selectedIllustration.size} onChange={(event) => updateIllustration(selectedIllustration.id, { size: Number(event.target.value) })} /></label>
             <div className="effect-grid">
               <label>Encaixe<select value={selectedIllustration.fit} onChange={(event) => updateIllustration(selectedIllustration.id, { fit: event.target.value as "cover" | "contain" })}><option value="cover">Preencher</option><option value="contain">Mostrar tudo</option></select></label>
@@ -3511,9 +3540,10 @@ function ClipEditorV2({
                   else illustrationElements.current.delete(item.id);
                 },
               };
-              return <div key={item.id} className={`illustration-overlay ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current) }}>
+              return <div key={item.id} className={`illustration-overlay ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current) }}>
                 {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay loop playsInline />}
-                <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · arraste</small>
+                <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · mover</small>
+                {selectedIllustration?.id === item.id && <div className="illustration-resize-handle" onPointerDown={(event) => beginIllustrationResize(event, item)} onPointerMove={moveIllustrationResize} onPointerUp={() => { illustrationResize.current = null; }} onPointerCancel={() => { illustrationResize.current = null; }} aria-label="Redimensionar camada">↘</div>}
               </div>;
             })}
             {clip && layers.map((layer) => {

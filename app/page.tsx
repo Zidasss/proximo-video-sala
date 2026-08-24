@@ -60,7 +60,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.15.0";
+const APP_VERSION = "v0.16.0";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -366,7 +366,7 @@ export default function Home() {
     const shouldSkipAnimatedRender = () => {
       if (!animatedBackdrop) return false;
       const now = performance.now();
-      if (now - lastAnimatedRenderAt < 1000 / 24) return true;
+      if (now - lastAnimatedRenderAt < 1000 / 20) return true;
       lastAnimatedRenderAt = now;
       return false;
     };
@@ -392,8 +392,15 @@ export default function Home() {
     const run = async () => {
       await source.play();
       if (!active || !context || !maskContext || !inferenceContext || !foregroundContext) return;
-      canvas.width = source.videoWidth || 1280;
-      canvas.height = source.videoHeight || 720;
+      // Com GIF/MP4, uma composição Full HD disputa recursos com IA e WebRTC.
+      // 720p/20 fps é mais suave que 1080p caindo para 9 fps.
+      const sourceWidthForOutput = source.videoWidth || 1280;
+      const sourceHeightForOutput = source.videoHeight || 720;
+      const virtualOutputScale = animatedBackdrop
+        ? Math.min(1, 1280 / Math.max(sourceWidthForOutput, sourceHeightForOutput))
+        : 1;
+      canvas.width = Math.max(2, Math.round(sourceWidthForOutput * virtualOutputScale));
+      canvas.height = Math.max(2, Math.round(sourceHeightForOutput * virtualOutputScale));
       foregroundCanvas.width = canvas.width;
       foregroundCanvas.height = canvas.height;
       if (backgroundMode === "image" && backgroundVideo) {
@@ -423,7 +430,7 @@ export default function Home() {
         target.drawImage(sourceBackground, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
       };
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
-      const output = canvas.captureStream(animatedBackdrop ? 24 : 30);
+      const output = canvas.captureStream(animatedBackdrop ? 20 : 30);
       const attachOverlayOutput = () => {
         if (attached) return;
         processedLocal.current = output;
@@ -502,7 +509,7 @@ export default function Home() {
           // segundo plano sem monopolizar CPU/GPU.
           const sourceWidth = source.videoWidth || canvas.width;
           const sourceHeight = source.videoHeight || canvas.height;
-          const inferenceScale = Math.min(1, 960 / Math.max(sourceWidth, sourceHeight));
+          const inferenceScale = Math.min(1, 720 / Math.max(sourceWidth, sourceHeight));
           inferenceCanvas.width = Math.max(2, Math.round((sourceWidth * inferenceScale) / 2) * 2);
           inferenceCanvas.height = Math.max(2, Math.round((sourceHeight * inferenceScale) / 2) * 2);
           const attachOutput = () => {
@@ -610,8 +617,10 @@ export default function Home() {
                 // de 13 fps mantém o RVM temporal estável, evita uso contínuo de
                 // GPU e deixa espaço para codificar/enviar a chamada. Se a máquina
                 // já estiver ocupada, reduz ainda mais a pressão automaticamente.
-                const targetMaskInterval = inferenceDuration > 85 ? 120 : 76;
-                const pause = Math.min(160, Math.max(12, targetMaskInterval - inferenceDuration));
+                const targetMaskInterval = animatedBackdrop
+                  ? Math.max(125, inferenceDuration * 1.35)
+                  : inferenceDuration > 85 ? 120 : 82;
+                const pause = Math.min(180, Math.max(16, targetMaskInterval - inferenceDuration));
                 premiumInferenceTimer = window.setTimeout(() => void inferPremium(), pause);
               }
             }
@@ -769,10 +778,9 @@ export default function Home() {
           // O Worker recebe no máximo um frame por vez. Enquanto a IA analisa,
           // o render, os controles e o áudio permanecem livres a 30 fps.
           const now = performance.now();
-          const minimumGap = Math.max(
-            46,
-            Math.min(120, inferenceDuration * 1.25),
-          );
+          const minimumGap = animatedBackdrop
+            ? Math.max(115, Math.min(180, inferenceDuration * 1.5))
+            : Math.max(78, Math.min(140, inferenceDuration * 1.3));
           if (
             workerReady &&
             !workerBusy &&
@@ -780,7 +788,19 @@ export default function Home() {
           ) {
             workerBusy = true;
             lastInferenceAt = now;
-            void createImageBitmap(source)
+            const bitmapWidth = animatedBackdrop ? 512 : 640;
+            const bitmapHeight = Math.max(
+              2,
+              Math.round(
+                (bitmapWidth * (source.videoHeight || canvas.height)) /
+                  (source.videoWidth || canvas.width),
+              ),
+            );
+            void createImageBitmap(source, {
+              resizeWidth: bitmapWidth,
+              resizeHeight: bitmapHeight,
+              resizeQuality: "low",
+            })
               .then((bitmap) => {
                 if (!active) {
                   bitmap.close();
@@ -2964,6 +2984,9 @@ function ClipEditorV2({
     [current, setCurrent] = useState(0),
     [start, setStart] = useState(0),
     [end, setEnd] = useState(0),
+    [videoFadeIn, setVideoFadeIn] = useState(0),
+    [videoFadeOut, setVideoFadeOut] = useState(0),
+    [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
     [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
     [selectedId, setSelectedId] = useState(""),
@@ -3017,6 +3040,13 @@ function ClipEditorV2({
       opacity = Math.min(opacity, (layer.end - at) / layer.fadeOut);
     return Math.max(0, Math.min(1, opacity));
   };
+  const videoTransitionOpacity = (at: number) => {
+    if (at < start || at > end) return 1;
+    let opacity = 0;
+    if (videoFadeIn > 0) opacity = Math.max(opacity, 1 - (at - start) / videoFadeIn);
+    if (videoFadeOut > 0) opacity = Math.max(opacity, 1 - (end - at) / videoFadeOut);
+    return Math.max(0, Math.min(1, opacity));
+  };
   const effectProgress = (layer: TextLayer, at: number) =>
     Math.max(0, Math.min(1, (at - layer.start) / 0.45));
   const visibleText = (layer: TextLayer, at: number) => {
@@ -3035,6 +3065,8 @@ function ClipEditorV2({
     setCurrent(0);
     setStart(0);
     setEnd(0);
+    setVideoFadeIn(0);
+    setVideoFadeOut(0);
     setLayers([initialLayer()]);
     setIllustrations([]);
     setSelectedId("");
@@ -3096,6 +3128,24 @@ function ClipEditorV2({
     if (!video.current) return;
     video.current.currentTime = value;
     setCurrent(value);
+  }
+  function selectTimeFromTimeline(event: React.PointerEvent<HTMLDivElement>) {
+    if (!duration) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    const ratio = Math.max(0, Math.min(1, (event.clientX - bounds.left) / bounds.width));
+    seek(ratio * duration);
+  }
+  function markCut(edge: "start" | "end") {
+    if (!duration) return;
+    if (edge === "start") {
+      const value = Math.min(current, end - 0.05);
+      setStart(Math.max(0, value));
+      setNotice(`Corte inicial marcado em ${time(Math.max(0, value))}.`);
+    } else {
+      const value = Math.max(current, start + 0.05);
+      setEnd(Math.min(duration, value));
+      setNotice(`Corte final marcado em ${time(Math.min(duration, value))}.`);
+    }
   }
   function addLayer() {
     const from = Math.max(start, Math.min(current, Math.max(start, end - 0.4)));
@@ -3244,6 +3294,13 @@ function ClipEditorV2({
         width,
         height,
       );
+      const videoTransition = videoTransitionOpacity(source.currentTime);
+      if (videoTransition > 0) {
+        context.fillStyle = transitionColor === "black" ? "#000000" : "#ffffff";
+        context.globalAlpha = videoTransition;
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.globalAlpha = 1;
+      }
       illustrations.forEach((item) => {
         const alpha = layerOpacity(item, source.currentTime);
         const media = illustrationElements.current.get(item.id);
@@ -3367,6 +3424,15 @@ function ClipEditorV2({
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação ou vídeo do computador</small></div></div>
           <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
           {clip && <p className="editor-file">● {clip.name}</p>}
+          {clip && <div className="video-transition-controls">
+            <b>Transições do vídeo</b>
+            <small>Aplicadas na prévia e na exportação.</small>
+            <div className="effect-grid">
+              <label>Fade in<input type="number" min="0" max="5" step="0.1" value={videoFadeIn} onChange={(event) => setVideoFadeIn(Math.max(0, Number(event.target.value)))} /></label>
+              <label>Fade out<input type="number" min="0" max="5" step="0.1" value={videoFadeOut} onChange={(event) => setVideoFadeOut(Math.max(0, Number(event.target.value)))} /></label>
+              <label>Cor<select value={transitionColor} onChange={(event) => setTransitionColor(event.target.value as "black" | "white")}><option value="black">Preto</option><option value="white">Branco</option></select></label>
+            </div>
+          </div>}
 
           <div className="tool-heading layer-heading"><span>02</span><div><b>Ilustrações</b><small>Imagem ou vídeo por cima da conversa</small></div></div>
           <label className="editor-upload editor-illustration-upload">＋ Imagem ou vídeo<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
@@ -3436,6 +3502,7 @@ function ClipEditorV2({
             ) : (
               <div className="editor-empty"><b>Monte seu próximo reel.</b><span>Importe um vídeo para editar corte, textos e efeitos.</span></div>
             )}
+            {clip && videoTransitionOpacity(current) > 0 && <div className="video-transition-overlay" style={{ opacity: videoTransitionOpacity(current), backgroundColor: transitionColor === "black" ? "#000" : "#fff" }} />}
             {clip && illustrations.map((item) => {
               if (layerOpacity(item, current) <= 0) return null;
               const common = {
@@ -3464,11 +3531,13 @@ function ClipEditorV2({
         <div className="timeline-top">
           <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div>
           <button disabled={!clip} onClick={() => video.current?.paused ? void video.current?.play() : video.current?.pause()}>{video.current?.paused === false ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
+          <button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button>
+          <button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button>
           <button disabled={!clip} onClick={() => seek(start)}>↶ Início</button>
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes">
-          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /></div></div>
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} title="Clique para mover o cursor; use Começar/Terminar aqui para cortar"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><i className="cut-marker start-marker" style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }} /><i className="cut-marker end-marker" style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }} /></div></div>
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>
               <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }}><span>{item.name || "Ilustração"}</span><i>{item.kind === "image" ? "imagem" : "vídeo"}</i></button></div>

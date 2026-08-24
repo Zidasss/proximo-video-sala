@@ -147,7 +147,7 @@ export default function Home() {
         : null;
     if (previewScreen.current && shared)
       previewScreen.current.srcObject = shared;
-  }, [inRoom, friend, sharing, remoteSharing, previewOpen]);
+  }, [inRoom, friend, sharing, remoteSharing, previewOpen, previewMinimized]);
   useEffect(() => {
     if (!inRoom || backgroundMode === "none" || !local.current) return;
     let active = true,
@@ -986,7 +986,11 @@ export default function Home() {
             </div>
             <div className="window-actions">
               <button
-                onClick={() => setSettingsMinimized(!settingsMinimized)}
+                onClick={() => {
+                  const next = !settingsMinimized;
+                  setSettingsMinimized(next);
+                  if (next) setPreviewOpen(true);
+                }}
                 aria-label={
                   settingsMinimized ? "Expandir ajustes" : "Minimizar ajustes"
                 }
@@ -1182,7 +1186,19 @@ export default function Home() {
               </button>
             </div>
           </div>
-          {!previewMinimized && (
+          {previewMinimized ? (
+            <button
+              className="mini-preview"
+              onClick={() => setPreviewMinimized(false)}
+              aria-label="Expandir prévia"
+            >
+              <div>
+                <video ref={previewMine} autoPlay muted playsInline />
+                <video ref={previewFriend} autoPlay playsInline />
+              </div>
+              <span>Prévia 9:16 · clique para expandir</span>
+            </button>
+          ) : (
             <>
               <div className={"preview-canvas screen-" + screenPosition}>
                 <div

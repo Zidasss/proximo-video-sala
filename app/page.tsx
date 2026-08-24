@@ -34,10 +34,25 @@ type TextLayer = {
   effect: TextEffect;
   background: boolean;
 };
+type IllustrationLayer = {
+  id: string;
+  kind: "image" | "video";
+  url: string;
+  name: string;
+  x: number;
+  y: number;
+  size: number;
+  start: number;
+  end: number;
+  fadeIn: number;
+  fadeOut: number;
+  fit: "cover" | "contain";
+};
+type TimedLayer = Pick<IllustrationLayer, "start" | "end" | "fadeIn" | "fadeOut">;
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.13.0";
+const APP_VERSION = "v0.14.0";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -2682,11 +2697,22 @@ function ClipEditorV2({
     [start, setStart] = useState(0),
     [end, setEnd] = useState(0),
     [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
+    [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
     [selectedId, setSelectedId] = useState(""),
+    [selectedIllustrationId, setSelectedIllustrationId] = useState(""),
     [exporting, setExporting] = useState(false),
     [notice, setNotice] = useState("");
   const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
+  const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
+  const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
   const layerDrag = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+  const illustrationDrag = useRef<{
     id: string;
     x: number;
     y: number;
@@ -2709,7 +2735,11 @@ function ClipEditorV2({
     setLayers((items) =>
       items.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
     );
-  const layerOpacity = (layer: TextLayer, at: number) => {
+  const updateIllustration = (id: string, patch: Partial<IllustrationLayer>) =>
+    setIllustrations((items) =>
+      items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
+    );
+  const layerOpacity = (layer: TimedLayer, at: number) => {
     if (at < layer.start || at > layer.end) return 0;
     let opacity = 1;
     if (layer.fadeIn > 0)
@@ -2737,8 +2767,47 @@ function ClipEditorV2({
     setStart(0);
     setEnd(0);
     setLayers([initialLayer()]);
+    setIllustrations([]);
     setSelectedId("");
+    setSelectedIllustrationId("");
     setNotice("Vídeo carregado. Agora monte as camadas na linha do tempo.");
+  }
+  function addIllustration(file?: File) {
+    if (!file) return;
+    const kind = file.type.startsWith("image/")
+      ? "image"
+      : file.type.startsWith("video/")
+        ? "video"
+        : null;
+    if (!kind) {
+      setNotice("Escolha uma imagem ou um vídeo para a ilustração.");
+      return;
+    }
+    const from = Math.max(start, Math.min(current, Math.max(start, end - 0.4)));
+    const item: IllustrationLayer = {
+      id: crypto.randomUUID(),
+      kind,
+      url: URL.createObjectURL(file),
+      name: file.name.replace(/\.[^.]+$/, ""),
+      x: 72,
+      y: 30,
+      size: 38,
+      start: from,
+      end: Math.max(from + 0.4, Math.min(end || duration || from + 4, from + 4)),
+      fadeIn: 0.2,
+      fadeOut: 0.2,
+      fit: "cover",
+    };
+    setIllustrations((items) => [...items, item]);
+    setSelectedIllustrationId(item.id);
+    setNotice(`${kind === "image" ? "Imagem" : "Vídeo"} ilustrativo adicionado à linha do tempo.`);
+  }
+  function removeIllustration() {
+    if (!selectedIllustration) return;
+    URL.revokeObjectURL(selectedIllustration.url);
+    illustrationElements.current.delete(selectedIllustration.id);
+    setIllustrations((items) => items.filter((item) => item.id !== selectedIllustration.id));
+    setSelectedIllustrationId("");
   }
   function setVideoDuration(element: HTMLVideoElement) {
     const value = element.duration;
@@ -2810,6 +2879,21 @@ function ClipEditorV2({
     updateLayer(drag.id, {
       x: Math.max(7, Math.min(93, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
       y: Math.max(5, Math.min(95, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
+    });
+  }
+  function beginIllustrationDrag(event: React.PointerEvent<HTMLDivElement>, item: IllustrationLayer) {
+    setSelectedIllustrationId(item.id);
+    illustrationDrag.current = { id: item.id, x: item.x, y: item.y, startX: event.clientX, startY: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveIllustrationDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = illustrationDrag.current;
+    const stage = event.currentTarget.parentElement;
+    if (!drag || !stage) return;
+    const bounds = stage.getBoundingClientRect();
+    updateIllustration(drag.id, {
+      x: Math.max(8, Math.min(92, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
+      y: Math.max(8, Math.min(92, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
     });
   }
   function previewStyle(layer: TextLayer): React.CSSProperties {
@@ -2891,6 +2975,36 @@ function ClipEditorV2({
         width,
         height,
       );
+      illustrations.forEach((item) => {
+        const alpha = layerOpacity(item, source.currentTime);
+        const media = illustrationElements.current.get(item.id);
+        if (alpha <= 0 || !media) return;
+        const mediaWidth = media instanceof HTMLVideoElement ? media.videoWidth : media.naturalWidth;
+        const mediaHeight = media instanceof HTMLVideoElement ? media.videoHeight : media.naturalHeight;
+        if (!mediaWidth || !mediaHeight) return;
+        if (media instanceof HTMLVideoElement && media.duration) {
+          const mediaTime = Math.max(0, Math.min(media.duration - 0.04, source.currentTime - item.start));
+          if (Math.abs(media.currentTime - mediaTime) > 0.18) media.currentTime = mediaTime;
+        }
+        const boxWidth = (item.size / 100) * canvas.width;
+        const boxHeight = boxWidth * 0.72;
+        const scale = item.fit === "cover"
+          ? Math.max(boxWidth / mediaWidth, boxHeight / mediaHeight)
+          : Math.min(boxWidth / mediaWidth, boxHeight / mediaHeight);
+        const drawWidth = mediaWidth * scale;
+        const drawHeight = mediaHeight * scale;
+        const x = (item.x / 100) * canvas.width - boxWidth / 2;
+        const y = (item.y / 100) * canvas.height - boxHeight / 2;
+        context.save();
+        context.globalAlpha = alpha;
+        context.beginPath();
+        context.roundRect(x, y, boxWidth, boxHeight, 22);
+        context.clip();
+        context.fillStyle = "#0b0b0b";
+        context.fill();
+        context.drawImage(media, x + (boxWidth - drawWidth) / 2, y + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+        context.restore();
+      });
       layers.forEach((layer) => {
         const alpha = layerOpacity(layer, source.currentTime);
         if (!layer.text.trim() || alpha <= 0) return;
@@ -2981,7 +3095,27 @@ function ClipEditorV2({
           <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
           {clip && <p className="editor-file">● {clip.name}</p>}
 
-          <div className="tool-heading layer-heading"><span>02</span><div><b>Camadas de texto</b><small>Cada texto tem seu próprio tempo</small></div></div>
+          <div className="tool-heading layer-heading"><span>02</span><div><b>Ilustrações</b><small>Imagem ou vídeo por cima da conversa</small></div></div>
+          <label className="editor-upload editor-illustration-upload">＋ Imagem ou vídeo<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
+          <small className="illustration-help">Use para contextualizar enquanto o vídeo principal continua falando.</small>
+          {!!illustrations.length && <div className="layer-list illustration-list">
+            {illustrations.map((item, index) => (
+              <button key={item.id} className={selectedIllustration?.id === item.id ? "selected" : ""} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>
+                <b>{item.kind === "image" ? "IMG" : "VID"}</b><span>{item.name || `Ilustração ${index + 1}`}</span><small>{time(item.start)}–{time(item.end)}</small>
+              </button>
+            ))}
+          </div>}
+          {selectedIllustration && <div className="layer-inspector illustration-inspector">
+            <div className="inspector-title"><b>Ilustração selecionada</b><button onClick={removeIllustration}>Excluir</button></div>
+            <label className="range-label">Tamanho · {selectedIllustration.size}%<input type="range" min="18" max="86" value={selectedIllustration.size} onChange={(event) => updateIllustration(selectedIllustration.id, { size: Number(event.target.value) })} /></label>
+            <div className="effect-grid">
+              <label>Encaixe<select value={selectedIllustration.fit} onChange={(event) => updateIllustration(selectedIllustration.id, { fit: event.target.value as "cover" | "contain" })}><option value="cover">Preencher</option><option value="contain">Mostrar tudo</option></select></label>
+              <label>Fade in<input type="number" min="0" max="3" step="0.1" value={selectedIllustration.fadeIn} onChange={(event) => updateIllustration(selectedIllustration.id, { fadeIn: Math.max(0, Number(event.target.value)) })} /></label>
+              <label>Fade out<input type="number" min="0" max="3" step="0.1" value={selectedIllustration.fadeOut} onChange={(event) => updateIllustration(selectedIllustration.id, { fadeOut: Math.max(0, Number(event.target.value)) })} /></label>
+            </div>
+          </div>}
+
+          <div className="tool-heading layer-heading"><span>03</span><div><b>Camadas de texto</b><small>Cada texto tem seu próprio tempo</small></div></div>
           <div className="layer-actions">
             <button onClick={addLayer}>＋ Texto</button>
             <button disabled={!selected} onClick={duplicateLayer}>⧉ Duplicar</button>
@@ -3029,6 +3163,19 @@ function ClipEditorV2({
             ) : (
               <div className="editor-empty"><b>Monte seu próximo reel.</b><span>Importe um vídeo para editar corte, textos e efeitos.</span></div>
             )}
+            {clip && illustrations.map((item) => {
+              if (layerOpacity(item, current) <= 0) return null;
+              const common = {
+                ref: (element: HTMLImageElement | HTMLVideoElement | null) => {
+                  if (element) illustrationElements.current.set(item.id, element);
+                  else illustrationElements.current.delete(item.id);
+                },
+              };
+              return <div key={item.id} className={`illustration-overlay ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current) }}>
+                {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay loop playsInline />}
+                <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · arraste</small>
+              </div>;
+            })}
             {clip && layers.map((layer) => {
               const text = visibleText(layer, current);
               if (!text || layerOpacity(layer, current) <= 0) return null;
@@ -3049,6 +3196,11 @@ function ClipEditorV2({
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes">
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /></div></div>
+          {illustrations.map((item, index) => (
+            <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>
+              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }}><span>{item.name || "Ilustração"}</span><i>{item.kind === "image" ? "imagem" : "vídeo"}</i></button></div>
+            </div>
+          ))}
           {layers.map((layer, index) => (
             <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => { setSelectedId(layer.id); seek(Math.max(start, layer.start)); }}>
               <b>T{index + 1}</b><div className="lane-track"><button className="text-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }}><span>{layer.text || "Texto"}</span><i>{layer.effect !== "none" ? layer.effect : "texto"}</i></button></div>
@@ -3060,6 +3212,7 @@ function ClipEditorV2({
           <label>Corte inicial <span>{time(start)}</span><input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={start} onChange={(event) => { const value = Math.min(Number(event.target.value), end - 0.05); setStart(value); seek(value); }} /></label>
           <label>Corte final <span>{time(end)}</span><input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={end} onChange={(event) => { const value = Math.max(Number(event.target.value), start + 0.05); setEnd(value); seek(value); }} /></label>
           {selected && <><label>Texto entra <span>{time(selected.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selected.end - 0.05); updateLayer(selected.id, { start: value }); seek(value); }} /></label><label>Texto sai <span>{time(selected.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selected.start + 0.05); updateLayer(selected.id, { end: value }); seek(Math.max(selected.start, value - 0.05)); }} /></label></>}
+          {selectedIllustration && <><label>Ilustração entra <span>{time(selectedIllustration.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selectedIllustration.end - 0.05); updateIllustration(selectedIllustration.id, { start: value }); seek(value); }} /></label><label>Ilustração sai <span>{time(selectedIllustration.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selectedIllustration.start + 0.05); updateIllustration(selectedIllustration.id, { end: value }); seek(Math.max(selectedIllustration.start, value - 0.05)); }} /></label></>}
         </div>
       </section>
     </main>

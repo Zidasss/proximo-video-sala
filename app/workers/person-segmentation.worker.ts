@@ -19,6 +19,7 @@ const neighbors = new Int32Array(4);
 
 let segmenter: ImageSegmenter | null = null;
 let previousAlpha: Float32Array | null = null;
+let backgroundIndex = 0;
 let coreConfidence: Float32Array | null = null;
 let candidateMask: Uint8Array | null = null;
 let retainedMask: Uint8Array | null = null;
@@ -54,6 +55,7 @@ async function initialize() {
     });
   }
   const labels = segmenter.getLabels().map((label) => label.toLowerCase());
+  backgroundIndex = Math.max(0, labels.indexOf("background"));
   hairIndex = Math.max(1, labels.indexOf("hair"));
   bodySkinIndex = Math.max(2, labels.indexOf("body-skin"));
   faceSkinIndex = Math.max(3, labels.indexOf("face-skin"));
@@ -85,6 +87,7 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       }
       const resolvedAccessoryIndex =
         accessoryIndex >= 0 ? accessoryIndex : masks.length >= 6 ? 5 : -1;
+      const background = masks[backgroundIndex].getAsFloat32Array();
       const hair = masks[hairIndex].getAsFloat32Array();
       const bodySkin = masks[bodySkinIndex].getAsFloat32Array();
       const faceSkin = masks[faceSkinIndex].getAsFloat32Array();
@@ -93,6 +96,46 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
         resolvedAccessoryIndex >= 0
           ? masks[resolvedAccessoryIndex].getAsFloat32Array()
           : null;
+
+      // A máscara por componentes conectados era rígida demais na saída de
+      // 256px do modelo: em algumas câmeras ela virava uma escada de blocos.
+      // Aqui usamos a confiança contínua de pessoa e uma transição suave,
+      // mantendo cabelo, rosto, roupa e acessórios sem recortar em quadrados.
+      const softAlpha = new Uint8ClampedArray(total);
+      const previous = previousAlpha!;
+      for (let index = 0; index < total; index += 1) {
+        const detail = Math.max(
+          hair[index] * 1.22,
+          bodySkin[index],
+          faceSkin[index] * 1.08,
+          clothes[index],
+        );
+        let confidence = Math.max(1 - background[index], detail);
+        if (accessories && detail > 0.055)
+          confidence = Math.max(confidence, accessories[index] * 0.68);
+        const normalized = Math.max(
+          0,
+          Math.min(1, (confidence - 0.18) / 0.46),
+        );
+        const target = normalized * normalized * (3 - 2 * normalized);
+        const stabilized =
+          target > previous[index]
+            ? previous[index] * 0.22 + target * 0.78
+            : previous[index] * 0.46 + target * 0.54;
+        previous[index] = stabilized < 0.025 ? 0 : stabilized;
+        softAlpha[index] = Math.round(previous[index] * 255);
+      }
+      scope.postMessage(
+        {
+          type: "mask",
+          alpha: softAlpha.buffer,
+          width,
+          height,
+          inferenceMs: performance.now() - started,
+        },
+        [softAlpha.buffer],
+      );
+      return;
       const core = coreConfidence!;
       const acceptedAccessories = accessoryMask!;
       const candidates = candidateMask!;
@@ -122,8 +165,9 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       let queueHead = 0;
       let queueTail = 0;
       if (accessories) {
+        const acceptedAccessoryConfidence = accessories as Float32Array;
         for (let index = 0; index < total; index += 1) {
-          if (accessories[index] < 0.3) continue;
+          if (acceptedAccessoryConfidence[index] < 0.3) continue;
           const x = index % width;
           const nearHead =
             hair[index] > 0.07 ||
@@ -152,7 +196,7 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
               neighbor < total &&
               (side < 2 || (side === 2 ? x > 0 : x + 1 < width)) &&
               !acceptedAccessories[neighbor] &&
-              accessories[neighbor] >= 0.24
+              acceptedAccessoryConfidence[neighbor] >= 0.24
             ) {
               acceptedAccessories[neighbor] = 1;
               workQueue[queueTail++] = neighbor;
@@ -204,7 +248,7 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       }
 
       const alpha = new Uint8ClampedArray(total);
-      const previous = previousAlpha!;
+      const previousLegacy = previousAlpha!;
       for (let index = 0; index < total; index += 1) {
         const confidence = retained[index] ? core[index] : 0;
         const normalized = Math.max(
@@ -215,10 +259,10 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
         const stabilized =
           target < 0.055
             ? 0
-            : target > previous[index]
-              ? previous[index] * 0.12 + target * 0.88
-              : previous[index] * 0.28 + target * 0.72;
-        previous[index] = stabilized;
+            : target > previousLegacy[index]
+              ? previousLegacy[index] * 0.12 + target * 0.88
+              : previousLegacy[index] * 0.28 + target * 0.72;
+        previousLegacy[index] = stabilized;
         alpha[index] = Math.round(stabilized * 255);
       }
       scope.postMessage(

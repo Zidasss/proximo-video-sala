@@ -37,7 +37,7 @@ type TextLayer = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.12.0";
+const APP_VERSION = "v0.12.1";
 const constraints = (
   quality: Quality,
   deviceId?: string,

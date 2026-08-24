@@ -928,3 +928,100 @@ body {
     0 0 0 4px #ff654f,
     0 0 26px #ff654faa;
 }
+
+/* Replace every legacy green surface with the Klip coral palette. */
+.landing {
+  background:
+    radial-gradient(circle at 74% 72%, #3d1c22 0, transparent 30%),
+    radial-gradient(circle at 18% 18%, #28181b 0, transparent 34%), #111414;
+}
+.landing::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  background: linear-gradient(
+    118deg,
+    transparent 56%,
+    #ff654f10 56% 57%,
+    transparent 57%
+  );
+}
+.one {
+  background: #ff654f;
+  box-shadow: 0 0 90px #ff654f66;
+}
+.two {
+  background: #ffc1b4;
+  mix-blend-mode: normal;
+}
+.entry-tabs button {
+  border-color: #71443f;
+  color: #eadbd5;
+}
+.entry-tabs button.selected,
+.session-start.started {
+  background: #ff654f;
+  border-color: #ff654f;
+  color: #fffaf6;
+}
+.join {
+  background: #fff8f4;
+  box-shadow: 0 22px 60px #0006;
+}
+.join input,
+.join select {
+  background: #f5e8e1;
+  color: #30211f;
+}
+.join label {
+  color: #785e59;
+}
+.join .secondary {
+  background: #ffe0d6;
+  color: #542820;
+}
+.join > button {
+  background: #1b2120;
+}
+.join > button:last-of-type {
+  background: #ff654f;
+}
+.join input:focus {
+  outline-color: #ff8c7e;
+}
+.preview-slider input {
+  accent-color: #ff654f;
+}
+.settings-panel {
+  background: #211c1b;
+  border-color: #69413a;
+}
+.settings-title {
+  border-color: #593a35;
+}
+.chat-messages p {
+  background: #ffe0d6;
+}
+.chat-compose button {
+  background: #ff654f;
+}
+.mine {
+  background: #402421;
+}
+.waiting {
+  background: linear-gradient(135deg, #30201e, #171717);
+}
+.avatar {
+  background: #ff654f;
+  color: #fffaf6;
+}
+.call footer button {
+  background: #2b2928;
+}
+.call footer .clip {
+  background: #5b3a35;
+}
+.call footer > i {
+  background: #5c4540;
+}

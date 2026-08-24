@@ -3114,9 +3114,11 @@ function ClipEditorV2({
     [selectedIllustrationId, setSelectedIllustrationId] = useState(""),
     [exportFormat, setExportFormat] = useState<ExportFormat>("mp4"),
     [exporting, setExporting] = useState(false),
+    [exportProgress, setExportProgress] = useState(0),
     [notice, setNotice] = useState("");
   const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; start: number; end: number }>>([]);
   const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; start: number; end: number }>>([]);
+  const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
   const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
   const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
@@ -3240,6 +3242,27 @@ function ClipEditorV2({
       const from = Math.max(0, first * .25 - .15), to = Math.min(decoded.duration, (last + 1) * .25 + .25);
       setStart(from); setEnd(to); seek(from); setNotice(`Silêncios nas pontas removidos: ${time(from)} até ${time(to)}.`);
     } catch { setNotice("Não foi possível analisar este áudio no navegador. Você ainda pode cortar manualmente."); }
+  }
+  async function importSubtitles(file?: File) {
+    if (!file) return;
+    try {
+      const raw = await file.text();
+      const blocks = raw.replace(/\r/g, "").trim().split(/\n\s*\n/);
+      const parseTime = (value: string) => { const match = value.trim().replace(",", ".").match(/(\d+):(\d+):(\d+(?:\.\d+)?)/); return match ? Number(match[1]) * 3600 + Number(match[2]) * 60 + Number(match[3]) : 0; };
+      const captions = blocks.map((block) => { const lines = block.split("\n").filter(Boolean); const timing = lines.find((line) => line.includes("-->")); if (!timing) return null; const [from, to] = timing.split("-->").map(parseTime); const text = lines.slice(lines.indexOf(timing) + 1).join(" ").replace(/<[^>]+>/g, "").trim(); return text ? { from, to, text } : null; }).filter((item): item is { from: number; to: number; text: string } => Boolean(item));
+      if (!captions.length) { setNotice("Não encontrei legendas válidas neste arquivo SRT."); return; }
+      remember();
+      const made = captions.map((item, index): TextLayer => ({ ...initialLayer(), id: crypto.randomUUID(), text: item.text, start: Math.max(start, item.from), end: Math.min(end || duration || item.to, Math.max(item.from + .1, item.to)), y: 76, size: 56, effect: "pop", background: true, color: "#ffffff", x: 50, align: "center" }));
+      setLayers((items) => [...items, ...made]); setSelectedId(made[0]?.id || ""); setNotice(`${made.length} legendas importadas para a timeline.`);
+    } catch { setNotice("Não foi possível ler o arquivo de legenda."); }
+  }
+  function exportProject() {
+    const project = { version: 1, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, transitionColor, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, createdAt: new Date().toISOString() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Ao abrir, importe também o vídeo original.");
+  }
+  async function importProject(file?: File) {
+    if (!file) return;
+    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); setStart(Number(project.start) || 0); setEnd(Number(project.end) || duration); setVideoFadeIn(Number(project.videoFadeIn) || 0); setVideoFadeOut(Number(project.videoFadeOut) || 0); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -3452,6 +3475,8 @@ function ClipEditorV2({
     const source = video.current;
     if (!source || !clip || end <= start) return;
     setExporting(true);
+    setExportProgress(0);
+    cancelExport.current = false;
     setNotice("Renderizando o reel com todas as camadas e efeitos…");
     const canvas = document.createElement("canvas"),
       context = canvas.getContext("2d");
@@ -3494,8 +3519,11 @@ function ClipEditorV2({
       videoBitsPerSecond: exportBitrate === "ultra" ? 20_000_000 : exportBitrate === "high" ? 10_000_000 : 5_000_000,
       audioBitsPerSecond: 192_000,
     });
+    editorRecorder.current = recorder;
     let frame = 0;
     const draw = () => {
+      if (cancelExport.current) { if (recorder.state !== "inactive") recorder.stop(); return; }
+      setExportProgress(Math.min(100, Math.round(((source.currentTime - start) / Math.max(.01, end - start)) * 100)));
       const scale = Math.max(
         canvas.width / source.videoWidth,
         canvas.height / source.videoHeight,
@@ -3600,6 +3628,7 @@ function ClipEditorV2({
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
     recorder.onstop = () => {
       cancelAnimationFrame(frame);
+      if (cancelExport.current) { void exportAudio.close(); editorRecorder.current = null; setExportProgress(0); setExporting(false); setNotice("Renderização cancelada."); return; }
       const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
       const link = document.createElement("a");
       link.href = url;
@@ -3607,6 +3636,8 @@ function ClipEditorV2({
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       void exportAudio.close();
+      editorRecorder.current = null;
+      setExportProgress(100);
       setExporting(false);
       setNotice("Reel exportado com corte, áudio, textos e efeitos.");
     };
@@ -3652,6 +3683,7 @@ function ClipEditorV2({
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
             {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
           </button>
+          {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar {exportProgress}%</button>}
         </div>
       </header>
       <section className="editor-workspace">
@@ -3659,6 +3691,7 @@ function ClipEditorV2({
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação ou vídeo do computador</small></div></div>
           <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
           {clip && <p className="editor-file">● {clip.name}</p>}
+          <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           <div className="tool-heading layer-heading"><span>00</span><div><b>Templates</b><small>Comece com um layout pronto</small></div></div>
           <div className="template-grid"><button onClick={() => applyTemplate("podcast")}>🎙️ Podcast</button><button onClick={() => applyTemplate("react")}>👀 React</button><button onClick={() => applyTemplate("gameplay")}>🎮 Gameplay</button><button onClick={() => applyTemplate("interview")}>💬 Entrevista</button></div>
           {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div>}
@@ -3696,6 +3729,7 @@ function ClipEditorV2({
           <div className="layer-actions">
             <button onClick={addLayer}>＋ Texto</button>
             <button disabled={!selected} onClick={duplicateLayer}>⧉ Duplicar</button>
+            <label className="subtitle-import">▤ Importar SRT<input type="file" accept=".srt,text/plain" onChange={(event) => void importSubtitles(event.target.files?.[0])} /></label>
           </div>
           <div className="layer-list">
             {layers.map((layer, index) => (

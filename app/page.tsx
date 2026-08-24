@@ -4,6 +4,7 @@ import { useEffect, useRef, useState } from "react";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
 
 type Quality = "720" | "1080";
+type ExportFormat = "mp4" | "webm";
 type Msg = { name: string; text: string };
 type SavedCall = {
   room: string;
@@ -53,6 +54,19 @@ const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
 const APP_VERSION = "v0.14.0";
+const mimeForExport = (format: ExportFormat) => {
+  if (typeof MediaRecorder === "undefined") return null;
+  if (format === "mp4") {
+    const mp4 = "video/mp4;codecs=avc1.42E01E,mp4a.40.2";
+    return MediaRecorder.isTypeSupported(mp4)
+      ? mp4
+      : MediaRecorder.isTypeSupported("video/mp4")
+        ? "video/mp4"
+        : null;
+  }
+  const vp9 = "video/webm;codecs=vp9,opus";
+  return MediaRecorder.isTypeSupported(vp9) ? vp9 : "video/webm";
+};
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -100,6 +114,7 @@ export default function Home() {
     [remoteSharing, setRemoteSharing] = useState(false),
     [recording, setRecording] = useState(false),
     [recordSeconds, setRecordSeconds] = useState(0),
+    [recordingFormat, setRecordingFormat] = useState<ExportFormat>("mp4"),
     [vertical, setVertical] = useState(false),
     [resenhaMode, setResenhaMode] = useState(false),
     [previewOpen, setPreviewOpen] = useState(false),
@@ -1322,7 +1337,7 @@ export default function Home() {
       url = URL.createObjectURL(new Blob(chunks, { type: mime }));
     setEditorClip({ url, name: `Gravação ${label}` });
     link.href = url;
-    link.download = `proximo-${label}-${Date.now()}.webm`;
+    link.download = `proximo-${label}-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
   }
@@ -1498,9 +1513,9 @@ export default function Home() {
         "O vídeo será gravado; o navegador não liberou a mixagem de áudio.",
       );
     }
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-      ? "video/webm;codecs=vp9,opus"
-      : "video/webm";
+    const mime = mimeForExport(recordingFormat) || mimeForExport("webm")!;
+    if (recordingFormat === "mp4" && !mime.startsWith("video/mp4"))
+      setNotice("MP4 não é suportado neste navegador; a gravação sairá em WebM.");
     const rec = new MediaRecorder(output, {
       mimeType: mime,
       videoBitsPerSecond: quality === "1080" ? 12_000_000 : 6_000_000,
@@ -2151,6 +2166,17 @@ export default function Home() {
                       />
                       <span>Usar formato vertical 9:16</span>
                     </label>
+                    <label className="menu-field">
+                      Formato da gravação
+                      <select
+                        value={recordingFormat}
+                        onChange={(event) => setRecordingFormat(event.target.value as ExportFormat)}
+                      >
+                        <option value="mp4">MP4 · melhor para redes sociais</option>
+                        <option value="webm">WebM · alta qualidade web</option>
+                      </select>
+                    </label>
+                    <small className="resenha-note">O formato é escolhido antes de iniciar a gravação. Se o Chrome não liberar MP4, o Klip avisa e usa WebM de verdade.</small>
                     <button
                       className="open-preview"
                       onClick={() => {
@@ -2700,6 +2726,7 @@ function ClipEditorV2({
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
     [selectedId, setSelectedId] = useState(""),
     [selectedIllustrationId, setSelectedIllustrationId] = useState(""),
+    [exportFormat, setExportFormat] = useState<ExportFormat>("mp4"),
     [exporting, setExporting] = useState(false),
     [notice, setNotice] = useState("");
   const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
@@ -2949,9 +2976,9 @@ function ClipEditorV2({
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
     ).captureStream?.();
     captured?.getAudioTracks().forEach((track) => output.addTrack(track));
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-      ? "video/webm;codecs=vp9,opus"
-      : "video/webm";
+    const mime = mimeForExport(exportFormat) || mimeForExport("webm")!;
+    if (exportFormat === "mp4" && !mime.startsWith("video/mp4"))
+      setNotice("MP4 não é suportado neste navegador; exportando WebM verdadeiro.");
     const chunks: Blob[] = [];
     const recorder = new MediaRecorder(output, {
       mimeType: mime,
@@ -3060,7 +3087,7 @@ function ClipEditorV2({
       const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
       const link = document.createElement("a");
       link.href = url;
-      link.download = `klip-reel-${Date.now()}.webm`;
+      link.download = `klip-reel-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
       setExporting(false);
@@ -3084,8 +3111,12 @@ function ClipEditorV2({
         <div className="editor-header-actions">
           <span className="autosave-note">Projeto local · nada é enviado</span>
           <button onClick={onBack}>← Voltar para sala</button>
+          <select className="export-format" aria-label="Formato de saída" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>
+            <option value="mp4">MP4</option>
+            <option value="webm">WebM</option>
+          </select>
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
-            {exporting ? "Renderizando…" : "⇩ Exportar reel"}
+            {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
           </button>
         </div>
       </header>

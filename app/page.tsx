@@ -264,7 +264,9 @@ export default function Home() {
           locateFile: (file) =>
             `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
         });
-        segmenter.setOptions({ modelSelection: 0, selfieMode: false });
+        // Modelo landscape é bem mais leve para webcams 16:9 e deixa CPU para
+        // a chamada, tela compartilhada e gravação.
+        segmenter.setOptions({ modelSelection: 1, selfieMode: false });
         segmenter.onResults((results) => {
           if (!active || !context) return;
           context.save();
@@ -330,9 +332,9 @@ export default function Home() {
         });
         const next = async () => {
           if (!active) return;
-          // A máscara em 15 fps é estável para vídeo e deixa CPU suficiente
+          // A máscara em até 10 fps é estável para vídeo e deixa CPU suficiente
           // para a chamada WebRTC. O canvas continua emitindo a 30 fps.
-          if (performance.now() - lastInferenceAt < 66) {
+          if (performance.now() - lastInferenceAt < 100) {
             frame = requestAnimationFrame(() => void next());
             return;
           }
@@ -1359,9 +1361,6 @@ export default function Home() {
                 onClick={() => {
                   const next = !settingsMinimized;
                   setSettingsMinimized(next);
-                  if (next) {
-                    setPreviewOpen(true);
-                  }
                 }}
                 aria-label={
                   settingsMinimized ? "Expandir ajustes" : "Minimizar ajustes"

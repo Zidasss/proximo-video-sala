@@ -136,6 +136,8 @@ export default function Home() {
     [background, setBackground] = useState(""),
     [backgroundVideo, setBackgroundVideo] = useState(""),
     [backgroundLabel, setBackgroundLabel] = useState(""),
+    [cameraOverlay, setCameraOverlay] = useState(""),
+    [cameraOverlayOpacity, setCameraOverlayOpacity] = useState(0.85),
     [webcamText, setWebcamText] = useState(""),
     [webcamTextPosition, setWebcamTextPosition] = useState<"top" | "bottom">("top"),
     [backgroundMode, setBackgroundMode] = useState<
@@ -349,7 +351,7 @@ export default function Home() {
     virtualEpoch,
   ]);
   useEffect(() => {
-    if (!inRoom || (backgroundMode === "none" && !webcamText.trim()) || !local.current) return;
+    if (!inRoom || (backgroundMode === "none" && !webcamText.trim() && !cameraOverlay) || !local.current) return;
     let active = true,
       segmentationFrame = 0,
       renderFrame = 0,
@@ -384,11 +386,13 @@ export default function Home() {
       foregroundCanvas = document.createElement("canvas"),
       foregroundContext = foregroundCanvas.getContext("2d"),
       image = new Image(),
+      overlayImage = new Image(),
       backdropVideo = document.createElement("video");
     source.srcObject = local.current;
     source.muted = true;
     source.playsInline = true;
     image.src = background;
+    overlayImage.src = cameraOverlay;
     backdropVideo.src = backgroundVideo;
     backdropVideo.muted = true;
     backdropVideo.loop = true;
@@ -468,12 +472,20 @@ export default function Home() {
         context.fillText(text, canvas.width / 2, y + height / 2, canvas.width - 56);
         context.restore();
       };
+      const drawCameraOverlay = () => {
+        if (!cameraOverlay || !overlayImage.complete || !overlayImage.naturalWidth) return;
+        context.save();
+        context.globalAlpha = cameraOverlayOpacity;
+        context.drawImage(overlayImage, 0, 0, canvas.width, canvas.height);
+        context.restore();
+      };
       try {
         if (backgroundMode === "none") {
           const renderOverlay = () => {
             if (!active || !context) return;
             context.drawImage(source, 0, 0, canvas.width, canvas.height);
             drawWebcamText();
+            drawCameraOverlay();
             attachOverlayOutput();
             renderFrame = requestAnimationFrame(renderOverlay);
           };
@@ -561,6 +573,7 @@ export default function Home() {
               context.drawImage(source, 0, 0, canvas.width, canvas.height);
             }
             drawWebcamText();
+            drawCameraOverlay();
             renderFrame = requestAnimationFrame(renderPremium);
           };
           const inferPremium = async () => {
@@ -774,7 +787,8 @@ export default function Home() {
             foregroundContext.restore();
             context.drawImage(foregroundCanvas, 0, 0, canvas.width, canvas.height);
           }
-          drawWebcamText();
+            drawWebcamText();
+            drawCameraOverlay();
           renderFrame = requestAnimationFrame(render);
         };
         const next = () => {
@@ -855,6 +869,8 @@ export default function Home() {
     background,
     backgroundVideo,
     backgroundLabel,
+    cameraOverlay,
+    cameraOverlayOpacity,
     backgroundMode,
     webcamText,
     webcamTextPosition,
@@ -1507,6 +1523,19 @@ export default function Home() {
           ? "GIF animado aplicado. Ele aparece atrás da câmera e também na gravação."
           : "Imagem de fundo aplicada à câmera.",
       );
+    };
+    reader.readAsDataURL(file);
+  }
+  function chooseCameraOverlay(file?: File) {
+    if (!file) return;
+    if (!file.type.startsWith("image/")) {
+      setNotice("A camada da webcam deve ser uma imagem, PNG, WebP ou GIF.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = () => {
+      setCameraOverlay(String(reader.result));
+      setNotice("Moldura aplicada à sua câmera online e à gravação.");
     };
     reader.readAsDataURL(file);
   }
@@ -2331,6 +2360,31 @@ export default function Home() {
                         <button className={webcamTextPosition === "bottom" ? "selected" : ""} onClick={() => setWebcamTextPosition("bottom")}>Embaixo</button>
                         <button onClick={() => setWebcamText("")}>Limpar</button>
                       </div>
+                      <label className="background-upload">
+                        ▣ Subir moldura / overlay
+                        <input
+                          type="file"
+                          accept="image/png,image/jpeg,image/webp,image/gif,.gif"
+                          onChange={(event) => chooseCameraOverlay(event.target.files?.[0])}
+                        />
+                      </label>
+                      {cameraOverlay && (
+                        <>
+                          <small>Moldura ativa na câmera online</small>
+                          <label className="menu-field">
+                            Opacidade da moldura
+                            <input
+                              type="range"
+                              min="0.1"
+                              max="1"
+                              step="0.05"
+                              value={cameraOverlayOpacity}
+                              onChange={(event) => setCameraOverlayOpacity(Number(event.target.value))}
+                            />
+                          </label>
+                          <button className="format" onClick={() => setCameraOverlay("")}>Limpar moldura</button>
+                        </>
+                      )}
                     </div>
                     {backgroundMode === "blur" && (
                       <label className="menu-field blur-control">

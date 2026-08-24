@@ -17,10 +17,27 @@ type SavedCall = {
   startedAt: number;
 };
 type EditorClip = { url: string; name: string };
+type TextEffect = "none" | "pop" | "slide" | "typewriter";
+type TextLayer = {
+  id: string;
+  text: string;
+  font: string;
+  color: string;
+  size: number;
+  x: number;
+  y: number;
+  align: "left" | "center" | "right";
+  start: number;
+  end: number;
+  fadeIn: number;
+  fadeOut: number;
+  effect: TextEffect;
+  background: boolean;
+};
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.11.3";
+const APP_VERSION = "v0.12.0";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -635,11 +652,37 @@ export default function Home() {
   function replaceOutgoingVideo(stream: MediaStream) {
     const track = stream.getVideoTracks()[0];
     if (!track) return;
+    track.contentHint = "motion";
     cameraCalls.current.forEach((call) =>
       call.peerConnection
         ?.getSenders()
         .filter((sender) => sender.track?.kind === "video")
-        .forEach((sender) => void sender.replaceTrack(track)),
+        .forEach((sender) => {
+          void sender.replaceTrack(track).then(() => tuneVideoSender(sender));
+        }),
+    );
+  }
+  function tuneVideoSender(sender: RTCRtpSender) {
+    if (!sender.track || sender.track.kind !== "video") return;
+    sender.track.contentHint = "motion";
+    const parameters = sender.getParameters();
+    if (!parameters.encodings?.length) parameters.encodings = [{}];
+    parameters.encodings.forEach((encoding) => {
+      encoding.maxBitrate = quality === "1080" ? 8_000_000 : 4_500_000;
+      encoding.maxFramerate = 30;
+      encoding.scaleResolutionDownBy = 1;
+    });
+    parameters.degradationPreference = "balanced";
+    void sender.setParameters(parameters).catch(() => undefined);
+  }
+  function tuneCameraCall(call: MediaConnection) {
+    [0, 500, 1_500].forEach((delay) =>
+      window.setTimeout(() => {
+        call.peerConnection
+          ?.getSenders()
+          .filter((sender) => sender.track?.kind === "video")
+          .forEach(tuneVideoSender);
+      }, delay),
     );
   }
   function replaceOutgoingAudio(stream: MediaStream) {
@@ -730,6 +773,7 @@ export default function Home() {
   function useCall(call: MediaConnection, fallback: string) {
     remoteId.current = call.peer;
     if (!cameraCalls.current.includes(call)) cameraCalls.current.push(call);
+    tuneCameraCall(call);
     // Em uma chamada PeerJS, `metadata` pertence a quem iniciou a chamada.
     // A faixa que chega ao convidado é a resposta do anfitrião, portanto usar
     // metadata aqui fazia o convidado ver o próprio nome nas duas câmeras.
@@ -1465,7 +1509,7 @@ export default function Home() {
   }
   if (editorOpen)
     return (
-      <ClipEditor
+      <ClipEditorV2
         initialClip={editorClip}
         onBack={() => {
           if (editorReturnToCall) {
@@ -2369,6 +2413,420 @@ function ClipEditor({
         <div className="timeline-top"><div><b>Linha do tempo</b><span>{clip ? `${time(start)} — ${time(end)} · ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div><button disabled={!clip} onClick={() => seek(start)}>↶ Ir ao início</button><button disabled={!clip} onClick={() => seek(end)}>↷ Ir ao fim</button></div>
         <div className="timeline"><div className="timeline-ruler">{Array.from({ length: 10 }, (_, index) => <i key={index}>{duration ? time((duration / 9) * index) : "00:00"}</i>)}</div><div className="timeline-track"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><div className="timeline-playhead" style={{ left: duration ? `${(current / duration) * 100}%` : "0%" }} /></div></div>
         <div className="cut-controls"><label>Início <input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={start} onChange={(event) => { const value = Math.min(Number(event.target.value), end - .05); setStart(value); seek(value); }} /></label><label>Fim <input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={end} onChange={(event) => { const value = Math.max(Number(event.target.value), start + .05); setEnd(value); seek(value); }} /></label></div>
+      </section>
+    </main>
+  );
+}
+
+function ClipEditorV2({
+  initialClip,
+  onBack,
+}: {
+  initialClip: EditorClip | null;
+  onBack: () => void;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  const initialLayer = (): TextLayer => ({
+    id: crypto.randomUUID(),
+    text: "Seu melhor momento começa aqui ✦",
+    font: "Inter",
+    color: "#ffffff",
+    size: 58,
+    x: 50,
+    y: 76,
+    align: "center",
+    start: 0,
+    end: 6,
+    fadeIn: 0.25,
+    fadeOut: 0.25,
+    effect: "pop",
+    background: false,
+  });
+  const [clip, setClip] = useState<EditorClip | null>(initialClip),
+    [duration, setDuration] = useState(0),
+    [current, setCurrent] = useState(0),
+    [start, setStart] = useState(0),
+    [end, setEnd] = useState(0),
+    [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
+    [selectedId, setSelectedId] = useState(""),
+    [exporting, setExporting] = useState(false),
+    [notice, setNotice] = useState("");
+  const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
+  const layerDrag = useRef<{
+    id: string;
+    x: number;
+    y: number;
+    startX: number;
+    startY: number;
+  } | null>(null);
+
+  useEffect(() => {
+    if (!selectedId && layers[0]) setSelectedId(layers[0].id);
+  }, [layers, selectedId]);
+
+  const time = (value: number) => {
+    const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
+    const minutes = Math.floor(safe / 60);
+    const seconds = Math.floor(safe % 60);
+    const tenths = Math.floor((safe % 1) * 10);
+    return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
+  };
+  const updateLayer = (id: string, patch: Partial<TextLayer>) =>
+    setLayers((items) =>
+      items.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
+    );
+  const layerOpacity = (layer: TextLayer, at: number) => {
+    if (at < layer.start || at > layer.end) return 0;
+    let opacity = 1;
+    if (layer.fadeIn > 0)
+      opacity = Math.min(opacity, (at - layer.start) / layer.fadeIn);
+    if (layer.fadeOut > 0)
+      opacity = Math.min(opacity, (layer.end - at) / layer.fadeOut);
+    return Math.max(0, Math.min(1, opacity));
+  };
+  const effectProgress = (layer: TextLayer, at: number) =>
+    Math.max(0, Math.min(1, (at - layer.start) / 0.45));
+  const visibleText = (layer: TextLayer, at: number) => {
+    if (layer.effect !== "typewriter") return layer.text;
+    const progress = Math.max(0, Math.min(1, (at - layer.start) / 1.6));
+    return layer.text.slice(0, Math.ceil(layer.text.length * progress));
+  };
+  function selectFile(file?: File) {
+    if (!file) return;
+    if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
+    setClip({
+      url: URL.createObjectURL(file),
+      name: file.name.replace(/\.[^.]+$/, ""),
+    });
+    setDuration(0);
+    setCurrent(0);
+    setStart(0);
+    setEnd(0);
+    setLayers([initialLayer()]);
+    setSelectedId("");
+    setNotice("Vídeo carregado. Agora monte as camadas na linha do tempo.");
+  }
+  function setVideoDuration(element: HTMLVideoElement) {
+    const value = element.duration;
+    if (Number.isFinite(value) && value > 0) {
+      setDuration(value);
+      setEnd(value);
+      setLayers((items) =>
+        items.map((layer, index) =>
+          index === 0 && layer.end === 6 ? { ...layer, end: value } : layer,
+        ),
+      );
+      return;
+    }
+    element.currentTime = 1e101;
+  }
+  function seek(value: number) {
+    if (!video.current) return;
+    video.current.currentTime = value;
+    setCurrent(value);
+  }
+  function addLayer() {
+    const from = Math.max(start, Math.min(current, Math.max(start, end - 0.4)));
+    const layer: TextLayer = {
+      ...initialLayer(),
+      id: crypto.randomUUID(),
+      text: "Novo texto",
+      y: Math.max(18, 70 - layers.length * 9),
+      start: from,
+      end: Math.max(from + 0.4, Math.min(end || duration || from + 4, from + 4)),
+      effect: "none",
+    };
+    setLayers((items) => [...items, layer]);
+    setSelectedId(layer.id);
+    setNotice("Nova camada adicionada. Arraste o texto diretamente na prévia.");
+  }
+  function duplicateLayer() {
+    if (!selected) return;
+    const layer = {
+      ...selected,
+      id: crypto.randomUUID(),
+      text: `${selected.text} cópia`,
+      x: Math.min(90, selected.x + 4),
+      y: Math.min(92, selected.y + 4),
+    };
+    setLayers((items) => [...items, layer]);
+    setSelectedId(layer.id);
+  }
+  function removeLayer() {
+    if (!selected) return;
+    setLayers((items) => items.filter((layer) => layer.id !== selected.id));
+    setSelectedId("");
+  }
+  function beginLayerDrag(event: React.PointerEvent<HTMLDivElement>, layer: TextLayer) {
+    setSelectedId(layer.id);
+    layerDrag.current = {
+      id: layer.id,
+      x: layer.x,
+      y: layer.y,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveLayerDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = layerDrag.current;
+    const stage = event.currentTarget.parentElement;
+    if (!drag || !stage) return;
+    const bounds = stage.getBoundingClientRect();
+    updateLayer(drag.id, {
+      x: Math.max(7, Math.min(93, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
+      y: Math.max(5, Math.min(95, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
+    });
+  }
+  function previewStyle(layer: TextLayer): React.CSSProperties {
+    const progress = effectProgress(layer, current);
+    const scale = layer.effect === "pop" ? 0.68 + progress * 0.32 : 1;
+    const slide = layer.effect === "slide" ? (1 - progress) * 70 : 0;
+    return {
+      fontFamily: layer.font,
+      color: layer.color,
+      fontSize: `${Math.round(layer.size / 2.25)}px`,
+      left: `${layer.x}%`,
+      top: `${layer.y}%`,
+      textAlign: layer.align,
+      opacity: layerOpacity(layer, current),
+      transform: `translate(calc(-50% + ${slide}px), -50%) scale(${scale})`,
+    };
+  }
+  function wrapCanvasText(
+    context: CanvasRenderingContext2D,
+    text: string,
+    maxWidth: number,
+  ) {
+    const lines: string[] = [];
+    text.split("\n").forEach((paragraph) => {
+      const words = paragraph.split(/\s+/);
+      let line = "";
+      words.forEach((word) => {
+        const attempt = line ? `${line} ${word}` : word;
+        if (line && context.measureText(attempt).width > maxWidth) {
+          lines.push(line);
+          line = word;
+        } else line = attempt;
+      });
+      lines.push(line);
+    });
+    return lines;
+  }
+  async function exportReel() {
+    const source = video.current;
+    if (!source || !clip || end <= start) return;
+    setExporting(true);
+    setNotice("Renderizando o reel com todas as camadas e efeitos…");
+    const canvas = document.createElement("canvas"),
+      context = canvas.getContext("2d");
+    if (!context) {
+      setExporting(false);
+      return;
+    }
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const output = canvas.captureStream(30);
+    const captured = (
+      source as HTMLVideoElement & { captureStream?: () => MediaStream }
+    ).captureStream?.();
+    captured?.getAudioTracks().forEach((track) => output.addTrack(track));
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : "video/webm";
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(output, {
+      mimeType: mime,
+      videoBitsPerSecond: 10_000_000,
+      audioBitsPerSecond: 192_000,
+    });
+    let frame = 0;
+    const draw = () => {
+      const scale = Math.max(
+        canvas.width / source.videoWidth,
+        canvas.height / source.videoHeight,
+      );
+      const width = source.videoWidth * scale,
+        height = source.videoHeight * scale;
+      context.fillStyle = "#090909";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(
+        source,
+        (canvas.width - width) / 2,
+        (canvas.height - height) / 2,
+        width,
+        height,
+      );
+      layers.forEach((layer) => {
+        const alpha = layerOpacity(layer, source.currentTime);
+        if (!layer.text.trim() || alpha <= 0) return;
+        const progress = effectProgress(layer, source.currentTime);
+        const scaleEffect = layer.effect === "pop" ? 0.68 + progress * 0.32 : 1;
+        const slide = layer.effect === "slide" ? (1 - progress) * 180 : 0;
+        const text = visibleText(layer, source.currentTime);
+        context.save();
+        context.globalAlpha = alpha;
+        context.font = `800 ${layer.size}px ${layer.font}`;
+        context.textAlign = layer.align;
+        context.textBaseline = "middle";
+        const x = (layer.x / 100) * canvas.width + slide,
+          y = (layer.y / 100) * canvas.height;
+        context.translate(x, y);
+        context.scale(scaleEffect, scaleEffect);
+        const lines = wrapCanvasText(context, text, 930);
+        const lineHeight = layer.size * 1.12;
+        const yOffset = -((lines.length - 1) * lineHeight) / 2;
+        lines.forEach((line, index) => {
+          const lineY = yOffset + index * lineHeight;
+          if (layer.background) {
+            const metrics = context.measureText(line);
+            const left =
+              layer.align === "center"
+                ? -metrics.width / 2
+                : layer.align === "right"
+                  ? -metrics.width
+                  : 0;
+            context.fillStyle = "rgba(0,0,0,.72)";
+            context.fillRect(
+              left - 18,
+              lineY - layer.size * 0.58,
+              metrics.width + 36,
+              layer.size * 1.16,
+            );
+          }
+          context.lineWidth = Math.max(4, layer.size / 11);
+          context.strokeStyle = "rgba(0,0,0,.76)";
+          context.fillStyle = layer.color;
+          context.strokeText(line, 0, lineY, 930);
+          context.fillText(line, 0, lineY, 930);
+        });
+        context.restore();
+      });
+      if (source.currentTime < end && !source.paused)
+        frame = requestAnimationFrame(draw);
+      else if (recorder.state !== "inactive") recorder.stop();
+    };
+    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.onstop = () => {
+      cancelAnimationFrame(frame);
+      const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `klip-reel-${Date.now()}.webm`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExporting(false);
+      setNotice("Reel exportado com corte, áudio, textos e efeitos.");
+    };
+    source.currentTime = start;
+    await new Promise<void>((resolve) =>
+      source.addEventListener("seeked", () => resolve(), { once: true }),
+    );
+    recorder.start();
+    await source.play();
+    draw();
+  }
+
+  return (
+    <main className="clip-editor clip-editor-v2">
+      <header className="editor-header">
+        <div className="brand">
+          <span className="brand-mark"><i /><i /></span>Klip <em>Studio</em>
+        </div>
+        <div className="editor-header-actions">
+          <span className="autosave-note">Projeto local · nada é enviado</span>
+          <button onClick={onBack}>← Voltar para sala</button>
+          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
+            {exporting ? "Renderizando…" : "⇩ Exportar reel"}
+          </button>
+        </div>
+      </header>
+      <section className="editor-workspace">
+        <aside className="editor-tools">
+          <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação ou vídeo do computador</small></div></div>
+          <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
+          {clip && <p className="editor-file">● {clip.name}</p>}
+
+          <div className="tool-heading layer-heading"><span>02</span><div><b>Camadas de texto</b><small>Cada texto tem seu próprio tempo</small></div></div>
+          <div className="layer-actions">
+            <button onClick={addLayer}>＋ Texto</button>
+            <button disabled={!selected} onClick={duplicateLayer}>⧉ Duplicar</button>
+          </div>
+          <div className="layer-list">
+            {layers.map((layer, index) => (
+              <button key={layer.id} className={selected?.id === layer.id ? "selected" : ""} onClick={() => { setSelectedId(layer.id); seek(Math.max(start, layer.start)); }}>
+                <b>T{index + 1}</b><span>{layer.text || "Texto vazio"}</span><small>{time(layer.start)}–{time(layer.end)}</small>
+              </button>
+            ))}
+          </div>
+
+          {selected && (
+            <div className="layer-inspector">
+              <div className="inspector-title"><b>Editar camada</b><button onClick={removeLayer} aria-label="Excluir camada">Excluir</button></div>
+              <textarea value={selected.text} onChange={(event) => updateLayer(selected.id, { text: event.target.value })} placeholder="Escreva o texto…" />
+              <div className="caption-controls">
+                <select value={selected.font} onChange={(event) => updateLayer(selected.id, { font: event.target.value })}>
+                  <option>Inter</option><option>Arial Black</option><option>Georgia</option><option>Courier New</option><option>Impact</option><option>Trebuchet MS</option>
+                </select>
+                <input aria-label="Cor do texto" type="color" value={selected.color} onChange={(event) => updateLayer(selected.id, { color: event.target.value })} />
+              </div>
+              <label className="range-label">Tamanho · {selected.size}px<input type="range" min="28" max="112" value={selected.size} onChange={(event) => updateLayer(selected.id, { size: Number(event.target.value) })} /></label>
+              <div className="align-buttons">
+                <button className={selected.align === "left" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "left" })}>≡</button>
+                <button className={selected.align === "center" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "center" })}>☰</button>
+                <button className={selected.align === "right" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "right" })}>≡</button>
+                <label className="text-bg-toggle"><input type="checkbox" checked={selected.background} onChange={(event) => updateLayer(selected.id, { background: event.target.checked })} /> Fundo</label>
+              </div>
+              <div className="effect-grid">
+                <label>Efeito<select value={selected.effect} onChange={(event) => updateLayer(selected.id, { effect: event.target.value as TextEffect })}><option value="none">Sem efeito</option><option value="pop">Pop</option><option value="slide">Deslizar</option><option value="typewriter">Máquina de escrever</option></select></label>
+                <label>Fade in<input type="number" min="0" max="3" step="0.1" value={selected.fadeIn} onChange={(event) => updateLayer(selected.id, { fadeIn: Math.max(0, Number(event.target.value)) })} /></label>
+                <label>Fade out<input type="number" min="0" max="3" step="0.1" value={selected.fadeOut} onChange={(event) => updateLayer(selected.id, { fadeOut: Math.max(0, Number(event.target.value)) })} /></label>
+              </div>
+              <div className="emoji-row">{["🔥", "😂", "🎙️", "✨", "💥", "👀"].map((emoji) => <button key={emoji} onClick={() => updateLayer(selected.id, { text: `${selected.text} ${emoji}`.trim() })}>{emoji}</button>)}</div>
+            </div>
+          )}
+        </aside>
+
+        <section className="editor-stage-wrap">
+          <div className="stage-meta"><span>Prévia vertical · 1080 × 1920</span><b>{time(current)}</b></div>
+          <div className="editor-stage">
+            {clip ? (
+              <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} />
+            ) : (
+              <div className="editor-empty"><b>Monte seu próximo reel.</b><span>Importe um vídeo para editar corte, textos e efeitos.</span></div>
+            )}
+            {clip && layers.map((layer) => {
+              const text = visibleText(layer, current);
+              if (!text || layerOpacity(layer, current) <= 0) return null;
+              return <div key={layer.id} className={`caption-overlay ${selected?.id === layer.id ? "selected-layer" : ""} ${layer.background ? "with-background" : ""}`} onPointerDown={(event) => beginLayerDrag(event, layer)} onPointerMove={moveLayerDrag} onPointerUp={() => { layerDrag.current = null; }} onPointerCancel={() => { layerDrag.current = null; }} style={previewStyle(layer)}><span>{text}</span><small>Arraste</small></div>;
+            })}
+          </div>
+          <p className="stage-help">Clique em um texto para selecionar. Arraste para posicionar. O resultado exportado segue esta prévia.</p>
+          {notice && <p className="editor-notice">{notice}</p>}
+        </section>
+      </section>
+
+      <section className="timeline-panel multi-timeline">
+        <div className="timeline-top">
+          <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div>
+          <button disabled={!clip} onClick={() => video.current?.paused ? void video.current?.play() : video.current?.pause()}>{video.current?.paused === false ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
+          <button disabled={!clip} onClick={() => seek(start)}>↶ Início</button>
+        </div>
+        <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
+        <div className="timeline-lanes">
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /></div></div>
+          {layers.map((layer, index) => (
+            <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => { setSelectedId(layer.id); seek(Math.max(start, layer.start)); }}>
+              <b>T{index + 1}</b><div className="lane-track"><button className="text-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }}><span>{layer.text || "Texto"}</span><i>{layer.effect !== "none" ? layer.effect : "texto"}</i></button></div>
+            </div>
+          ))}
+          <div className="global-playhead" style={{ left: duration ? `calc(74px + (100% - 74px) * ${current / duration})` : "74px" }} />
+        </div>
+        <div className="cut-controls editor-time-controls">
+          <label>Corte inicial <span>{time(start)}</span><input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={start} onChange={(event) => { const value = Math.min(Number(event.target.value), end - 0.05); setStart(value); seek(value); }} /></label>
+          <label>Corte final <span>{time(end)}</span><input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={end} onChange={(event) => { const value = Math.max(Number(event.target.value), start + 0.05); setEnd(value); seek(value); }} /></label>
+          {selected && <><label>Texto entra <span>{time(selected.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selected.end - 0.05); updateLayer(selected.id, { start: value }); seek(value); }} /></label><label>Texto sai <span>{time(selected.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selected.start + 0.05); updateLayer(selected.id, { end: value }); seek(Math.max(selected.start, value - 0.05)); }} /></label></>}
+        </div>
       </section>
     </main>
   );

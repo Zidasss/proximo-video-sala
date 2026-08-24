@@ -20,6 +20,7 @@ type EditorClip = { url: string; name: string };
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
+const APP_VERSION = "v0.10.0";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -1632,6 +1633,7 @@ export default function Home() {
               >
                 ↻ Recarregar sessão
               </button>
+              <p className="app-version">Klip {APP_VERSION} · produção</p>
             </>
           )}
         </aside>

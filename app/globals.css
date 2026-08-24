@@ -1,5 +1,6 @@
 @import "tailwindcss";
 .open-editor { border: 1px solid #ff8879; background: #2a1d1c; color: #fff5ef; }
+.app-version { margin: 9px 2px 0; color: #88837f; font-size: 10px; text-align: center; letter-spacing: .03em; }
 .call footer .edit-recording { border-color: #ff8879; color: #ffb3a9; }
 .clip-editor { min-height: 100vh; color: #f7f3ef; background: radial-gradient(circle at 58% 34%, #312225 0, #151314 42%, #0d0e0e 80%); }
 .editor-header { height: 72px; display: flex; align-items: center; justify-content: space-between; padding: 0 32px; border-bottom: 1px solid #ffffff17; background: #111212e8; }

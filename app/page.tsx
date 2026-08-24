@@ -64,7 +64,8 @@ export default function Home() {
     [backgroundMode, setBackgroundMode] = useState<"none" | "image" | "blur">(
       "none",
     ),
-    [cameraEpoch, setCameraEpoch] = useState(0);
+    [cameraEpoch, setCameraEpoch] = useState(0),
+    [virtualEpoch, setVirtualEpoch] = useState(0);
   const [friend, setFriend] = useState(""),
     [friendRecording, setFriendRecording] = useState(false),
     [speaking, setSpeaking] = useState({ mine: false, friend: false }),
@@ -83,7 +84,8 @@ export default function Home() {
   const local = useRef<MediaStream | null>(null),
     remote = useRef<MediaStream | null>(null),
     displayed = useRef<MediaStream | null>(null),
-    remoteDisplayed = useRef<MediaStream | null>(null);
+    remoteDisplayed = useRef<MediaStream | null>(null),
+    processedLocal = useRef<MediaStream | null>(null);
   const peer = useRef<Peer | null>(null),
     connection = useRef<DataConnection | null>(null),
     remoteId = useRef(""),
@@ -203,7 +205,7 @@ export default function Home() {
       void remoteScreen.current.play().catch(() => undefined);
     }
     if (previewMine.current && local.current)
-      previewMine.current.srcObject = local.current;
+      previewMine.current.srcObject = processedLocal.current || local.current;
     if (previewFriend.current && remote.current)
       previewFriend.current.srcObject = remote.current;
     const shared = sharing
@@ -213,7 +215,15 @@ export default function Home() {
         : null;
     if (previewScreen.current && shared)
       previewScreen.current.srcObject = shared;
-  }, [inRoom, friend, sharing, remoteSharing, previewOpen, previewMinimized]);
+  }, [
+    inRoom,
+    friend,
+    sharing,
+    remoteSharing,
+    previewOpen,
+    previewMinimized,
+    virtualEpoch,
+  ]);
   useEffect(() => {
     if (!inRoom || backgroundMode === "none" || !local.current) return;
     let active = true,
@@ -240,11 +250,12 @@ export default function Home() {
           locateFile: (file) =>
             `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}`,
         });
-        segmenter.setOptions({ modelSelection: 1, selfieMode: true });
+        segmenter.setOptions({ modelSelection: 1, selfieMode: false });
         segmenter.onResults((results) => {
           if (!active || !context) return;
           context.save();
           context.clearRect(0, 0, canvas.width, canvas.height);
+          context.filter = "blur(2px)";
           context.drawImage(
             results.segmentationMask,
             0,
@@ -252,15 +263,16 @@ export default function Home() {
             canvas.width,
             canvas.height,
           );
+          context.filter = "none";
           context.globalCompositeOperation = "source-out";
           if (backgroundMode === "blur") {
-            context.filter = "blur(18px)";
+            context.filter = "blur(28px)";
             context.drawImage(
               results.image,
-              -18,
-              -18,
-              canvas.width + 36,
-              canvas.height + 36,
+              -28,
+              -28,
+              canvas.width + 56,
+              canvas.height + 56,
             );
             context.filter = "none";
           } else {
@@ -281,9 +293,13 @@ export default function Home() {
           context.globalCompositeOperation = "destination-atop";
           context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
           context.restore();
-          if (!attached && mine.current) {
-            mine.current.srcObject = output;
-            void mine.current.play().catch(() => undefined);
+          if (!attached) {
+            processedLocal.current = output;
+            if (mine.current) {
+              mine.current.srcObject = output;
+              void mine.current.play().catch(() => undefined);
+            }
+            setVirtualEpoch((epoch) => epoch + 1);
             attached = true;
           }
         });
@@ -297,6 +313,10 @@ export default function Home() {
           cancelAnimationFrame(frame);
           void segmenter.close();
           output.getTracks().forEach((track) => track.stop());
+          if (processedLocal.current === output) {
+            processedLocal.current = null;
+            setVirtualEpoch((epoch) => epoch + 1);
+          }
         };
       } catch {
         setNotice(

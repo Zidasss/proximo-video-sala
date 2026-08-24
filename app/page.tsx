@@ -364,10 +364,12 @@ export default function Home() {
     const animatedBackdrop =
       backgroundMode === "image" &&
       (Boolean(backgroundVideo) || /GIF animado/.test(backgroundLabel));
+    const composedBackdrop = backgroundMode !== "none";
+    const compositeRate = animatedBackdrop ? 20 : composedBackdrop ? 24 : 30;
     const shouldSkipAnimatedRender = () => {
-      if (!animatedBackdrop) return false;
+      if (!composedBackdrop) return false;
       const now = performance.now();
-      if (now - lastAnimatedRenderAt < 1000 / 20) return true;
+      if (now - lastAnimatedRenderAt < 1000 / compositeRate) return true;
       lastAnimatedRenderAt = now;
       return false;
     };
@@ -431,7 +433,7 @@ export default function Home() {
         target.drawImage(sourceBackground, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
       };
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
-      const output = canvas.captureStream(animatedBackdrop ? 20 : 30);
+      const output = canvas.captureStream(compositeRate);
       const attachOverlayOutput = () => {
         if (attached) return;
         processedLocal.current = output;

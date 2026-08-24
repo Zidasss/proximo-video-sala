@@ -189,7 +189,7 @@ export default function Home() {
   );
   useEffect(() => {
     if (inRoom && mine.current && local.current) {
-      mine.current.srcObject = local.current;
+      mine.current.srcObject = processedLocal.current || local.current;
       void mine.current.play().catch(() => undefined);
     }
     if (friend && theirs.current && remote.current) {

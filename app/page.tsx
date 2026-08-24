@@ -14,6 +14,7 @@ export default function Home() {
   const [quality, setQuality] = useState<Quality>("1080"), [devices, setDevices] = useState<MediaDeviceInfo[]>([]), [deviceId, setDeviceId] = useState(""), [vertical, setVertical] = useState(false), [exportType, setExportType] = useState<"mp4"|"webm">("mp4"), [notice, setNotice] = useState("");
   const camera = useRef<HTMLVideoElement>(null), screen = useRef<HTMLVideoElement>(null), media = useRef<MediaStream | null>(null), display = useRef<MediaStream | null>(null), recorder = useRef<MediaRecorder | null>(null);
   useEffect(() => { if (inRoom && camera.current && media.current) camera.current.srcObject = media.current; }, [inRoom, cam]);
+  useEffect(() => { if (sharing && screen.current && display.current) screen.current.srcObject = display.current; }, [sharing]);
   useEffect(() => () => { media.current?.getTracks().forEach(t => t.stop()); display.current?.getTracks().forEach(t => t.stop()); recorder.current?.stop(); }, []);
   async function loadDevices() { const list = await navigator.mediaDevices.enumerateDevices(); setDevices(list.filter(d => d.kind === "videoinput")); }
   async function join(selectedId = deviceId) {

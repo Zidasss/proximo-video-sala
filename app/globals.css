@@ -526,6 +526,93 @@ body {
 .call header .brand {
   font-size: 21px;
 }
+.header-actions {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+}
+.settings,
+.settings-open {
+  border: 1px solid #485046;
+  background: #242a24;
+  color: #f4f0e8;
+  padding: 10px 13px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.settings-open {
+  background: #c4fa61;
+  border-color: #c4fa61;
+  color: #162015;
+}
+.settings-panel {
+  position: fixed;
+  z-index: 15;
+  top: 78px;
+  right: 28px;
+  width: min(600px, calc(100vw - 36px));
+  background: #1d231d;
+  border: 1px solid #465044;
+  box-shadow: 0 18px 55px #0009;
+  border-radius: 16px;
+  padding: 17px;
+}
+.settings-title {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  padding-bottom: 14px;
+  border-bottom: 1px solid #394238;
+}
+.settings-title b,
+.settings-grid b {
+  display: block;
+  font-size: 13px;
+  color: #f4f0e8;
+}
+.settings-title small {
+  display: block;
+  color: #aeb5a9;
+  font-size: 11px;
+  margin-top: 4px;
+}
+.settings-title button {
+  border: 0;
+  background: transparent;
+  color: #f4f0e8;
+  font-size: 22px;
+  cursor: pointer;
+}
+.settings-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 17px;
+  padding: 17px 0;
+}
+.settings-grid label > select {
+  margin-top: 8px;
+  width: 100%;
+}
+.setting-actions {
+  display: flex;
+  gap: 8px;
+  margin-top: 8px;
+  flex-wrap: wrap;
+}
+.setting-actions .format {
+  display: block;
+  font-size: 12px;
+}
+.session-refresh {
+  width: 100%;
+  border: 1px solid #485046;
+  background: transparent;
+  color: #d5ddd2;
+  padding: 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  font-size: 12px;
+}
 .room {
   font-size: 13px;
   color: #bbc1b8;
@@ -565,7 +652,9 @@ body {
   min-height: 0;
 }
 .tile.speaking {
-  box-shadow: 0 0 0 4px #c4fa61, 0 0 26px #c4fa61aa;
+  box-shadow:
+    0 0 0 4px #c4fa61,
+    0 0 26px #c4fa61aa;
 }
 .tile video {
   height: 100%;
@@ -722,6 +811,34 @@ body {
   }
   .call header {
     padding: 0 16px;
+  }
+  .header-actions {
+    gap: 6px;
+  }
+  .header-actions .invite {
+    font-size: 0;
+    padding: 10px;
+  }
+  .header-actions .invite::first-letter {
+    font-size: 14px;
+  }
+  .settings {
+    font-size: 0;
+    padding: 10px;
+  }
+  .settings::first-letter {
+    font-size: 14px;
+  }
+  .settings-panel {
+    top: 76px;
+    right: 12px;
+    width: calc(100vw - 24px);
+    max-height: calc(100vh - 92px);
+    overflow: auto;
+  }
+  .settings-grid {
+    grid-template-columns: 1fr;
+    gap: 14px;
   }
   .room {
     display: none;

@@ -59,6 +59,7 @@ export default function Home() {
     [speaking, setSpeaking] = useState({ mine: false, friend: false }),
     [notice, setNotice] = useState(""),
     [chatOpen, setChatOpen] = useState(false),
+    [settingsOpen, setSettingsOpen] = useState(false),
     [draft, setDraft] = useState(""),
     [messages, setMessages] = useState<Msg[]>([]);
   const local = useRef<MediaStream | null>(null),
@@ -389,7 +390,9 @@ export default function Home() {
             void remoteScreen.current.play().catch(() => undefined);
           }
           setRemoteSharing(true);
-          setNotice(`${String(call.metadata?.name || "Seu amigo")} assumiu o compartilhamento.`);
+          setNotice(
+            `${String(call.metadata?.name || "Seu amigo")} assumiu o compartilhamento.`,
+          );
         });
         call.on("close", () => {
           if (remoteDisplayed.current === received) {
@@ -680,25 +683,29 @@ export default function Home() {
     try {
       recordingAudio = new AudioContext();
       const destination = recordingAudio.createMediaStreamDestination();
-      [local.current, remote.current, displayed.current, remoteDisplayed.current].forEach(
-        (stream) => {
-          if (!stream?.getAudioTracks().length) return;
-          recordingAudio!
-            .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
-            .connect(destination);
-        },
-      );
+      [
+        local.current,
+        remote.current,
+        displayed.current,
+        remoteDisplayed.current,
+      ].forEach((stream) => {
+        if (!stream?.getAudioTracks().length) return;
+        recordingAudio!
+          .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
+          .connect(destination);
+      });
       const mixedTrack = destination.stream.getAudioTracks()[0];
       if (mixedTrack) output.addTrack(mixedTrack);
       void recordingAudio.resume();
     } catch {
       recordingAudio = null;
-      setNotice("O vídeo será gravado; o navegador não liberou a mixagem de áudio.");
+      setNotice(
+        "O vídeo será gravado; o navegador não liberou a mixagem de áudio.",
+      );
     }
-    const
-      mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-        ? "video/webm;codecs=vp9,opus"
-        : "video/webm";
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : "video/webm";
     const rec = new MediaRecorder(output, {
       mimeType: mime,
       videoBitsPerSecond: quality === "1080" ? 12_000_000 : 6_000_000,
@@ -869,87 +876,128 @@ export default function Home() {
         <div className="room">
           <i /> sala {room} · senha {pin}
         </div>
-        <label className="background-upload session-background">
-          ▧ Fundo da câmera
-          <input
-            type="file"
-            accept="image/*"
-            onChange={(event) => chooseBackground(event.target.files?.[0])}
-          />
-        </label>
-        <button
-          className={backgroundMode === "blur" ? "format on" : "format"}
-          onClick={toggleBlur}
-        >
-          ◌ Desfocar {backgroundMode === "blur" ? "ON" : ""}
-        </button>
-        <select
-          className="camera-select"
-          value={deviceId}
-          onChange={(event) => void selectCamera(event.target.value)}
-          aria-label="Escolher webcam"
-        >
-          <option value="">Webcam padrão</option>
-          {devices.map((device) => (
-            <option key={device.deviceId} value={device.deviceId}>
-              {device.label || "Webcam"}
-            </option>
-          ))}
-        </select>
-        <button
-          className={vertical ? "format on" : "format"}
-          onClick={() => {
-            setVertical(!vertical);
-            setPreviewOpen(true);
-          }}
-        >
-          ▯ TikTok {vertical ? "ON" : ""}
-        </button>
-        <button
-          className="format"
-          onClick={() => {
-            setVertical(true);
-            setPreviewOpen(!previewOpen);
-          }}
-        >
-          ▣ Prévia
-        </button>
-        <button
-          className="format"
-          onClick={() =>
-            mode === "host" &&
-            setTopOrder(
-              topOrder === "mine-first" ? "friend-first" : "mine-first",
-            )
-          }
-          disabled={mode === "guest"}
-        >
-          ⇄ Inverter
-        </button>
-        <button
-          className="format"
-          onClick={() =>
-            mode === "host" &&
-            setScreenPosition(screenPosition === "bottom" ? "top" : "bottom")
-          }
-          disabled={mode === "guest"}
-        >
-          ⇅ Tela {screenPosition === "bottom" ? "embaixo" : "em cima"}
-        </button>
-        <button className="invite" onClick={() => void invite()}>
-          ⌁ Convidar amigo
-        </button>
-        <button className="chat-toggle" onClick={() => setChatOpen(!chatOpen)}>
-          ▤ Chat
-        </button>
-        <button
-          className="refresh"
-          onClick={() => location.reload()}
-          title="Recarregar a sessão"
-        >
-          ↻
-        </button>
+        <div className="header-actions">
+          <button className="invite" onClick={() => void invite()}>
+            ⌁ Convidar
+          </button>
+          <button
+            className="chat-toggle"
+            onClick={() => setChatOpen(!chatOpen)}
+          >
+            ▤ Chat
+          </button>
+          <button
+            className={settingsOpen ? "settings-open" : "settings"}
+            onClick={() => setSettingsOpen(!settingsOpen)}
+          >
+            ⚙ Ajustes
+          </button>
+        </div>
       </header>
+      {settingsOpen && (
+        <aside className="settings-panel">
+          <div className="settings-title">
+            <div>
+              <b>Ajustes da sessão</b>
+              <small>Personalize a câmera e o vídeo que será salvo.</small>
+            </div>
+            <button onClick={() => setSettingsOpen(false)}>×</button>
+          </div>
+          <div className="settings-grid">
+            <label>
+              <b>Câmera</b>
+              <select
+                value={deviceId}
+                onChange={(event) => void selectCamera(event.target.value)}
+                aria-label="Escolher webcam"
+              >
+                <option value="">Webcam padrão</option>
+                {devices.map((device) => (
+                  <option key={device.deviceId} value={device.deviceId}>
+                    {device.label || "Webcam"}
+                  </option>
+                ))}
+              </select>
+            </label>
+            <div>
+              <b>Fundo da câmera</b>
+              <div className="setting-actions">
+                <label className="background-upload">
+                  ▧ Escolher imagem
+                  <input
+                    type="file"
+                    accept="image/*"
+                    onChange={(event) =>
+                      chooseBackground(event.target.files?.[0])
+                    }
+                  />
+                </label>
+                <button
+                  className={backgroundMode === "blur" ? "format on" : "format"}
+                  onClick={toggleBlur}
+                >
+                  ◌ Desfocar
+                </button>
+              </div>
+            </div>
+            <div>
+              <b>Vídeo para Reels</b>
+              <div className="setting-actions">
+                <button
+                  className={vertical ? "format on" : "format"}
+                  onClick={() => {
+                    setVertical(!vertical);
+                    setPreviewOpen(true);
+                  }}
+                >
+                  ▯ Formato vertical
+                </button>
+                <button
+                  className="format"
+                  onClick={() => {
+                    setVertical(true);
+                    setPreviewOpen(!previewOpen);
+                  }}
+                >
+                  ▣ Abrir prévia
+                </button>
+              </div>
+            </div>
+            <div>
+              <b>Layout vertical</b>
+              <div className="setting-actions">
+                <button
+                  className="format"
+                  onClick={() =>
+                    mode === "host" &&
+                    setTopOrder(
+                      topOrder === "mine-first" ? "friend-first" : "mine-first",
+                    )
+                  }
+                  disabled={mode === "guest"}
+                >
+                  ⇄ Trocar câmeras
+                </button>
+                <button
+                  className="format"
+                  onClick={() =>
+                    mode === "host" &&
+                    setScreenPosition(
+                      screenPosition === "bottom" ? "top" : "bottom",
+                    )
+                  }
+                  disabled={mode === "guest"}
+                >
+                  ⇅ Tela {screenPosition === "bottom" ? "embaixo" : "em cima"}
+                </button>
+              </div>
+            </div>
+          </div>
+          <button className="session-refresh" onClick={() => location.reload()}>
+            ↻ Recarregar sessão
+          </button>
+        </aside>
+      )}
       <section className={"stage " + (screenActive ? "screen-on" : "")}>
         {screenActive && (
           <div className="tile shared">
@@ -1130,7 +1178,12 @@ export default function Home() {
           <b>{recording ? `● ${timeLabel(recordSeconds)}` : "●"}</b>
           <small>{recording ? "Parar e salvar" : "Gravar local"}</small>
         </button>
-        {recording && <button className="clip" onClick={saveClip}><b>✂</b><small>Salvar trecho</small></button>}
+        {recording && (
+          <button className="clip" onClick={saveClip}>
+            <b>✂</b>
+            <small>Salvar trecho</small>
+          </button>
+        )}
         <i />
         <button className="leave" onClick={leave}>
           <b>⌕</b>

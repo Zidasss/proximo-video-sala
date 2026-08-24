@@ -96,6 +96,7 @@ const constraints = (
 
 export default function Home() {
   const [inRoom, setInRoom] = useState(false);
+  const [localStudio, setLocalStudio] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false),
     [editorReturnToCall, setEditorReturnToCall] = useState(false),
     [editorClip, setEditorClip] = useState<EditorClip | null>(null);
@@ -1994,6 +1995,8 @@ export default function Home() {
         <span />
       </main>
     );
+  if (localStudio)
+    return <OfflineStudio onBack={() => setLocalStudio(false)} />;
   if (!inRoom)
     return (
       <main className="landing">
@@ -2007,6 +2010,9 @@ export default function Home() {
           </div>
           <button className="open-editor" onClick={openEditor}>
             ✦ Editor de clipes
+          </button>
+          <button className="open-editor" onClick={() => setLocalStudio(true)}>
+            ◉ Estúdio offline
           </button>
         </nav>
         <section className="hero">
@@ -2766,6 +2772,45 @@ export default function Home() {
       </footer>
     </main>
   );
+}
+
+function OfflineStudio({ onBack }: { onBack: () => void }) {
+  const first = useRef<HTMLVideoElement>(null), second = useRef<HTMLVideoElement>(null), canvas = useRef<HTMLCanvasElement>(null);
+  const [cams, setCams] = useState<MediaDeviceInfo[]>([]), [mics, setMics] = useState<MediaDeviceInfo[]>([]);
+  const [camA, setCamA] = useState(""), [camB, setCamB] = useState(""), [micA, setMicA] = useState(""), [micB, setMicB] = useState("");
+  const [audioMode, setAudioMode] = useState<"mix" | "a" | "b">("mix"), [recording, setRecording] = useState(false), [notice, setNotice] = useState("");
+  const streams = useRef<[MediaStream | null, MediaStream | null]>([null, null]);
+  const recorder = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), frame = useRef(0);
+  useEffect(() => { void navigator.mediaDevices.enumerateDevices().then((items) => { setCams(items.filter((item) => item.kind === "videoinput")); setMics(items.filter((item) => item.kind === "audioinput")); }); return () => streams.current.forEach((stream) => stream?.getTracks().forEach((track) => track.stop())); }, []);
+  async function openCamera(index: 0 | 1, deviceId: string, micId: string) {
+    streams.current[index]?.getTracks().forEach((track) => track.stop());
+    if (!deviceId) return;
+    const stream = await navigator.mediaDevices.getUserMedia({ video: { deviceId: { exact: deviceId }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }, audio: micId ? { deviceId: { exact: micId }, echoCancellation: true, noiseSuppression: true } : false });
+    streams.current[index] = stream;
+    const video = index === 0 ? first.current : second.current;
+    if (video) { video.srcObject = stream; await video.play().catch(() => undefined); }
+  }
+  function draw() {
+    const target = canvas.current, a = first.current, b = second.current;
+    if (!target || !a || !b) return;
+    const context = target.getContext("2d"); if (!context) return;
+    target.width = 1920; target.height = 1080; context.fillStyle = "#0d0f0e"; context.fillRect(0, 0, target.width, target.height);
+    const drawVideo = (video: HTMLVideoElement, x: number, y: number, w: number, h: number) => { if (!video.videoWidth) return; const scale = Math.max(w / video.videoWidth, h / video.videoHeight); const dw = video.videoWidth * scale, dh = video.videoHeight * scale; context.save(); context.beginPath(); context.rect(x, y, w, h); context.clip(); context.drawImage(video, x + (w - dw) / 2, y + (h - dh) / 2, dw, dh); context.restore(); };
+    drawVideo(a, 0, 0, 960, 1080); drawVideo(b, 960, 0, 960, 1080);
+    if (recording) frame.current = requestAnimationFrame(draw);
+  }
+  function startRecording() {
+    if (!canvas.current) return;
+    chunks.current = []; const output = canvas.current.captureStream(30);
+    const audio = new AudioContext(), destination = audio.createMediaStreamDestination();
+    streams.current.forEach((stream, index) => { if (audioMode === "a" && index !== 0 || audioMode === "b" && index !== 1) return; const track = stream?.getAudioTracks()[0]; if (track) audio.createMediaStreamSource(new MediaStream([track])).connect(destination); });
+    destination.stream.getAudioTracks().forEach((track) => output.addTrack(track));
+    const mime = mimeForExport("webm") || "video/webm"; const media = new MediaRecorder(output, { mimeType: mime, videoBitsPerSecond: 18_000_000, audioBitsPerSecond: 192_000 });
+    media.ondataavailable = (event) => event.data.size && chunks.current.push(event.data); media.onstop = () => { const url = URL.createObjectURL(new Blob(chunks.current, { type: mime })); const link = document.createElement("a"); link.href = url; link.download = `klip-offline-${Date.now()}.webm`; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60000); setNotice("Gravação offline salva com as câmeras e o áudio selecionado."); };
+    recorder.current = media; setRecording(true); media.start(250); draw();
+  }
+  function stopRecording() { recorder.current?.stop(); setRecording(false); cancelAnimationFrame(frame.current); }
+  return <main className="offline-studio"><header className="editor-header"><div className="brand">Klip <em>Estúdio offline</em></div><button onClick={onBack}>← Voltar</button></header><section className="offline-grid"><aside className="offline-controls"><h2>Estúdio local</h2><p>Duas câmeras, um ou dois microfones. Nada sai do computador.</p><label>Câmera 1<select value={camA} onChange={(event) => { setCamA(event.target.value); void openCamera(0, event.target.value, micA); }}>{cams.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Webcam"}</option>)}</select></label><label>Microfone 1<select value={micA} onChange={(event) => { setMicA(event.target.value); if (camA) void openCamera(0, camA, event.target.value); }}>{mics.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Microfone"}</option>)}</select></label><label>Câmera 2<select value={camB} onChange={(event) => { setCamB(event.target.value); void openCamera(1, event.target.value, micB); }}>{cams.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Webcam"}</option>)}</select></label><label>Microfone 2<select value={micB} onChange={(event) => { setMicB(event.target.value); if (camB) void openCamera(1, camB, event.target.value); }}>{mics.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Microfone"}</option>)}</select></label><label>Áudio da gravação<select value={audioMode} onChange={(event) => setAudioMode(event.target.value as "mix" | "a" | "b")}><option value="mix">Misturar os dois</option><option value="a">Somente microfone 1</option><option value="b">Somente microfone 2</option></select></label><button className={recording ? "offline-stop" : "offline-record"} onClick={recording ? stopRecording : startRecording}>{recording ? "■ Parar e salvar" : "● Iniciar gravação"}</button>{notice && <small>{notice}</small>}</aside><section className="offline-preview"><div className="offline-cameras"><video ref={first} muted playsInline /><video ref={second} muted playsInline /></div><canvas ref={canvas} /><p>Prévia local · gravação em WebM de alta qualidade</p></section></section></main>;
 }
 
 function ClipEditor({

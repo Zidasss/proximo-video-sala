@@ -87,7 +87,8 @@ export default function Home() {
     remote = useRef<MediaStream | null>(null),
     displayed = useRef<MediaStream | null>(null),
     remoteDisplayed = useRef<MediaStream | null>(null),
-    processedLocal = useRef<MediaStream | null>(null);
+    processedLocal = useRef<MediaStream | null>(null),
+    blurAmountRef = useRef(16);
   const peer = useRef<Peer | null>(null),
     connection = useRef<DataConnection | null>(null),
     remoteId = useRef(""),
@@ -231,6 +232,7 @@ export default function Home() {
     if (!inRoom || backgroundMode === "none" || !local.current) return;
     let active = true,
       frame = 0,
+      lastInferenceAt = 0,
       attached = false;
     const source = document.createElement("video"),
       canvas = document.createElement("canvas"),
@@ -276,13 +278,14 @@ export default function Home() {
           context.drawImage(results.image, 0, 0, canvas.width, canvas.height);
           context.globalCompositeOperation = "destination-over";
           if (backgroundMode === "blur") {
-            context.filter = `blur(${blurAmount}px) brightness(.9) saturate(.93)`;
+            const strength = blurAmountRef.current;
+            context.filter = `blur(${strength}px) brightness(.9) saturate(.93)`;
             context.drawImage(
               results.image,
-              -blurAmount,
-              -blurAmount,
-              canvas.width + blurAmount * 2,
-              canvas.height + blurAmount * 2,
+              -strength,
+              -strength,
+              canvas.width + strength * 2,
+              canvas.height + strength * 2,
             );
             context.filter = "none";
           } else {
@@ -318,6 +321,13 @@ export default function Home() {
         });
         const next = async () => {
           if (!active) return;
+          // A máscara em 15 fps é estável para vídeo e deixa CPU suficiente
+          // para a chamada WebRTC. O canvas continua emitindo a 30 fps.
+          if (performance.now() - lastInferenceAt < 66) {
+            frame = requestAnimationFrame(() => void next());
+            return;
+          }
+          lastInferenceAt = performance.now();
           await segmenter.send({ image: source });
           frame = requestAnimationFrame(() => void next());
         };
@@ -351,7 +361,6 @@ export default function Home() {
     background,
     backgroundMode,
     skinSmooth,
-    blurAmount,
     cameraEpoch,
     inRoom,
   ]);
@@ -1384,9 +1393,11 @@ export default function Home() {
                           min="6"
                           max="26"
                           value={blurAmount}
-                          onChange={(event) =>
-                            setBlurAmount(Number(event.target.value))
-                          }
+                          onChange={(event) => {
+                            const amount = Number(event.target.value);
+                            blurAmountRef.current = amount;
+                            setBlurAmount(amount);
+                          }}
                         />
                       </label>
                     )}

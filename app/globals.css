@@ -638,6 +638,11 @@ body {
   display: inline-block;
   margin-right: 7px;
 }
+.call-timer {
+  color: #ffd1c8;
+  font-variant-numeric: tabular-nums;
+  font-weight: 700;
+}
 .invite {
   border: 1px solid #485046;
   background: transparent;

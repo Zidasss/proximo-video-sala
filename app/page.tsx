@@ -5,6 +5,16 @@ import Peer, { DataConnection, MediaConnection } from "peerjs";
 
 type Quality = "720" | "1080";
 type Msg = { name: string; text: string };
+type SavedCall = {
+  room: string;
+  pin: string;
+  name: string;
+  owner: string;
+  mode: "host" | "guest";
+  quality: Quality;
+  deviceId: string;
+  startedAt: number;
+};
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
@@ -64,6 +74,9 @@ export default function Home() {
     [settingsMinimized, setSettingsMinimized] = useState(false),
     [previewOffset, setPreviewOffset] = useState({ x: 0, y: 0 }),
     [previewMinimized, setPreviewMinimized] = useState(false),
+    [callStartedAt, setCallStartedAt] = useState(0),
+    [callSeconds, setCallSeconds] = useState(0),
+    [restoreCall, setRestoreCall] = useState<SavedCall | null>(null),
     [draft, setDraft] = useState(""),
     [messages, setMessages] = useState<Msg[]>([]);
   const local = useRef<MediaStream | null>(null),
@@ -79,6 +92,7 @@ export default function Home() {
     speakingRef = useRef({ mine: false, friend: false }),
     pipVideo = useRef<HTMLVideoElement | null>(null),
     pipFrame = useRef(0),
+    peerRetry = useRef(0),
     settingsDrag = useRef<{
       x: number;
       y: number;
@@ -109,10 +123,56 @@ export default function Home() {
       setOwner((query.get("anfitriao") || "Anfitrião").slice(0, 40));
       setMode("guest");
     } else {
-      setRoom(code(6));
-      setPin(code(4));
+      try {
+        const saved = JSON.parse(
+          sessionStorage.getItem("klip-active-call") || "null",
+        ) as SavedCall | null;
+        if (
+          saved?.room?.length === 6 &&
+          saved.pin?.length === 4 &&
+          saved.name
+        ) {
+          setRoom(saved.room);
+          setPin(saved.pin);
+          setName(saved.name);
+          setOwner(saved.owner);
+          setMode(saved.mode);
+          setQuality(saved.quality);
+          setDeviceId(saved.deviceId);
+          setRestoreCall(saved);
+          setNotice("Restaurando sua chamada…");
+        } else {
+          setRoom(code(6));
+          setPin(code(4));
+        }
+      } catch {
+        setRoom(code(6));
+        setPin(code(4));
+      }
     }
   }, []);
+  useEffect(() => {
+    if (
+      !restoreCall ||
+      inRoom ||
+      room !== restoreCall.room ||
+      pin !== restoreCall.pin ||
+      name !== restoreCall.name ||
+      mode !== restoreCall.mode
+    )
+      return;
+    void join(restoreCall.deviceId);
+  }, [restoreCall, inRoom, room, pin, name, mode]);
+  useEffect(() => {
+    if (!inRoom || !callStartedAt) return;
+    const tick = () =>
+      setCallSeconds(
+        Math.max(0, Math.floor((Date.now() - callStartedAt) / 1000)),
+      );
+    tick();
+    const timer = window.setInterval(tick, 1000);
+    return () => window.clearInterval(timer);
+  }, [inRoom, callStartedAt]);
   useEffect(
     () => () => {
       peer.current?.destroy();
@@ -437,6 +497,7 @@ export default function Home() {
       useCall(call, String(call.metadata?.name || "Seu amigo"));
     });
     client.on("open", () => {
+      peerRetry.current = 0;
       if (isHost) {
         setNotice("Sala pronta. Copie o convite e mantenha esta aba aberta.");
         return;
@@ -449,7 +510,17 @@ export default function Home() {
       setNotice("Conectando à sala…");
     });
     client.on("error", (error) => {
-      if (error.type === "peer-unavailable")
+      if (
+        (error.type === "peer-unavailable" ||
+          error.type === "unavailable-id") &&
+        peerRetry.current < 5
+      ) {
+        peerRetry.current += 1;
+        setNotice("Reconectando à sala…");
+        window.setTimeout(() => {
+          if (peer.current === client) startPeer(stream);
+        }, 1200);
+      } else if (error.type === "peer-unavailable")
         setNotice(
           "O anfitrião ainda não está nesta sala. Peça para ele criar a sala primeiro.",
         );
@@ -478,6 +549,22 @@ export default function Home() {
         await mine.current.play().catch(() => undefined);
       }
       if (mode === "host") setOwner(name.trim() || "Anfitrião");
+      const startedAt =
+        restoreCall?.room === room && restoreCall.pin === pin
+          ? restoreCall.startedAt
+          : Date.now();
+      const saved: SavedCall = {
+        room,
+        pin,
+        name: name.trim(),
+        owner: mode === "host" ? name.trim() : owner,
+        mode,
+        quality,
+        deviceId: chosen || "",
+        startedAt,
+      };
+      sessionStorage.setItem("klip-active-call", JSON.stringify(saved));
+      setCallStartedAt(startedAt);
       setInRoom(true);
       await devicesList();
       startPeer(stream);
@@ -570,6 +657,8 @@ export default function Home() {
   }
   const timeLabel = (seconds: number) =>
     `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
+  const callTimeLabel = (seconds: number) =>
+    `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   function downloadRecording(chunks: Blob[], mime: string, label: string) {
     if (!chunks.length) return;
     const link = document.createElement("a"),
@@ -788,6 +877,10 @@ export default function Home() {
     setFriend("");
     setSharing(false);
     setRemoteSharing(false);
+    sessionStorage.removeItem("klip-active-call");
+    setCallStartedAt(0);
+    setCallSeconds(0);
+    setRestoreCall(null);
     setInRoom(false);
   }
   function startSettingsDrag(event: React.PointerEvent<HTMLDivElement>) {
@@ -1074,7 +1167,8 @@ export default function Home() {
           Klip
         </div>
         <div className="room">
-          <i /> sala {room} · senha {pin}
+          <i /> sala {room} ·{" "}
+          <span className="call-timer">⏱ {callTimeLabel(callSeconds)}</span>
         </div>
         <div className="header-actions">
           <button className="invite" onClick={() => void invite()}>

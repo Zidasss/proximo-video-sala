@@ -268,6 +268,19 @@ export default function Home() {
     return () => window.clearInterval(timer);
   }, [recording]);
   useEffect(() => {
+    if (!inRoom || !("mediaSession" in navigator)) return;
+    const action = "enterpictureinpicture" as MediaSessionAction;
+    try {
+      navigator.mediaSession.setActionHandler(
+        action,
+        () => void openPictureInPicture(),
+      );
+      return () => navigator.mediaSession.setActionHandler(action, null);
+    } catch {
+      return;
+    }
+  }, [inRoom, vertical, topOrder, tiktokTop, sharing, remoteSharing]);
+  useEffect(() => {
     if (!inRoom) return;
     const audio = new AudioContext(),
       analysers: {
@@ -1112,7 +1125,6 @@ export default function Home() {
                   setSettingsMinimized(next);
                   if (next) {
                     setPreviewOpen(true);
-                    void openPictureInPicture();
                   }
                 }}
                 aria-label={
@@ -1295,10 +1307,7 @@ export default function Home() {
             <span>Prévia para salvar · 9:16</span>
             <div className="window-actions">
               <button
-                onClick={() => {
-                  setPreviewMinimized(!previewMinimized);
-                  if (!previewMinimized) void openPictureInPicture();
-                }}
+                onClick={() => setPreviewMinimized(!previewMinimized)}
                 aria-label={
                   previewMinimized ? "Expandir prévia" : "Minimizar prévia"
                 }

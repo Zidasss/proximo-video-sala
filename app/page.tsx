@@ -3124,6 +3124,7 @@ function ClipEditorV2({
     [audioEnhance, setAudioEnhance] = useState(true),
     [timelineZoom, setTimelineZoom] = useState(1),
     [safeGuides, setSafeGuides] = useState(true),
+    [previewScale, setPreviewScale] = useState(1.2),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
     [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
@@ -3234,7 +3235,6 @@ function ClipEditorV2({
     const subtitle: Record<typeof template, string> = { podcast: "Siga para mais episódios", react: "espera até o final", gameplay: "não pisca", interview: "assista até o fim" };
     const make = (text: string, y: number, size: number, effect: TextEffect): TextLayer => ({ ...base, id: crypto.randomUUID(), text, y, size, start, end: Math.max(start + .5, length), effect, background: true });
     remember();
-    setExportAspect("vertical");
     setLayers([make(title[template], 18, 72, "bounce"), make(subtitle[template], 80, 48, "pop")]);
     setIllustrations([]);
     setNotice(`Template ${template} aplicado. Ajuste os textos e as camadas como quiser.`);
@@ -3784,8 +3784,8 @@ function ClipEditorV2({
         </aside>
 
         <section className="editor-stage-wrap">
-          <div className="stage-meta"><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>
-          <div className="editor-stage" style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
+          <div className="stage-meta" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)` }}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><div><button onClick={() => setPreviewScale((value) => Math.max(.7, Number((value - .1).toFixed(1))))}>−</button><b>{Math.round(previewScale * 100)}%</b><button onClick={() => setPreviewScale((value) => Math.min(2, Number((value + .1).toFixed(1))))}>＋</button></div><b>{time(current)}</b></div>
+          <div className="editor-stage" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
               <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} />
             ) : (

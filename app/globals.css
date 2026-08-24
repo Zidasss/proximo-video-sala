@@ -549,7 +549,7 @@ body {
   position: fixed;
   z-index: 15;
   top: 78px;
-  right: 28px;
+  left: 28px;
   width: min(600px, calc(100vw - 36px));
   background: #1d231d;
   border: 1px solid #465044;
@@ -563,17 +563,23 @@ body {
   align-items: flex-start;
   padding-bottom: 14px;
   border-bottom: 1px solid #394238;
+  cursor: grab;
+  user-select: none;
+  touch-action: none;
+}
+.settings-title:active {
+  cursor: grabbing;
 }
 .settings-title b,
 .settings-grid b {
   display: block;
-  font-size: 13px;
+  font-size: 15px;
   color: #f4f0e8;
 }
 .settings-title small {
   display: block;
   color: #aeb5a9;
-  font-size: 11px;
+  font-size: 13px;
   margin-top: 4px;
 }
 .settings-title button {
@@ -592,6 +598,12 @@ body {
 .settings-grid label > select {
   margin-top: 8px;
   width: 100%;
+  background: #2b2928;
+  border: 1px solid #6a4b44;
+  border-radius: 9px;
+  color: #fff8f4;
+  padding: 11px;
+  font-size: 14px;
 }
 .setting-actions {
   display: flex;
@@ -601,7 +613,8 @@ body {
 }
 .setting-actions .format {
   display: block;
-  font-size: 12px;
+  font-size: 14px;
+  padding: 11px 13px;
 }
 .session-refresh {
   width: 100%;
@@ -831,7 +844,8 @@ body {
   }
   .settings-panel {
     top: 76px;
-    right: 12px;
+    left: 12px;
+    right: auto;
     width: calc(100vw - 24px);
     max-height: calc(100vh - 92px);
     overflow: auto;
@@ -1024,4 +1038,14 @@ body {
 }
 .call footer > i {
   background: #5c4540;
+}
+.preview-title {
+  font-size: 14px;
+}
+.preview-slider {
+  font-size: 13px;
+}
+.tiktok-preview small,
+.preview-screen {
+  font-size: 12px;
 }

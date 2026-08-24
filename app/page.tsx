@@ -60,6 +60,7 @@ export default function Home() {
     [notice, setNotice] = useState(""),
     [chatOpen, setChatOpen] = useState(false),
     [settingsOpen, setSettingsOpen] = useState(false),
+    [settingsOffset, setSettingsOffset] = useState({ x: 0, y: 0 }),
     [draft, setDraft] = useState(""),
     [messages, setMessages] = useState<Msg[]>([]);
   const local = useRef<MediaStream | null>(null),
@@ -72,7 +73,13 @@ export default function Home() {
     recorder = useRef<MediaRecorder | null>(null),
     recordChunks = useRef<Blob[]>([]),
     cutRequested = useRef(false),
-    speakingRef = useRef({ mine: false, friend: false });
+    speakingRef = useRef({ mine: false, friend: false }),
+    settingsDrag = useRef<{
+      x: number;
+      y: number;
+      startX: number;
+      startY: number;
+    } | null>(null);
   const mine = useRef<HTMLVideoElement>(null),
     theirs = useRef<HTMLVideoElement>(null),
     screen = useRef<HTMLVideoElement>(null),
@@ -759,6 +766,27 @@ export default function Home() {
     setRemoteSharing(false);
     setInRoom(false);
   }
+  function startSettingsDrag(event: React.PointerEvent<HTMLDivElement>) {
+    if ((event.target as HTMLElement).closest("button")) return;
+    settingsDrag.current = {
+      x: settingsOffset.x,
+      y: settingsOffset.y,
+      startX: event.clientX,
+      startY: event.clientY,
+    };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveSettingsDrag(event: React.PointerEvent<HTMLDivElement>) {
+    const drag = settingsDrag.current;
+    if (!drag) return;
+    setSettingsOffset({
+      x: drag.x + event.clientX - drag.startX,
+      y: drag.y + event.clientY - drag.startY,
+    });
+  }
+  function endSettingsDrag() {
+    settingsDrag.current = null;
+  }
   if (!inRoom)
     return (
       <main className="landing">
@@ -896,18 +924,36 @@ export default function Home() {
           </button>
           <button
             className={settingsOpen ? "settings-open" : "settings"}
-            onClick={() => setSettingsOpen(!settingsOpen)}
+            onClick={() => {
+              const next = !settingsOpen;
+              setSettingsOpen(next);
+              if (next) setPreviewOpen(false);
+            }}
           >
             ⚙ Ajustes
           </button>
         </div>
       </header>
       {settingsOpen && (
-        <aside className="settings-panel">
-          <div className="settings-title">
+        <aside
+          className="settings-panel"
+          style={{
+            transform: `translate(${settingsOffset.x}px, ${settingsOffset.y}px)`,
+          }}
+        >
+          <div
+            className="settings-title"
+            onPointerDown={startSettingsDrag}
+            onPointerMove={moveSettingsDrag}
+            onPointerUp={endSettingsDrag}
+            onPointerCancel={endSettingsDrag}
+          >
             <div>
               <b>Ajustes da sessão</b>
-              <small>Personalize a câmera e o vídeo que será salvo.</small>
+              <small>
+                Arraste esta barra para mover. Personalize a câmera e o vídeo
+                que será salvo.
+              </small>
             </div>
             <button onClick={() => setSettingsOpen(false)}>×</button>
           </div>
@@ -956,6 +1002,7 @@ export default function Home() {
                   onClick={() => {
                     setVertical(!vertical);
                     setPreviewOpen(true);
+                    setSettingsOpen(false);
                   }}
                 >
                   ▯ Formato vertical
@@ -965,6 +1012,7 @@ export default function Home() {
                   onClick={() => {
                     setVertical(true);
                     setPreviewOpen(!previewOpen);
+                    setSettingsOpen(false);
                   }}
                 >
                   ▣ Abrir prévia

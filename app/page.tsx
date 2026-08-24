@@ -60,6 +60,9 @@ export default function Home() {
     [audioOutputId, setAudioOutputId] = useState("");
   const [mic, setMic] = useState(true),
     [noiseSuppression, setNoiseSuppression] = useState(true),
+    [micSensitivity, setMicSensitivity] = useState(70),
+    [micTesting, setMicTesting] = useState(false),
+    [micLevel, setMicLevel] = useState(0),
     [cameraOn, setCameraOn] = useState(true),
     [sharing, setSharing] = useState(false),
     [remoteSharing, setRemoteSharing] = useState(false),
@@ -103,6 +106,7 @@ export default function Home() {
     displayed = useRef<MediaStream | null>(null),
     remoteDisplayed = useRef<MediaStream | null>(null),
     processedLocal = useRef<MediaStream | null>(null),
+    processedAudio = useRef<MediaStream | null>(null),
     blurAmountRef = useRef(16);
   const peer = useRef<Peer | null>(null),
     connection = useRef<DataConnection | null>(null),
@@ -115,6 +119,13 @@ export default function Home() {
     pipFrame = useRef(0),
     peerRetry = useRef(0),
     cameraCalls = useRef<MediaConnection[]>([]),
+    audioPipeline = useRef<{
+      context: AudioContext;
+      gain: GainNode;
+      analyser: AnalyserNode;
+      output: MediaStream;
+    } | null>(null),
+    micTestFrame = useRef(0),
     settingsDrag = useRef<{
       x: number;
       y: number;
@@ -218,6 +229,7 @@ export default function Home() {
       peer.current?.destroy();
       local.current?.getTracks().forEach((track) => track.stop());
       displayed.current?.getTracks().forEach((track) => track.stop());
+      void audioPipeline.current?.context.close();
     },
     [],
   );
@@ -541,7 +553,7 @@ export default function Home() {
       processedLocal.current?.getVideoTracks()[0] || stream.getVideoTracks()[0];
     return new MediaStream([
       ...(video ? [video] : []),
-      ...stream.getAudioTracks(),
+      ...(processedAudio.current?.getAudioTracks() || stream.getAudioTracks()),
     ]);
   }
   function replaceOutgoingVideo(stream: MediaStream) {
@@ -553,6 +565,81 @@ export default function Home() {
         .filter((sender) => sender.track?.kind === "video")
         .forEach((sender) => void sender.replaceTrack(track)),
     );
+  }
+  function replaceOutgoingAudio(stream: MediaStream) {
+    const track = stream.getAudioTracks()[0];
+    if (!track) return;
+    cameraCalls.current.forEach((call) =>
+      call.peerConnection
+        ?.getSenders()
+        .filter((sender) => sender.track?.kind === "audio")
+        .forEach((sender) => void sender.replaceTrack(track)),
+    );
+  }
+  function setupMicrophoneProcessing(stream: MediaStream, sensitivity: number) {
+    void audioPipeline.current?.context.close();
+    audioPipeline.current = null;
+    processedAudio.current = null;
+    if (!stream.getAudioTracks().length) return;
+    try {
+      const context = new AudioContext();
+      const source = context.createMediaStreamSource(
+        new MediaStream(stream.getAudioTracks()),
+      );
+      const gain = context.createGain();
+      const analyser = context.createAnalyser();
+      const output = context.createMediaStreamDestination();
+      analyser.fftSize = 512;
+      analyser.smoothingTimeConstant = 0.72;
+      gain.gain.value = Math.max(0.2, sensitivity / 70);
+      source.connect(analyser);
+      source.connect(gain).connect(output);
+      audioPipeline.current = { context, gain, analyser, output: output.stream };
+      processedAudio.current = output.stream;
+      void context.resume();
+    } catch {
+      processedAudio.current = null;
+    }
+  }
+  function changeMicSensitivity(value: number) {
+    setMicSensitivity(value);
+    const pipeline = audioPipeline.current;
+    if (pipeline) {
+      pipeline.gain.gain.setTargetAtTime(
+        Math.max(0.2, value / 70),
+        pipeline.context.currentTime,
+        0.04,
+      );
+      replaceOutgoingAudio(pipeline.output);
+    }
+  }
+  function testMicrophone() {
+    const pipeline = audioPipeline.current;
+    if (!pipeline) {
+      setNotice("Entre na sala para testar o microfone escolhido.");
+      return;
+    }
+    setMicTesting(true);
+    void pipeline.context.resume();
+    const bytes = new Uint8Array(pipeline.analyser.fftSize);
+    const started = performance.now();
+    const read = () => {
+      pipeline.analyser.getByteTimeDomainData(bytes);
+      let energy = 0;
+      bytes.forEach((value) => {
+        const sample = (value - 128) / 128;
+        energy += sample * sample;
+      });
+      setMicLevel(Math.min(100, Math.round(Math.sqrt(energy / bytes.length) * 850)));
+      if (performance.now() - started < 5_000) {
+        micTestFrame.current = requestAnimationFrame(read);
+      } else {
+        setMicTesting(false);
+        setMicLevel(0);
+      }
+    };
+    cancelAnimationFrame(micTestFrame.current);
+    read();
   }
   function refreshCameraForPeer() {
     const client = peer.current;
@@ -711,6 +798,7 @@ export default function Home() {
         constraints(quality, chosen || undefined, chosenAudio || undefined),
       );
       local.current = stream;
+      setupMicrophoneProcessing(stream, micSensitivity);
       setCameraEpoch((value) => value + 1);
       if (mine.current) {
         mine.current.srcObject = stream;
@@ -1088,6 +1176,10 @@ export default function Home() {
     peer.current = null;
     connection.current = null;
     local.current?.getTracks().forEach((track) => track.stop());
+    cancelAnimationFrame(micTestFrame.current);
+    void audioPipeline.current?.context.close();
+    audioPipeline.current = null;
+    processedAudio.current = null;
     displayed.current?.getTracks().forEach((track) => track.stop());
     local.current = null;
     displayed.current = null;
@@ -1612,6 +1704,33 @@ export default function Home() {
                       />
                       <span>Supressão de ruído</span>
                     </label>
+                    <div className="mic-tuning">
+                      <label className="menu-field">
+                        Sensibilidade do microfone: {micSensitivity}%
+                        <input
+                          type="range"
+                          min="20"
+                          max="130"
+                          value={micSensitivity}
+                          onChange={(event) =>
+                            changeMicSensitivity(Number(event.target.value))
+                          }
+                        />
+                      </label>
+                      <div className="mic-meter" aria-label="Nível do microfone">
+                        <i style={{ width: `${micLevel}%` }} />
+                      </div>
+                      <button
+                        className={micTesting ? "format on" : "format"}
+                        onClick={testMicrophone}
+                      >
+                        {micTesting ? "● Testando…" : "▷ Testar microfone"}
+                      </button>
+                      <small>
+                        Fale por 5 segundos. Mantenha o indicador no meio para
+                        evitar vazamento e distorção.
+                      </small>
+                    </div>
                   </div>
                 </details>
                 <details>

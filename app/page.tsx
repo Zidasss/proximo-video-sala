@@ -19,7 +19,7 @@ type SavedCall = {
   startedAt: number;
 };
 type EditorClip = { url: string; name: string };
-type TextEffect = "none" | "pop" | "slide" | "typewriter";
+type TextEffect = "none" | "pop" | "slide" | "typewriter" | "zoom" | "bounce";
 type TextLayer = {
   id: string;
   text: string;
@@ -3101,6 +3101,10 @@ function ClipEditorV2({
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
     [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
     [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
+    [exportFps, setExportFps] = useState(30),
+    [exportBitrate, setExportBitrate] = useState<"standard" | "high" | "ultra">("high"),
+    [audioGain, setAudioGain] = useState(100),
+    [audioEnhance, setAudioEnhance] = useState(true),
     [timelineZoom, setTimelineZoom] = useState(1),
     [safeGuides, setSafeGuides] = useState(true),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
@@ -3203,6 +3207,39 @@ function ClipEditorV2({
     setSelectedId("");
     setSelectedIllustrationId("");
     setNotice("Vídeo carregado. Agora monte as camadas na linha do tempo.");
+  }
+  function applyTemplate(template: "podcast" | "react" | "gameplay" | "interview") {
+    const length = Math.max(4, end || duration || 12);
+    const base = initialLayer();
+    const title: Record<typeof template, string> = { podcast: "🎙️ Corte do podcast", react: "MINHA REAÇÃO 👀", gameplay: "O CLUTCH MAIS INSANO 🔥", interview: "A pergunta que mudou tudo" };
+    const subtitle: Record<typeof template, string> = { podcast: "Siga para mais episódios", react: "espera até o final", gameplay: "não pisca", interview: "assista até o fim" };
+    const make = (text: string, y: number, size: number, effect: TextEffect): TextLayer => ({ ...base, id: crypto.randomUUID(), text, y, size, start, end: Math.max(start + .5, length), effect, background: true });
+    remember();
+    setExportAspect("vertical");
+    setLayers([make(title[template], 18, 72, "bounce"), make(subtitle[template], 80, 48, "pop")]);
+    setIllustrations([]);
+    setNotice(`Template ${template} aplicado. Ajuste os textos e as camadas como quiser.`);
+  }
+  async function detectSilence() {
+    if (!clip) return;
+    try {
+      setNotice("Analisando o áudio para sugerir um corte…");
+      const response = await fetch(clip.url);
+      const buffer = await response.arrayBuffer();
+      const context = new AudioContext();
+      const decoded = await context.decodeAudioData(buffer);
+      const data = decoded.getChannelData(0), block = Math.max(1, Math.floor(decoded.sampleRate * .25));
+      const levels: number[] = [];
+      for (let index = 0; index < data.length; index += block) { let sum = 0; for (let sample = index; sample < Math.min(data.length, index + block); sample++) sum += data[sample] * data[sample]; levels.push(Math.sqrt(sum / block)); }
+      const threshold = Math.max(.012, Math.min(.08, levels.reduce((sum, value) => sum + value, 0) / Math.max(1, levels.length) * .42));
+      const first = levels.findIndex((value) => value > threshold);
+      const last = levels.length - 1 - [...levels].reverse().findIndex((value) => value > threshold);
+      await context.close();
+      if (first < 0 || last <= first) { setNotice("Não encontrei fala clara para sugerir um corte. Ajuste manualmente na timeline."); return; }
+      remember();
+      const from = Math.max(0, first * .25 - .15), to = Math.min(decoded.duration, (last + 1) * .25 + .25);
+      setStart(from); setEnd(to); seek(from); setNotice(`Silêncios nas pontas removidos: ${time(from)} até ${time(to)}.`);
+    } catch { setNotice("Não foi possível analisar este áudio no navegador. Você ainda pode cortar manualmente."); }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -3378,7 +3415,7 @@ function ClipEditorV2({
   }
   function previewStyle(layer: TextLayer): React.CSSProperties {
     const progress = effectProgress(layer, current);
-    const scale = layer.effect === "pop" ? 0.68 + progress * 0.32 : 1;
+    const scale = layer.effect === "pop" ? 0.68 + progress * 0.32 : layer.effect === "zoom" ? 1.42 - progress * .42 : layer.effect === "bounce" ? .75 + Math.sin(progress * Math.PI) * .22 : 1;
     const slide = layer.effect === "slide" ? (1 - progress) * 70 : 0;
     return {
       fontFamily: layer.font,
@@ -3436,18 +3473,25 @@ function ClipEditorV2({
     }
     canvas.width = outputWidth;
     canvas.height = outputHeight;
-    const output = canvas.captureStream(30);
+    const output = canvas.captureStream(exportFps);
     const captured = (
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
     ).captureStream?.();
-    captured?.getAudioTracks().forEach((track) => output.addTrack(track));
+    const exportAudio = new AudioContext(), audioDestination = exportAudio.createMediaStreamDestination();
+    if (captured?.getAudioTracks().length) {
+      const audioSource = exportAudio.createMediaStreamSource(new MediaStream(captured.getAudioTracks()));
+      const gain = exportAudio.createGain(); gain.gain.value = audioGain / 100;
+      if (audioEnhance) { const highPass = exportAudio.createBiquadFilter(); highPass.type = "highpass"; highPass.frequency.value = 80; const compressor = exportAudio.createDynamicsCompressor(); compressor.threshold.value = -22; compressor.ratio.value = 3; audioSource.connect(highPass).connect(compressor).connect(gain).connect(audioDestination); }
+      else audioSource.connect(gain).connect(audioDestination);
+      audioDestination.stream.getAudioTracks().forEach((track) => output.addTrack(track));
+    }
     const mime = mimeForExport(exportFormat) || mimeForExport("webm")!;
     if (exportFormat === "mp4" && !mime.startsWith("video/mp4"))
       setNotice("MP4 não é suportado neste navegador; exportando WebM verdadeiro.");
     const chunks: Blob[] = [];
     const recorder = new MediaRecorder(output, {
       mimeType: mime,
-      videoBitsPerSecond: 10_000_000,
+      videoBitsPerSecond: exportBitrate === "ultra" ? 20_000_000 : exportBitrate === "high" ? 10_000_000 : 5_000_000,
       audioBitsPerSecond: 192_000,
     });
     let frame = 0;
@@ -3508,7 +3552,7 @@ function ClipEditorV2({
         const alpha = layerOpacity(layer, source.currentTime);
         if (!layer.text.trim() || alpha <= 0) return;
         const progress = effectProgress(layer, source.currentTime);
-        const scaleEffect = layer.effect === "pop" ? 0.68 + progress * 0.32 : 1;
+        const scaleEffect = layer.effect === "pop" ? 0.68 + progress * 0.32 : layer.effect === "zoom" ? 1.42 - progress * .42 : layer.effect === "bounce" ? .75 + Math.sin(progress * Math.PI) * .22 : 1;
         const slide = layer.effect === "slide" ? (1 - progress) * 180 : 0;
         const text = visibleText(layer, source.currentTime);
         context.save();
@@ -3562,6 +3606,7 @@ function ClipEditorV2({
       link.download = `klip-reel-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
       link.click();
       window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      void exportAudio.close();
       setExporting(false);
       setNotice("Reel exportado com corte, áudio, textos e efeitos.");
     };
@@ -3598,6 +3643,12 @@ function ClipEditorV2({
             <option value="1080">Até 1080p</option>
             <option value="720">Até 720p</option>
           </select>
+          <select className="export-format" aria-label="Quadros por segundo" value={exportFps} onChange={(event) => setExportFps(Number(event.target.value))}>
+            <option value="24">24 FPS</option><option value="30">30 FPS</option><option value="60">60 FPS</option>
+          </select>
+          <select className="export-format" aria-label="Bitrate" value={exportBitrate} onChange={(event) => setExportBitrate(event.target.value as "standard" | "high" | "ultra")}>
+            <option value="standard">Bitrate padrão</option><option value="high">Alta qualidade</option><option value="ultra">Qualidade máxima</option>
+          </select>
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
             {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
           </button>
@@ -3608,6 +3659,9 @@ function ClipEditorV2({
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação ou vídeo do computador</small></div></div>
           <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
           {clip && <p className="editor-file">● {clip.name}</p>}
+          <div className="tool-heading layer-heading"><span>00</span><div><b>Templates</b><small>Comece com um layout pronto</small></div></div>
+          <div className="template-grid"><button onClick={() => applyTemplate("podcast")}>🎙️ Podcast</button><button onClick={() => applyTemplate("react")}>👀 React</button><button onClick={() => applyTemplate("gameplay")}>🎮 Gameplay</button><button onClick={() => applyTemplate("interview")}>💬 Entrevista</button></div>
+          {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div>}
           {clip && <div className="video-transition-controls">
             <b>Transições do vídeo</b>
             <small>Aplicadas na prévia e na exportação.</small>
@@ -3669,7 +3723,7 @@ function ClipEditorV2({
                 <label className="text-bg-toggle"><input type="checkbox" checked={selected.background} onChange={(event) => updateLayer(selected.id, { background: event.target.checked })} /> Fundo</label>
               </div>
               <div className="effect-grid">
-                <label>Efeito<select value={selected.effect} onChange={(event) => updateLayer(selected.id, { effect: event.target.value as TextEffect })}><option value="none">Sem efeito</option><option value="pop">Pop</option><option value="slide">Deslizar</option><option value="typewriter">Máquina de escrever</option></select></label>
+                <label>Efeito<select value={selected.effect} onChange={(event) => updateLayer(selected.id, { effect: event.target.value as TextEffect })}><option value="none">Sem efeito</option><option value="pop">Pop</option><option value="zoom">Zoom</option><option value="bounce">Bounce</option><option value="slide">Deslizar</option><option value="typewriter">Máquina de escrever</option></select></label>
                 <label>Fade in<input type="number" min="0" max="3" step="0.1" value={selected.fadeIn} onChange={(event) => updateLayer(selected.id, { fadeIn: Math.max(0, Number(event.target.value)) })} /></label>
                 <label>Fade out<input type="number" min="0" max="3" step="0.1" value={selected.fadeOut} onChange={(event) => updateLayer(selected.id, { fadeOut: Math.max(0, Number(event.target.value)) })} /></label>
               </div>

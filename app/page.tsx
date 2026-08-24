@@ -86,6 +86,7 @@ export default function Home() {
     [recording, setRecording] = useState(false),
     [recordSeconds, setRecordSeconds] = useState(0),
     [vertical, setVertical] = useState(false),
+    [resenhaMode, setResenhaMode] = useState(false),
     [previewOpen, setPreviewOpen] = useState(false),
     [topOrder, setTopOrder] = useState<"mine-first" | "friend-first">(
       "mine-first",
@@ -706,8 +707,9 @@ export default function Home() {
         topOrder,
         screenPosition,
         tiktokTop,
+        resenhaMode,
       });
-  }, [mode, topOrder, screenPosition, tiktokTop]);
+  }, [mode, topOrder, screenPosition, tiktokTop, resenhaMode]);
   useEffect(() => {
     if (!recording) return;
     const timer = window.setInterval(
@@ -957,7 +959,7 @@ export default function Home() {
       window.clearTimeout(peerRetryTimer.current);
       conn.send({ kind: "name", name });
       if (mode === "host")
-        conn.send({ kind: "layout", topOrder, screenPosition, tiktokTop });
+        conn.send({ kind: "layout", topOrder, screenPosition, tiktokTop, resenhaMode });
     });
     conn.on("data", (item) => {
       const data = item as {
@@ -968,6 +970,7 @@ export default function Home() {
         topOrder?: string;
         screenPosition?: string;
         tiktokTop?: number;
+        resenhaMode?: boolean;
       };
       if (data.kind === "name" && data.name) setFriend(data.name);
       if (data.kind === "recording") {
@@ -989,6 +992,8 @@ export default function Home() {
         );
         setScreenPosition(data.screenPosition as "top" | "bottom");
         setTiktokTop(data.tiktokTop);
+        setResenhaMode(Boolean(data.resenhaMode));
+        if (data.resenhaMode) setVertical(true);
         return;
       }
       if (data.kind === "chat" && data.name && data.text)
@@ -1191,6 +1196,10 @@ export default function Home() {
     }
   }
   async function share() {
+    if (resenhaMode) {
+      setNotice("O Modo Resenha é só para câmeras. Desative-o para compartilhar a tela.");
+      return;
+    }
     if (sharing) {
       displayed.current?.getTracks().forEach((track) => track.stop());
       displayed.current = null;
@@ -1276,6 +1285,18 @@ export default function Home() {
         : "IA Premium desativada. Usando o recorte leve.",
     );
   }
+  function toggleResenhaMode() {
+    if (mode === "guest") return;
+    const next = !resenhaMode;
+    setResenhaMode(next);
+    if (next) {
+      setVertical(true);
+      setPreviewOpen(true);
+      setNotice("Modo Resenha ativo: duas câmeras empilhadas em 9:16.");
+    } else {
+      setNotice("Modo Resenha desativado.");
+    }
+  }
   const timeLabel = (seconds: number) =>
     `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const callTimeLabel = (seconds: number) =>
@@ -1358,7 +1379,18 @@ export default function Home() {
       if (!recorder.current || recorder.current.state === "inactive") return;
       context.fillStyle = "#101210";
       context.fillRect(0, 0, canvas.width, canvas.height);
-      if (vertical) {
+      if (vertical && resenhaMode) {
+        const gap = 12,
+          cameraHeight = (canvas.height - gap) / 2,
+          first = topOrder === "mine-first" ? mine.current : theirs.current,
+          second = topOrder === "mine-first" ? theirs.current : mine.current,
+          firstTalking = topOrder === "mine-first" ? speakingRef.current.mine : speakingRef.current.friend,
+          secondTalking = topOrder === "mine-first" ? speakingRef.current.friend : speakingRef.current.mine;
+        cover(first, 0, 0, canvas.width, cameraHeight);
+        cover(second, 0, cameraHeight + gap, canvas.width, cameraHeight);
+        bezel(0, 0, canvas.width, cameraHeight, firstTalking);
+        bezel(0, cameraHeight + gap, canvas.width, cameraHeight, secondTalking);
+      } else if (vertical) {
         const cameraHeight = canvas.height * tiktokTop,
           gap = 12,
           screenHeight = canvas.height - cameraHeight - gap,
@@ -1601,7 +1633,14 @@ export default function Home() {
     const draw = () => {
       context.fillStyle = "#151616";
       context.fillRect(0, 0, canvas.width, canvas.height);
-      if (vertical) {
+      if (vertical && resenhaMode) {
+        const gap = 6,
+          cameraHeight = (canvas.height - gap) / 2,
+          first = topOrder === "mine-first" ? mine.current : theirs.current,
+          second = topOrder === "mine-first" ? theirs.current : mine.current;
+        cover(first, 0, 0, canvas.width, cameraHeight);
+        cover(second, 0, cameraHeight + gap, canvas.width, cameraHeight);
+      } else if (vertical) {
         const topHeight = canvas.height * tiktokTop,
           gap = 6,
           half = (canvas.width - gap) / 2,
@@ -2076,6 +2115,16 @@ export default function Home() {
                     </div>
                   </summary>
                   <div className="menu-content">
+                    <button
+                      className={resenhaMode ? "open-preview active-resenha" : "open-preview"}
+                      onClick={toggleResenhaMode}
+                      disabled={mode === "guest"}
+                    >
+                      {resenhaMode ? "● Modo Resenha ativo" : "◉ Ativar Modo Resenha"}
+                    </button>
+                    <small className="resenha-note">
+                      Duas câmeras empilhadas em 9:16, sem tela compartilhada — ideal para só bater papo e gravar.
+                    </small>
                     <label className="menu-switch">
                       <input
                         type="checkbox"
@@ -2153,8 +2202,8 @@ export default function Home() {
           )}
         </aside>
       )}
-      <section className={"stage " + (screenActive ? "screen-on" : "")}>
-        {screenActive && (
+      <section className={"stage " + (resenhaMode ? "resenha-stage" : screenActive ? "screen-on" : "")}>
+        {screenActive && !resenhaMode && (
           <div className="tile shared">
             <video ref={sharing ? screen : remoteScreen} autoPlay playsInline />
             <label>
@@ -2241,10 +2290,10 @@ export default function Home() {
             </button>
           ) : (
             <>
-              <div className={"preview-canvas screen-" + screenPosition}>
+              <div className={"preview-canvas " + (resenhaMode ? "resenha-preview" : "screen-" + screenPosition)}>
                 <div
-                  className={"preview-top " + topOrder}
-                  style={{ height: `${tiktokTop * 100}%` }}
+                  className={(resenhaMode ? "resenha-cameras " : "preview-top ") + topOrder}
+                  style={{ height: resenhaMode ? "100%" : `${tiktokTop * 100}%` }}
                 >
                   <video
                     draggable
@@ -2282,18 +2331,20 @@ export default function Home() {
                     playsInline
                   />
                 </div>
-                <div
-                  className="preview-screen"
-                  style={{ height: `${(1 - tiktokTop) * 100}%` }}
-                >
-                  {sharing || remoteSharing ? (
-                    <video ref={previewScreen} autoPlay playsInline />
-                  ) : (
-                    <span>A tela compartilhada aparecerá aqui</span>
-                  )}
-                </div>
+                {!resenhaMode && (
+                  <div
+                    className="preview-screen"
+                    style={{ height: `${(1 - tiktokTop) * 100}%` }}
+                  >
+                    {sharing || remoteSharing ? (
+                      <video ref={previewScreen} autoPlay playsInline />
+                    ) : (
+                      <span>A tela compartilhada aparecerá aqui</span>
+                    )}
+                  </div>
+                )}
               </div>
-              <label className="preview-slider">
+              {!resenhaMode && <label className="preview-slider">
                 Tamanho das câmeras
                 <input
                   type="range"
@@ -2304,10 +2355,11 @@ export default function Home() {
                   disabled={mode === "guest"}
                   onChange={(event) => setTiktokTop(Number(event.target.value))}
                 />
-              </label>
+              </label>}
               <small>
-                Arraste uma câmera sobre a outra para trocar de lado. O tamanho
-                da prévia será usado na gravação.
+                {resenhaMode
+                  ? "Arraste uma câmera sobre a outra para decidir quem fica em cima. Este layout será usado na gravação."
+                  : "Arraste uma câmera sobre a outra para trocar de lado. O tamanho da prévia será usado na gravação."}
               </small>
             </>
           )}

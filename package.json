@@ -1,7 +1,8 @@
 {
   "name": "site-creator-vinext-starter",
-  "version": "0.1.0",
+  "version": "0.13.0",
   "private": true,
+  "license": "GPL-3.0-only",
   "engines": {
     "node": ">=22.13.0"
   },
@@ -16,6 +17,7 @@
   },
   "dependencies": {
     "@mediapipe/tasks-vision": "^1.0.1",
+    "@tensorflow/tfjs": "^3.7.0",
     "drizzle-orm": "0.45.2",
     "next": "16.2.6",
     "peerjs": "^1.5.5",

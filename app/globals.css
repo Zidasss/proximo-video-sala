@@ -679,6 +679,21 @@ body {
   font-size: 14px;
   padding: 11px 13px;
 }
+.setting-actions .format.premium {
+  border-color: #ad8cff;
+  color: #e5dbff;
+}
+.setting-actions .format.premium.on {
+  background: linear-gradient(135deg, #a480ff, #ff7c9c);
+  border-color: #c9b7ff;
+  color: #180d29;
+}
+.matting-note {
+  margin: 9px 0 0;
+  color: #aaa0b2;
+  font-size: 11px;
+  line-height: 1.35;
+}
 .session-refresh {
   width: 100%;
   border: 1px solid #485046;

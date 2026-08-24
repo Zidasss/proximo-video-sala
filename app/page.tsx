@@ -37,7 +37,7 @@ type TextLayer = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.12.1";
+const APP_VERSION = "v0.13.0";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -98,6 +98,9 @@ export default function Home() {
       "none" | "image" | "blur" | "remove"
     >(
       "none",
+    ),
+    [mattingQuality, setMattingQuality] = useState<"standard" | "premium">(
+      "standard",
     ),
     [skinSmooth, setSkinSmooth] = useState(false),
     [blurAmount, setBlurAmount] = useState(16),
@@ -330,6 +333,129 @@ export default function Home() {
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
       const output = canvas.captureStream(30);
       try {
+        if (mattingQuality === "premium") {
+          setNotice("Preparando IA Premium na GPU…");
+          const tf = await import("@tensorflow/tfjs");
+          try {
+            await tf.setBackend("webgl");
+          } catch {
+            // O TensorFlow escolhe o melhor backend disponível como fallback.
+          }
+          await tf.ready();
+          const model = await tf.loadGraphModel(
+            "/rvm/rvm_mobilenetv3_tfjs_int8/model.json",
+          );
+          let r1i: any = tf.scalar(0),
+            r2i: any = tf.scalar(0),
+            r3i: any = tf.scalar(0),
+            r4i: any = tf.scalar(0),
+            downsampleRatio: any = tf.scalar(0.25),
+            maskPixels: ImageData | null = null,
+            inferenceBusy = false;
+          const attachOutput = () => {
+            if (attached) return;
+            processedLocal.current = output;
+            replaceOutgoingVideo(output);
+            refreshCameraForPeer();
+            if (mine.current) {
+              mine.current.srcObject = output;
+              void mine.current.play().catch(() => undefined);
+            }
+            setVirtualEpoch((epoch) => epoch + 1);
+            attached = true;
+          };
+          const renderPremium = () => {
+            if (!active || !context) return;
+            context.clearRect(0, 0, canvas.width, canvas.height);
+            if (backgroundMode === "blur") {
+              const strength = blurAmountRef.current;
+              context.filter = `blur(${strength}px) brightness(.9) saturate(.93)`;
+              context.drawImage(source, -strength, -strength, canvas.width + strength * 2, canvas.height + strength * 2);
+              context.filter = "none";
+            } else if (backgroundMode === "image") {
+              const scale = Math.max(canvas.width / (image.naturalWidth || canvas.width), canvas.height / (image.naturalHeight || canvas.height));
+              const width = (image.naturalWidth || canvas.width) * scale,
+                height = (image.naturalHeight || canvas.height) * scale;
+              context.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+            }
+            if (hasMask) {
+              foregroundContext.clearRect(0, 0, foregroundCanvas.width, foregroundCanvas.height);
+              foregroundContext.save();
+              foregroundContext.imageSmoothingEnabled = true;
+              foregroundContext.imageSmoothingQuality = "high";
+              foregroundContext.filter = "blur(.6px)";
+              foregroundContext.drawImage(maskCanvas, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
+              foregroundContext.globalCompositeOperation = "source-in";
+              foregroundContext.filter = skinSmooth ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)" : "none";
+              foregroundContext.drawImage(source, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
+              foregroundContext.restore();
+              context.drawImage(foregroundCanvas, 0, 0, canvas.width, canvas.height);
+            }
+            renderFrame = requestAnimationFrame(renderPremium);
+          };
+          const inferPremium = async () => {
+            if (!active || inferenceBusy) return;
+            inferenceBusy = true;
+            const started = performance.now();
+            try {
+              const pixels = tf.browser.fromPixels(source);
+              const src = tf.tidy(() => pixels.toFloat().div(255).expandDims(0));
+              pixels.dispose();
+              const outputs = (await model.executeAsync(
+                { src, r1i, r2i, r3i, r4i, downsample_ratio: downsampleRatio },
+                ["fgr", "pha", "r1o", "r2o", "r3o", "r4o"],
+              )) as unknown as any[];
+              const [fgr, pha, r1o, r2o, r3o, r4o] = outputs;
+              const alpha = (await pha.data()) as Float32Array;
+              // O modelo preserva a resolução de entrada; usar o shape evita
+              // redimensionar a máscara por suposição caso uma webcam mude de modo.
+              const width = Number(pha.shape[2]) || source.videoWidth || canvas.width,
+                height = Number(pha.shape[1]) || source.videoHeight || canvas.height;
+              if (!maskPixels || maskPixels.width !== width || maskPixels.height !== height) {
+                maskCanvas.width = width;
+                maskCanvas.height = height;
+                maskPixels = maskContext.createImageData(width, height);
+                for (let offset = 0; offset < maskPixels.data.length; offset += 4) {
+                  maskPixels.data[offset] = 255;
+                  maskPixels.data[offset + 1] = 255;
+                  maskPixels.data[offset + 2] = 255;
+                }
+              }
+              for (let index = 0; index < alpha.length; index += 1)
+                maskPixels.data[index * 4 + 3] = Math.round(Math.max(0, Math.min(1, alpha[index])) * 255);
+              maskContext.putImageData(maskPixels, 0, 0);
+              hasMask = true;
+              attachOutput();
+              src.dispose();
+              fgr.dispose();
+              pha.dispose();
+              r1i.dispose(); r2i.dispose(); r3i.dispose(); r4i.dispose();
+              r1i = r1o; r2i = r2o; r3i = r3o; r4i = r4o;
+              inferenceDuration = performance.now() - started;
+              if (inferenceDuration < 80) setNotice("IA Premium ativa · recorte temporal na GPU");
+            } catch {
+              setNotice("A IA Premium não iniciou. Voltamos para o recorte leve.");
+              setMattingQuality("standard");
+            } finally {
+              inferenceBusy = false;
+              if (active) segmentationFrame = requestAnimationFrame(() => void inferPremium());
+            }
+          };
+          renderPremium();
+          void inferPremium();
+          return () => {
+            cancelAnimationFrame(segmentationFrame);
+            cancelAnimationFrame(renderFrame);
+            model.dispose();
+            r1i.dispose(); r2i.dispose(); r3i.dispose(); r4i.dispose(); downsampleRatio.dispose();
+            output.getTracks().forEach((track) => track.stop());
+            if (processedLocal.current === output) {
+              processedLocal.current = null;
+              if (local.current) replaceOutgoingVideo(local.current);
+              setVirtualEpoch((epoch) => epoch + 1);
+            }
+          };
+        }
         const worker = new Worker(
           new URL("./workers/person-segmentation.worker.ts", import.meta.url),
           { type: "module", name: "klip-person-segmentation" },
@@ -535,6 +661,7 @@ export default function Home() {
   }, [
     background,
     backgroundMode,
+    mattingQuality,
     skinSmooth,
     cameraEpoch,
     inRoom,
@@ -1106,6 +1233,15 @@ export default function Home() {
       mine.current.srcObject = local.current;
       void mine.current.play().catch(() => undefined);
     }
+  }
+  function togglePremiumMatting() {
+    const next = mattingQuality === "premium" ? "standard" : "premium";
+    setMattingQuality(next);
+    setNotice(
+      next === "premium"
+        ? "IA Premium selecionada. O modelo será preparado ao ligar um fundo."
+        : "IA Premium desativada. Usando o recorte leve.",
+    );
   }
   const timeLabel = (seconds: number) =>
     `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
@@ -1819,7 +1955,20 @@ export default function Home() {
                       >
                         ◒ Remover fundo
                       </button>
+                      <button
+                        className={
+                          mattingQuality === "premium" ? "format on premium" : "format premium"
+                        }
+                        onClick={togglePremiumMatting}
+                      >
+                        ✦ IA Premium
+                      </button>
                     </div>
+                    <p className="matting-note">
+                      {mattingQuality === "premium"
+                        ? "IA Premium: recorte temporal de alta qualidade · ideal para GPUs fortes"
+                        : "Recorte leve: mais rápido, indicado para computadores comuns"}
+                    </p>
                     {backgroundMode === "blur" && (
                       <label className="menu-field blur-control">
                         Intensidade do desfoque: {blurAmount}px

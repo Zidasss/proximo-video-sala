@@ -15,6 +15,7 @@ type SavedCall = {
   deviceId: string;
   startedAt: number;
 };
+type EditorClip = { url: string; name: string };
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
@@ -37,6 +38,8 @@ const constraints = (
 
 export default function Home() {
   const [inRoom, setInRoom] = useState(false);
+  const [editorOpen, setEditorOpen] = useState(false),
+    [editorClip, setEditorClip] = useState<EditorClip | null>(null);
   const [booting, setBooting] = useState(true);
   const [room, setRoom] = useState("------"),
     [pin, setPin] = useState("----");
@@ -122,6 +125,11 @@ export default function Home() {
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
+    if (query.get("editor") === "1") {
+      setEditorOpen(true);
+      setBooting(false);
+      return;
+    }
     const invitedRoom = (query.get("sala") || "").replace(/\D/g, ""),
       invitedPin = (query.get("senha") || "").replace(/\D/g, "");
     if (invitedRoom.length === 6 && invitedPin.length === 4) {
@@ -752,10 +760,17 @@ export default function Home() {
     if (!chunks.length) return;
     const link = document.createElement("a"),
       url = URL.createObjectURL(new Blob(chunks, { type: mime }));
+    setEditorClip({ url, name: `Gravação ${label}` });
     link.href = url;
     link.download = `proximo-${label}-${Date.now()}.webm`;
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 1000);
+    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+  }
+  function openEditor() {
+    const url = new URL(location.href);
+    url.search = "";
+    url.searchParams.set("editor", "1");
+    window.open(url.toString(), "_blank", "noopener");
   }
   function saveClip() {
     if (!recording || !recorder.current) return;
@@ -1133,6 +1148,18 @@ export default function Home() {
       );
     }
   }
+  if (editorOpen)
+    return (
+      <ClipEditor
+        initialClip={editorClip}
+        onBack={() => {
+          setEditorOpen(false);
+          const url = new URL(location.href);
+          url.searchParams.delete("editor");
+          history.replaceState({}, "", url);
+        }}
+      />
+    );
   if (booting)
     return (
       <main className="loading-screen">
@@ -1156,6 +1183,9 @@ export default function Home() {
             </span>
             Klip
           </div>
+          <button className="open-editor" onClick={openEditor}>
+            ✦ Editor de clipes
+          </button>
         </nav>
         <section className="hero">
           <div className="eyebrow">vídeo privado em tempo real</div>
@@ -1272,6 +1302,9 @@ export default function Home() {
           <span className="call-timer">⏱ {callTimeLabel(callSeconds)}</span>
         </div>
         <div className="header-actions">
+          <button className="open-editor" onClick={openEditor}>
+            ✦ Editor
+          </button>
           <button className="invite" onClick={() => void invite()}>
             ⌁ Convidar
           </button>
@@ -1736,6 +1769,163 @@ export default function Home() {
           <small>Sair</small>
         </button>
       </footer>
+    </main>
+  );
+}
+
+function ClipEditor({
+  initialClip,
+  onBack,
+}: {
+  initialClip: EditorClip | null;
+  onBack: () => void;
+}) {
+  const video = useRef<HTMLVideoElement>(null);
+  const [clip, setClip] = useState<EditorClip | null>(initialClip),
+    [duration, setDuration] = useState(0),
+    [current, setCurrent] = useState(0),
+    [start, setStart] = useState(0),
+    [end, setEnd] = useState(0),
+    [caption, setCaption] = useState("Seu melhor momento começa aqui ✦"),
+    [font, setFont] = useState("Inter"),
+    [captionColor, setCaptionColor] = useState("#ffffff"),
+    [captionSize, setCaptionSize] = useState(58),
+    [captionY, setCaptionY] = useState(76),
+    [captionAlign, setCaptionAlign] = useState<"left" | "center" | "right">(
+      "center",
+    ),
+    [exporting, setExporting] = useState(false),
+    [notice, setNotice] = useState("");
+  const time = (value: number) =>
+    `${String(Math.floor(value / 60)).padStart(2, "0")}:${String(
+      Math.floor(value % 60),
+    ).padStart(2, "0")}`;
+  function selectFile(file?: File) {
+    if (!file) return;
+    if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
+    const url = URL.createObjectURL(file);
+    setClip({ url, name: file.name.replace(/\.[^.]+$/, "") });
+    setDuration(0);
+    setCurrent(0);
+    setStart(0);
+    setEnd(0);
+    setNotice("Vídeo carregado. Marque o início e o fim do corte.");
+  }
+  function seek(value: number) {
+    if (!video.current) return;
+    video.current.currentTime = value;
+    setCurrent(value);
+  }
+  async function exportReel() {
+    const source = video.current;
+    if (!source || !clip || end <= start) return;
+    setExporting(true);
+    setNotice("Renderizando seu reel localmente…");
+    const canvas = document.createElement("canvas"),
+      context = canvas.getContext("2d");
+    if (!context) return;
+    canvas.width = 1080;
+    canvas.height = 1920;
+    const output = canvas.captureStream(30);
+    const captured = (
+      source as HTMLVideoElement & { captureStream?: () => MediaStream }
+    ).captureStream?.();
+    captured?.getAudioTracks().forEach((track) => output.addTrack(track));
+    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+      ? "video/webm;codecs=vp9,opus"
+      : "video/webm";
+    const chunks: Blob[] = [];
+    const recorder = new MediaRecorder(output, {
+      mimeType: mime,
+      videoBitsPerSecond: 10_000_000,
+      audioBitsPerSecond: 192_000,
+    });
+    let frame = 0;
+    const draw = () => {
+      const scale = Math.max(canvas.width / source.videoWidth, canvas.height / source.videoHeight);
+      const width = source.videoWidth * scale,
+        height = source.videoHeight * scale;
+      context.fillStyle = "#090909";
+      context.fillRect(0, 0, canvas.width, canvas.height);
+      context.drawImage(source, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+      if (caption.trim()) {
+        context.save();
+        context.font = `800 ${captionSize}px ${font}`;
+        context.fillStyle = captionColor;
+        context.textAlign = captionAlign;
+        context.textBaseline = "middle";
+        context.lineWidth = Math.max(4, captionSize / 11);
+        context.strokeStyle = "rgba(0,0,0,.72)";
+        const x = captionAlign === "left" ? 62 : captionAlign === "right" ? 1018 : 540;
+        const y = (captionY / 100) * canvas.height;
+        context.strokeText(caption, x, y, 930);
+        context.fillText(caption, x, y, 930);
+        context.restore();
+      }
+      if (source.currentTime < end && !source.paused) {
+        frame = requestAnimationFrame(draw);
+      } else if (recorder.state !== "inactive") {
+        recorder.stop();
+      }
+    };
+    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.onstop = () => {
+      cancelAnimationFrame(frame);
+      const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
+      const link = document.createElement("a");
+      link.href = url;
+      link.download = `klip-reel-${Date.now()}.webm`;
+      link.click();
+      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      setExporting(false);
+      setNotice("Reel exportado com o corte e a legenda.");
+    };
+    source.currentTime = start;
+    await new Promise<void>((resolve) => source.addEventListener("seeked", () => resolve(), { once: true }));
+    recorder.start();
+    await source.play();
+    draw();
+  }
+  return (
+    <main className="clip-editor">
+      <header className="editor-header">
+        <div className="brand"><span className="brand-mark"><i /><i /></span>Klip <em>Studio</em></div>
+        <div className="editor-header-actions">
+          <button onClick={onBack}>← Voltar para sala</button>
+          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
+            {exporting ? "Renderizando…" : "⇩ Exportar reel"}
+          </button>
+        </div>
+      </header>
+      <section className="editor-workspace">
+        <aside className="editor-tools">
+          <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Suba ou use uma gravação</small></div></div>
+          <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
+          {clip && <p className="editor-file">● {clip.name}</p>}
+          <div className="tool-heading"><span>02</span><div><b>Legenda</b><small>Texto, fonte e posição</small></div></div>
+          <textarea value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Escreva sua legenda…" />
+          <div className="caption-controls">
+            <select value={font} onChange={(event) => setFont(event.target.value)}><option>Inter</option><option>Arial Black</option><option>Georgia</option><option>Courier New</option></select>
+            <input aria-label="Cor da legenda" type="color" value={captionColor} onChange={(event) => setCaptionColor(event.target.value)} />
+          </div>
+          <label className="range-label">Tamanho <input type="range" min="28" max="100" value={captionSize} onChange={(event) => setCaptionSize(Number(event.target.value))} /></label>
+          <label className="range-label">Posição vertical <input type="range" min="8" max="90" value={captionY} onChange={(event) => setCaptionY(Number(event.target.value))} /></label>
+          <div className="align-buttons"><button className={captionAlign === "left" ? "selected" : ""} onClick={() => setCaptionAlign("left")}>≡</button><button className={captionAlign === "center" ? "selected" : ""} onClick={() => setCaptionAlign("center")}>☰</button><button className={captionAlign === "right" ? "selected" : ""} onClick={() => setCaptionAlign("right")}>≡</button></div>
+          <div className="emoji-row">{["🔥", "😂", "🎙️", "✨", "💥", "👀"].map((emoji) => <button key={emoji} onClick={() => setCaption((value) => `${value} ${emoji}`)}>{emoji}</button>)}</div>
+        </aside>
+        <section className="editor-stage-wrap">
+          <div className="editor-stage">
+            {clip ? <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => { const value = event.currentTarget.duration; setDuration(value); setEnd(value); }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /> : <div className="editor-empty"><b>Arraste sua história para cá.</b><span>Envie uma gravação, entrevista ou gameplay.</span></div>}
+            {clip && caption && <div className="caption-overlay" style={{ fontFamily: font, color: captionColor, fontSize: `${Math.round(captionSize / 2.25)}px`, top: `${captionY}%`, textAlign: captionAlign }}>{caption}</div>}
+          </div>
+          {notice && <p className="editor-notice">{notice}</p>}
+        </section>
+      </section>
+      <section className="timeline-panel">
+        <div className="timeline-top"><div><b>Linha do tempo</b><span>{clip ? `${time(start)} — ${time(end)} · ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div><button disabled={!clip} onClick={() => seek(start)}>↶ Ir ao início</button><button disabled={!clip} onClick={() => seek(end)}>↷ Ir ao fim</button></div>
+        <div className="timeline"><div className="timeline-ruler">{Array.from({ length: 10 }, (_, index) => <i key={index}>{duration ? time((duration / 9) * index) : "00:00"}</i>)}</div><div className="timeline-track"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><div className="timeline-playhead" style={{ left: duration ? `${(current / duration) * 100}%` : "0%" }} /></div></div>
+        <div className="cut-controls"><label>Início <input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={start} onChange={(event) => { const value = Math.min(Number(event.target.value), end - .05); setStart(value); seek(value); }} /></label><label>Fim <input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={end} onChange={(event) => { const value = Math.max(Number(event.target.value), start + .05); setEnd(value); seek(value); }} /></label></div>
+      </section>
     </main>
   );
 }

@@ -20,7 +20,7 @@ export default function Home() {
   const [quality, setQuality] = useState<Quality>("1080"), [deviceId, setDeviceId] = useState(""), [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
   const [mic, setMic] = useState(true), [cameraOn, setCameraOn] = useState(true), [sharing, setSharing] = useState(false), [remoteSharing, setRemoteSharing] = useState(false);
   const [friend, setFriend] = useState(""), [notice, setNotice] = useState(""), [chatOpen, setChatOpen] = useState(false), [draft, setDraft] = useState(""), [messages, setMessages] = useState<Msg[]>([]), [autoJoin, setAutoJoin] = useState(false);
-  const local = useRef<MediaStream | null>(null), remote = useRef<MediaStream | null>(null), displayed = useRef<MediaStream | null>(null);
+  const local = useRef<MediaStream | null>(null), remote = useRef<MediaStream | null>(null), displayed = useRef<MediaStream | null>(null), remoteDisplayed = useRef<MediaStream | null>(null);
   const peer = useRef<Peer | null>(null), connection = useRef<DataConnection | null>(null), remoteId = useRef("");
   const mine = useRef<HTMLVideoElement>(null), theirs = useRef<HTMLVideoElement>(null), screen = useRef<HTMLVideoElement>(null), remoteScreen = useRef<HTMLVideoElement>(null);
 
@@ -33,6 +33,12 @@ export default function Home() {
   }, []);
   useEffect(() => { if (!autoJoin) return; setAutoJoin(false); void join(); }, [autoJoin]);
   useEffect(() => () => { peer.current?.destroy(); local.current?.getTracks().forEach(track => track.stop()); displayed.current?.getTracks().forEach(track => track.stop()); }, []);
+  useEffect(() => {
+    if (inRoom && mine.current && local.current) { mine.current.srcObject = local.current; void mine.current.play().catch(() => undefined); }
+    if (friend && theirs.current && remote.current) { theirs.current.srcObject = remote.current; void theirs.current.play().catch(() => undefined); }
+    if (sharing && screen.current && displayed.current) { screen.current.srcObject = displayed.current; void screen.current.play().catch(() => undefined); }
+    if (remoteSharing && remoteScreen.current && remoteDisplayed.current) { remoteScreen.current.srcObject = remoteDisplayed.current; void remoteScreen.current.play().catch(() => undefined); }
+  }, [inRoom, friend, sharing, remoteSharing]);
 
   async function devicesList() {
     const list = await navigator.mediaDevices.enumerateDevices();
@@ -67,6 +73,7 @@ export default function Home() {
       if (call.metadata?.kind === "screen") {
         call.answer();
         call.on("stream", shared => {
+          remoteDisplayed.current = shared;
           if (remoteScreen.current) { remoteScreen.current.srcObject = shared; void remoteScreen.current.play().catch(() => undefined); }
           setRemoteSharing(true);
         });

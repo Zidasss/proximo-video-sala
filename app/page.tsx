@@ -20,7 +20,7 @@ type EditorClip = { url: string; name: string };
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.11.2";
+const APP_VERSION = "v0.11.3";
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -118,6 +118,9 @@ export default function Home() {
     pipVideo = useRef<HTMLVideoElement | null>(null),
     pipFrame = useRef(0),
     peerRetry = useRef(0),
+    peerConnectTimer = useRef(0),
+    peerRetryTimer = useRef(0),
+    peerConnected = useRef(false),
     cameraCalls = useRef<MediaConnection[]>([]),
     audioPipeline = useRef<{
       context: AudioContext;
@@ -229,6 +232,8 @@ export default function Home() {
       peer.current?.destroy();
       local.current?.getTracks().forEach((track) => track.stop());
       displayed.current?.getTracks().forEach((track) => track.stop());
+      window.clearTimeout(peerConnectTimer.current);
+      window.clearTimeout(peerRetryTimer.current);
       void audioPipeline.current?.context.close();
     },
     [],
@@ -605,6 +610,10 @@ export default function Home() {
     setAudioOutputs(list.filter((item) => item.kind === "audiooutput"));
   }
   function showRemote(stream: MediaStream, remoteName: string) {
+    peerConnected.current = true;
+    peerRetry.current = 0;
+    window.clearTimeout(peerConnectTimer.current);
+    window.clearTimeout(peerRetryTimer.current);
     remote.current = stream;
     if (theirs.current) {
       theirs.current.srcObject = stream;
@@ -737,6 +746,11 @@ export default function Home() {
   function useData(conn: DataConnection) {
     connection.current = conn;
     conn.on("open", () => {
+      if (connection.current !== conn) return;
+      peerConnected.current = true;
+      peerRetry.current = 0;
+      window.clearTimeout(peerConnectTimer.current);
+      window.clearTimeout(peerRetryTimer.current);
       conn.send({ kind: "name", name });
       if (mode === "host")
         conn.send({ kind: "layout", topOrder, screenPosition, tiktokTop });
@@ -778,10 +792,37 @@ export default function Home() {
     });
   }
   function startPeer(stream: MediaStream) {
-    peer.current?.destroy();
+    window.clearTimeout(peerConnectTimer.current);
+    window.clearTimeout(peerRetryTimer.current);
+    const previousPeer = peer.current;
+    peer.current = null;
+    previousPeer?.destroy();
     const isHost = mode === "host";
     const client = isHost ? new Peer(hostId(room, pin)) : new Peer();
+    let retryScheduled = false;
+    peerConnected.current = false;
     peer.current = client;
+    const retryConnection = () => {
+      if (retryScheduled || peer.current !== client || peerConnected.current)
+        return;
+      retryScheduled = true;
+      window.clearTimeout(peerConnectTimer.current);
+      if (peerRetry.current >= 4) {
+        setNotice(
+          isHost
+            ? "Não foi possível reabrir esta sala. Feche outras abas com a chamada e tente novamente."
+            : "Não encontramos o anfitrião nesta sala. Confirme o link e peça para ele manter a sala aberta.",
+        );
+        return;
+      }
+      peerRetry.current += 1;
+      setNotice(
+        `Reconectando à sala… tentativa ${peerRetry.current} de 4`,
+      );
+      peerRetryTimer.current = window.setTimeout(() => {
+        if (peer.current === client && !peerConnected.current) startPeer(stream);
+      }, 1_500);
+    };
     client.on("connection", useData);
     client.on("call", (call) => {
       if (call.metadata?.kind === "screen") {
@@ -818,8 +859,9 @@ export default function Home() {
       useCall(call, String(call.metadata?.name || "Seu amigo"));
     });
     client.on("open", () => {
-      peerRetry.current = 0;
       if (isHost) {
+        peerConnected.current = true;
+        peerRetry.current = 0;
         setNotice("Sala pronta. Copie o convite e mantenha esta aba aberta.");
         return;
       }
@@ -829,28 +871,23 @@ export default function Home() {
       useCall(call, owner || "Anfitrião");
       useData(client.connect(hostId(room, pin)));
       setNotice("Conectando à sala…");
+      peerConnectTimer.current = window.setTimeout(retryConnection, 7_000);
     });
     client.on("error", (error) => {
       if (
         (error.type === "peer-unavailable" ||
-          error.type === "unavailable-id") &&
-        peerRetry.current < 5
+          error.type === "unavailable-id")
       ) {
-        peerRetry.current += 1;
-        setNotice("Reconectando à sala…");
-        window.setTimeout(() => {
-          if (peer.current === client) startPeer(stream);
-        }, 1200);
-      } else if (error.type === "peer-unavailable")
-        setNotice(
-          "O anfitrião ainda não está nesta sala. Peça para ele criar a sala primeiro.",
-        );
-      else if (error.type === "unavailable-id")
-        setNotice("Esta sala já está aberta em outra aba.");
-      else
+        retryConnection();
+      } else {
+        window.clearTimeout(peerConnectTimer.current);
         setNotice(
           "Não foi possível conectar. Atualize a página e tente novamente.",
         );
+      }
+    });
+    client.on("disconnected", () => {
+      if (!peerConnected.current) retryConnection();
     });
   }
   async function join(chosen = deviceId, chosenAudio = audioInputId) {
@@ -860,6 +897,10 @@ export default function Home() {
     }
     if (!inRoom) setBooting(true);
     try {
+      peerRetry.current = 0;
+      peerConnected.current = false;
+      window.clearTimeout(peerConnectTimer.current);
+      window.clearTimeout(peerRetryTimer.current);
       local.current?.getTracks().forEach((track) => track.stop());
       const stream = await navigator.mediaDevices.getUserMedia(
         constraints(quality, chosen || undefined, chosenAudio || undefined),

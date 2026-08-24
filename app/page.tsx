@@ -1,63 +1,137 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Peer, { DataConnection, MediaConnection } from "peerjs";
 
 type Quality = "720" | "1080";
-const numericCode = (size: number) => Array.from({ length: size }, () => Math.floor(Math.random() * 10)).join("");
+type Msg = { name: string; text: string };
+const code = (n: number) => Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
+const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
 const constraints = (quality: Quality, deviceId?: string): MediaStreamConstraints => ({
   video: { width: { ideal: quality === "1080" ? 1920 : 1280 }, height: { ideal: quality === "1080" ? 1080 : 720 }, frameRate: { ideal: 30 }, ...(deviceId ? { deviceId: { exact: deviceId } } : {}) },
   audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true },
 });
 
 export default function Home() {
-  const [inRoom, setInRoom] = useState(false), [room, setRoom] = useState("------"), [pin, setPin] = useState("----"), [name, setName] = useState("Você"), [ownerName, setOwnerName] = useState(""), [sessionStarted, setSessionStarted] = useState(false), [entryMode, setEntryMode] = useState<"new"|"existing">("new"), [background, setBackground] = useState(""), [chatOpen, setChatOpen] = useState(false), [draft, setDraft] = useState(""), [messages, setMessages] = useState<Array<{name:string;text:string}>>([]), [joiningFromLink, setJoiningFromLink] = useState(false);
-  const [mic, setMic] = useState(true), [cam, setCam] = useState(true), [sharing, setSharing] = useState(false), [recording, setRecording] = useState(false), [cameraRevision, setCameraRevision] = useState(0);
-  const [quality, setQuality] = useState<Quality>("1080"), [devices, setDevices] = useState<MediaDeviceInfo[]>([]), [deviceId, setDeviceId] = useState(""), [vertical, setVertical] = useState(false), [exportType, setExportType] = useState<"mp4"|"webm">("mp4"), [notice, setNotice] = useState("");
-  const camera = useRef<HTMLVideoElement>(null), screen = useRef<HTMLVideoElement>(null), media = useRef<MediaStream | null>(null), display = useRef<MediaStream | null>(null), recorder = useRef<MediaRecorder | null>(null);
-  const chat = useRef<BroadcastChannel | null>(null);
-  useEffect(() => { const params = new URLSearchParams(window.location.search), invitedRoom = (params.get("sala") || "").replace(/\D/g, ""), invitedPin = (params.get("senha") || "").replace(/\D/g, ""), invitedOwner = (params.get("anfitriao") || "").slice(0, 40); if (invitedRoom.length === 6 && invitedPin.length === 4) { setRoom(invitedRoom); setPin(invitedPin); setOwnerName(invitedOwner); setEntryMode("existing"); setJoiningFromLink(true); } else { setRoom(numericCode(6)); setPin(numericCode(4)); } }, []);
-  useEffect(() => { if (inRoom && camera.current && media.current) camera.current.srcObject = media.current; }, [inRoom, cam]);
-  useEffect(() => { if (sharing && screen.current && display.current) screen.current.srcObject = display.current; }, [sharing]);
-  useEffect(() => { if (!inRoom || !background || !media.current) return; let active = true, frame = 0, outputAttached = false; const source = document.createElement("video"), canvas = document.createElement("canvas"), context = canvas.getContext("2d"), image = new Image(); source.srcObject = media.current; source.muted = true; source.playsInline = true; image.src = background; const start = async () => { await source.play(); if (!active || !context) return; canvas.width = source.videoWidth || 1280; canvas.height = source.videoHeight || 720; const output = canvas.captureStream(30); const { SelfieSegmentation } = await import("@mediapipe/selfie_segmentation"); const segmenter = new SelfieSegmentation({ locateFile: file => `https://cdn.jsdelivr.net/npm/@mediapipe/selfie_segmentation/${file}` }); segmenter.setOptions({ modelSelection: 1, selfieMode: true }); segmenter.onResults(results => { if (!active || !context) return; if (!outputAttached && camera.current) { camera.current.srcObject = output; void camera.current.play().catch(() => undefined); outputAttached = true; } context.save(); context.clearRect(0, 0, canvas.width, canvas.height); context.drawImage(results.segmentationMask, 0, 0, canvas.width, canvas.height); context.globalCompositeOperation = "source-out"; const scale = Math.max(canvas.width / (image.naturalWidth || canvas.width), canvas.height / (image.naturalHeight || canvas.height)), width = (image.naturalWidth || canvas.width) * scale, height = (image.naturalHeight || canvas.height) * scale; context.drawImage(image, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height); context.globalCompositeOperation = "destination-atop"; context.drawImage(results.image, 0, 0, canvas.width, canvas.height); context.restore(); }); const process = async () => { if (!active) return; await segmenter.send({ image: source }); frame = requestAnimationFrame(() => void process()); }; void process(); return () => { active = false; cancelAnimationFrame(frame); void segmenter.close(); output.getTracks().forEach(track => track.stop()); }; }; let stop: (() => void) | undefined; void start().then(cleanup => { stop = cleanup; }); return () => { active = false; stop?.(); }; }, [background, cameraRevision, inRoom]);
-  useEffect(() => { if (!inRoom) return; const channel = new BroadcastChannel("proximo-chat-"+room); chat.current = channel; channel.onmessage = (event) => setMessages(current => [...current, event.data]); return () => channel.close(); }, [inRoom, room]);
-  useEffect(() => () => { media.current?.getTracks().forEach(t => t.stop()); display.current?.getTracks().forEach(t => t.stop()); recorder.current?.stop(); }, []);
-  async function loadDevices() { const list = await navigator.mediaDevices.enumerateDevices(); setDevices(list.filter(d => d.kind === "videoinput")); }
-  async function join(selectedId = deviceId) {
-    if (entryMode === "new") setOwnerName(name.trim() || "Anfitrião");
-    try { media.current?.getTracks().forEach(t => t.stop()); const stream = await navigator.mediaDevices.getUserMedia(constraints(quality, selectedId || undefined)); media.current = stream; setCameraRevision(value => value + 1); if (camera.current) { camera.current.srcObject = stream; await camera.current.play().catch(() => undefined); } setInRoom(true); await loadDevices(); }
-    catch { setNotice("Permita o uso da câmera e do microfone. Verifique também se outro app não está usando a webcam."); }
+  const [inRoom, setInRoom] = useState(false);
+  const [room, setRoom] = useState("------"), [pin, setPin] = useState("----");
+  const [name, setName] = useState("Você"), [owner, setOwner] = useState("");
+  const [mode, setMode] = useState<"host" | "guest">("host");
+  const [quality, setQuality] = useState<Quality>("1080"), [deviceId, setDeviceId] = useState(""), [devices, setDevices] = useState<MediaDeviceInfo[]>([]);
+  const [mic, setMic] = useState(true), [cameraOn, setCameraOn] = useState(true), [sharing, setSharing] = useState(false), [remoteSharing, setRemoteSharing] = useState(false);
+  const [friend, setFriend] = useState(""), [notice, setNotice] = useState(""), [chatOpen, setChatOpen] = useState(false), [draft, setDraft] = useState(""), [messages, setMessages] = useState<Msg[]>([]), [autoJoin, setAutoJoin] = useState(false);
+  const local = useRef<MediaStream | null>(null), remote = useRef<MediaStream | null>(null), displayed = useRef<MediaStream | null>(null);
+  const peer = useRef<Peer | null>(null), connection = useRef<DataConnection | null>(null), remoteId = useRef("");
+  const mine = useRef<HTMLVideoElement>(null), theirs = useRef<HTMLVideoElement>(null), screen = useRef<HTMLVideoElement>(null), remoteScreen = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const query = new URLSearchParams(location.search);
+    const invitedRoom = (query.get("sala") || "").replace(/\D/g, ""), invitedPin = (query.get("senha") || "").replace(/\D/g, "");
+    if (invitedRoom.length === 6 && invitedPin.length === 4) {
+      setRoom(invitedRoom); setPin(invitedPin); setOwner((query.get("anfitriao") || "Anfitrião").slice(0, 40)); setMode("guest"); setAutoJoin(true);
+    } else { setRoom(code(6)); setPin(code(4)); }
+  }, []);
+  useEffect(() => { if (!autoJoin) return; setAutoJoin(false); void join(); }, [autoJoin]);
+  useEffect(() => () => { peer.current?.destroy(); local.current?.getTracks().forEach(track => track.stop()); displayed.current?.getTracks().forEach(track => track.stop()); }, []);
+
+  async function devicesList() {
+    const list = await navigator.mediaDevices.enumerateDevices();
+    setDevices(list.filter(item => item.kind === "videoinput"));
   }
-  useEffect(() => { if (!joiningFromLink) return; setJoiningFromLink(false); void join(); }, [joiningFromLink]);
-  function setTrack(kind: "audio" | "video", enabled: boolean) { media.current?.getTracks().filter(t => t.kind === kind).forEach(t => t.enabled = enabled); }
+  function showRemote(stream: MediaStream, remoteName: string) {
+    remote.current = stream;
+    if (theirs.current) { theirs.current.srcObject = stream; void theirs.current.play().catch(() => undefined); }
+    setFriend(remoteName || "Seu amigo");
+  }
+  function useCall(call: MediaConnection, fallback: string) {
+    remoteId.current = call.peer;
+    call.on("stream", stream => showRemote(stream, String(call.metadata?.name || fallback)));
+    call.on("error", () => setNotice("A chamada caiu. Atualize os dois navegadores e tente novamente."));
+  }
+  function useData(conn: DataConnection) {
+    connection.current = conn;
+    conn.on("open", () => conn.send({ kind: "name", name }));
+    conn.on("data", item => {
+      const data = item as { kind?: string; name?: string; text?: string };
+      if (data.kind === "name" && data.name) setFriend(data.name);
+      if (data.kind === "chat" && data.name && data.text) setMessages(old => [...old, { name: data.name!, text: data.text! }]);
+    });
+  }
+  function startPeer(stream: MediaStream) {
+    peer.current?.destroy();
+    const isHost = mode === "host";
+    const client = isHost ? new Peer(hostId(room, pin)) : new Peer();
+    peer.current = client;
+    client.on("connection", useData);
+    client.on("call", call => {
+      if (call.metadata?.kind === "screen") {
+        call.answer();
+        call.on("stream", shared => {
+          if (remoteScreen.current) { remoteScreen.current.srcObject = shared; void remoteScreen.current.play().catch(() => undefined); }
+          setRemoteSharing(true);
+        });
+        call.on("close", () => setRemoteSharing(false));
+        return;
+      }
+      call.answer(stream);
+      useCall(call, String(call.metadata?.name || "Seu amigo"));
+    });
+    client.on("open", () => {
+      if (isHost) { setNotice("Sala pronta. Copie o convite e mantenha esta aba aberta."); return; }
+      const call = client.call(hostId(room, pin), stream, { metadata: { name, kind: "camera" } });
+      useCall(call, owner || "Anfitrião");
+      useData(client.connect(hostId(room, pin)));
+      setNotice("Conectando à sala…");
+    });
+    client.on("error", error => {
+      if (error.type === "peer-unavailable") setNotice("O anfitrião ainda não está nesta sala. Peça para ele criar a sala primeiro.");
+      else if (error.type === "unavailable-id") setNotice("Esta sala já está aberta em outra aba.");
+      else setNotice("Não foi possível conectar. Atualize a página e tente novamente.");
+    });
+  }
+  async function join(chosen = deviceId) {
+    try {
+      local.current?.getTracks().forEach(track => track.stop());
+      const stream = await navigator.mediaDevices.getUserMedia(constraints(quality, chosen || undefined));
+      local.current = stream;
+      if (mine.current) { mine.current.srcObject = stream; await mine.current.play().catch(() => undefined); }
+      if (mode === "host") setOwner(name.trim() || "Anfitrião");
+      setInRoom(true);
+      await devicesList();
+      startPeer(stream);
+    } catch { setNotice("Permita câmera e microfone. Feche outros aplicativos que possam estar usando a webcam."); }
+  }
   async function selectCamera(id: string) { setDeviceId(id); await join(id); }
+  function toggle(kind: "audio" | "video", value: boolean) { local.current?.getTracks().filter(track => track.kind === kind).forEach(track => { track.enabled = value; }); }
   async function share() {
-    if (sharing) { display.current?.getTracks().forEach(t => t.stop()); display.current = null; setSharing(false); return; }
-    try { const stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }, audio: true }); display.current = stream; if (screen.current) screen.current.srcObject = stream; stream.getVideoTracks()[0].onended = () => setSharing(false); setSharing(true); }
-    catch { setNotice("O compartilhamento de tela foi cancelado."); }
+    if (sharing) { displayed.current?.getTracks().forEach(track => track.stop()); displayed.current = null; setSharing(false); return; }
+    try {
+      const stream = await navigator.mediaDevices.getDisplayMedia({ video: { width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 60 } }, audio: true });
+      displayed.current = stream;
+      if (screen.current) { screen.current.srcObject = stream; await screen.current.play().catch(() => undefined); }
+      stream.getVideoTracks()[0].onended = () => setSharing(false);
+      setSharing(true);
+      if (peer.current && remoteId.current) peer.current.call(remoteId.current, stream, { metadata: { kind: "screen", name } });
+    } catch { setNotice("O compartilhamento de tela foi cancelado."); }
   }
-  function record() {
-    if (recording) { recorder.current?.stop(); return; }
-    if (!media.current) return;
-    const canvas = document.createElement("canvas"), ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    canvas.width = vertical ? 1080 : quality === "1080" ? 1920 : 1280; canvas.height = vertical ? 1920 : quality === "1080" ? 1080 : 720;
-    const cover = (video: HTMLVideoElement, x: number, y: number, width: number, height: number) => { const sourceWidth = video.videoWidth || 16, sourceHeight = video.videoHeight || 9, scale = Math.max(width / sourceWidth, height / sourceHeight), drawWidth = sourceWidth * scale, drawHeight = sourceHeight * scale; ctx.drawImage(video, x + (width - drawWidth) / 2, y + (height - drawHeight) / 2, drawWidth, drawHeight); };
-    const draw = () => { if (!recorder.current || recorder.current.state === "inactive") return; ctx.fillStyle = "#101210"; ctx.fillRect(0, 0, canvas.width, canvas.height);
-      if (vertical) { const top = 620, gap = 12, half = (canvas.width-gap)/2; if(camera.current && cam) cover(camera.current, 0, 0, half, top); ctx.fillStyle="#263026";ctx.fillRect(half+gap,0,half,top);ctx.fillStyle="#c4fa61";ctx.font="32px Arial";ctx.fillText("Seu amigo",half+65,top/2); if (sharing && screen.current) cover(screen.current,0,top+gap,canvas.width,canvas.height-top-gap); else {ctx.fillStyle="#1a211a";ctx.fillRect(0,top+gap,canvas.width,canvas.height-top-gap);ctx.fillStyle="#bbc1b8";ctx.fillText("Compartilhe a tela para aparecer aqui",100,top+280);} }
-      else if (sharing && screen.current) { cover(screen.current, 0, 0, canvas.width, canvas.height); const w = canvas.width * .27, h = w * .5625; if (camera.current && cam) cover(camera.current, canvas.width-w-32, canvas.height-h-32, w, h); }
-      else if (camera.current && cam) cover(camera.current, 0, 0, canvas.width, canvas.height); requestAnimationFrame(draw); };
-    const out = canvas.captureStream(30), audio = new AudioContext(), destination = audio.createMediaStreamDestination();
-    [media.current, display.current].filter(Boolean).forEach(stream => { stream!.getAudioTracks().forEach(track => audio.createMediaStreamSource(new MediaStream([track])).connect(destination)); });
-    destination.stream.getAudioTracks().forEach(track => out.addTrack(track));
-    const mp4Mime = "video/mp4;codecs=avc1.42E01E,mp4a.40.2", webmMime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus") ? "video/webm;codecs=vp9,opus" : "video/webm";
-    const mime = exportType === "mp4" && MediaRecorder.isTypeSupported(mp4Mime) ? mp4Mime : webmMime, extension = mime.startsWith("video/mp4") ? "mp4" : "webm";
-    const chunks: Blob[] = []; const rec = new MediaRecorder(out, { mimeType: mime, videoBitsPerSecond: quality === "1080" ? 12_000_000 : 6_000_000, audioBitsPerSecond: 192_000 });
-    recorder.current = rec; rec.ondataavailable = e => e.data.size && chunks.push(e.data); rec.onstop = () => { const a = document.createElement("a"); a.href = URL.createObjectURL(new Blob(chunks, {type:mime})); a.download = "proximo-"+new Date().toISOString().replace(/[:.]/g,"-")+"."+extension; a.click(); URL.revokeObjectURL(a.href); audio.close(); setRecording(false); setNotice(extension === "mp4" ? "MP4 salvo no seu computador." : "Gravação salva em WebM de alta qualidade (este navegador não grava MP4 nativamente)."); }; rec.start(1000); setRecording(true); draw();
+  async function invite() {
+    const url = new URL(location.href);
+    url.search = "";
+    url.searchParams.set("sala", room); url.searchParams.set("senha", pin); url.searchParams.set("anfitriao", owner || name || "Anfitrião");
+    await navigator.clipboard.writeText(url.toString());
+    setNotice("Link copiado. Seu amigo entrará nesta mesma sala.");
   }
-  async function invite() { const url = new URL(location.href); url.search = ""; url.searchParams.set("sala", room); url.searchParams.set("senha", pin); url.searchParams.set("anfitriao", ownerName || name.trim() || "Anfitrião"); await navigator.clipboard?.writeText(url.toString()); setNotice("Link da sala copiado. Quem abrir entra direto na sessão."); }
-  function sendMessage() { const text = draft.trim(); if (!text) return; const message = { name, text }; setMessages(current => [...current, message]); chat.current?.postMessage(message); setDraft(""); }
-  function chooseBackground(file?: File) { if (!file) return; const reader = new FileReader(); reader.onload = () => setBackground(String(reader.result)); reader.readAsDataURL(file); }
-  function leave() { recorder.current?.stop(); media.current?.getTracks().forEach(t=>t.stop()); display.current?.getTracks().forEach(t=>t.stop()); setSharing(false); setSessionStarted(false); setInRoom(false); }
-  if (!inRoom) return <main className="landing"><nav><div className="brand"><span>◇</span>próximo</div></nav><section className="hero"><div className="eyebrow">sala privada com confirmação</div><h1>{entryMode==="new"?<>Crie sua<br/><em>sala.</em></>:<>Entre em uma<br/><em>sessão.</em></>}</h1><p>{entryMode==="new"?"Crie uma sala e mostre o código de confirmação ao seu amigo.":"Digite os códigos recebidos do anfitrião para preparar sua sessão."}</p><div className="entry-tabs"><button className={entryMode==="new"?"selected":""} onClick={()=>setEntryMode("new")}>Criar nova sala</button><button className={entryMode==="existing"?"selected":""} onClick={()=>setEntryMode("existing")}>Entrar em sessão existente</button></div><div className="join"><label>SEU NOME<input value={name} onChange={e=>setName(e.target.value)}/></label><label>QUALIDADE<select value={quality} onChange={e=>setQuality(e.target.value as Quality)}><option value="1080">Full HD · 1080p</option><option value="720">HD · 720p</option></select></label>{entryMode==="new"&&<><label>LAYOUT AO SALVAR<select value={vertical?"tiktok":"normal"} onChange={e=>setVertical(e.target.value==="tiktok")}><option value="normal">Horizontal · 16:9</option><option value="tiktok">TikTok · 9:16</option></select></label><label>ARQUIVO<select value={exportType} onChange={e=>setExportType(e.target.value as "mp4"|"webm")}><option value="mp4">MP4 (se suportado)</option><option value="webm">WebM · alta qualidade</option></select></label></>}<label>SALA (6 NÚMEROS)<input value={room} inputMode="numeric" maxLength={6} onChange={e=>setRoom(e.target.value.replace(/\D/g,""))}/></label><label>SENHA DE CONFIRMAÇÃO<input value={pin} inputMode="numeric" maxLength={4} onChange={e=>setPin(e.target.value.replace(/\D/g,""))}/></label>{entryMode==="new"&&<button className="secondary" onClick={()=>{setRoom(numericCode(6));setPin(numericCode(4))}}>Gerar nova sala e senha</button>}<button onClick={()=>join()}>{entryMode==="new"?"Criar e preparar sessão":"Entrar na sessão"} <b>→</b></button>{notice&&<p>{notice}</p>}</div><small className="fine">O fundo virtual da câmera pode ser configurado depois de entrar na sala.</small></section><div className="orb one"/><div className="orb two"/></main>;
-  return <main className="call"><header><div className="brand"><span>◇</span>próximo</div><div className="room"><i/> sala {room} · senha {pin}</div><label className="background-upload session-background">▧ Fundo<input type="file" accept="image/*" onChange={e=>chooseBackground(e.target.files?.[0])}/></label><select className="camera-select" value={deviceId} onChange={e=>selectCamera(e.target.value)} aria-label="Escolher webcam"><option value="">Webcam padrão</option>{devices.map(d=><option key={d.deviceId} value={d.deviceId}>{d.label || "Webcam"}</option>)}</select><button className={vertical?"format on":"format"} onClick={()=>setVertical(!vertical)}>▯ TikTok {vertical?"ON":""}</button><button className="invite" onClick={invite}>⌁ Convidar amigo</button><button className="chat-toggle" onClick={()=>setChatOpen(!chatOpen)}>▤ Chat</button><button className="refresh" onClick={()=>location.reload()} title="Recarregar a sessão">↻</button></header><section className={"stage "+(sharing?"screen-on":"")}>{sharing&&<div className="tile shared"><video ref={screen} autoPlay playsInline/><label>Sua tela <b>Compartilhando</b></label></div>}<div className="tile mine"><video ref={camera} autoPlay muted playsInline className={cam?"":"hidden"}/>{!cam&&<div className="avatar">V</div>}<label>{name} (você) <b>{mic?"●":"microfone desligado"}</b></label></div><div className="tile waiting"><div className="avatar">?</div><label>{entryMode==="existing"&&ownerName?ownerName+" (anfitrião)":"Aguardando seu amigo"}</label><p>{entryMode==="existing"&&ownerName?"Você entrou na sala de "+ownerName:"Envie a sala e senha para ele entrar"}</p></div></section>{chatOpen&&<aside className="chat-panel"><div className="chat-title">Chat da sala <button onClick={()=>setChatOpen(false)}>×</button></div><div className="chat-messages">{messages.length?messages.map((message,index)=><p key={index}><b>{message.name}</b>{message.text}</p>):<span>Sem mensagens ainda.</span>}</div><div className="chat-compose"><input value={draft} onChange={e=>setDraft(e.target.value)} onKeyDown={e=>e.key==="Enter"&&sendMessage()} placeholder="Digite uma mensagem…"/><button onClick={sendMessage}>Enviar</button></div></aside>}{notice&&<div className="toast">{notice}<button onClick={()=>setNotice("")}>×</button></div>}<footer><button className={!mic?"off":""} onClick={()=>{setTrack("audio",!mic);setMic(!mic)}}><b>{mic?"◉":"◌"}</b><small>{mic?"Microfone":"Silenciado"}</small></button><button className={!cam?"off":""} onClick={()=>{setTrack("video",!cam);setCam(!cam)}}><b>{cam?"◉":"◌"}</b><small>{cam?"Câmera":"Câmera off"}</small></button><button className={sharing?"active":""} onClick={share}><b>▣</b><small>{sharing?"Parar tela":"Compartilhar tela"}</small></button><button className={recording?"recording":""} onClick={record}><b>●</b><small>{recording?"Parar e salvar":"Gravar local"}</small></button><i/><button className="leave" onClick={leave}><b>⌕</b><small>Sair</small></button></footer></main>;
+  function send() {
+    const text = draft.trim(); if (!text) return;
+    const message = { name, text }; setMessages(old => [...old, message]); connection.current?.send({ kind: "chat", ...message }); setDraft("");
+  }
+  function leave() {
+    peer.current?.destroy(); peer.current = null; connection.current = null;
+    local.current?.getTracks().forEach(track => track.stop()); displayed.current?.getTracks().forEach(track => track.stop());
+    local.current = null; displayed.current = null; remote.current = null; remoteId.current = "";
+    setFriend(""); setSharing(false); setRemoteSharing(false); setInRoom(false);
+  }
+  if (!inRoom) return <main className="landing"><nav><div className="brand"><span>◇</span>próximo</div></nav><section className="hero"><div className="eyebrow">vídeo privado em tempo real</div><h1>{mode === "host" ? <>Crie sua<br/><em>sala.</em></> : <>Entre na<br/><em>sala.</em></>}</h1><p>{mode === "host" ? "Informe seu nome, entre e envie o convite. Mantenha a aba aberta." : `Você vai entrar na sala de ${owner || "seu amigo"}.`}</p><div className="entry-tabs"><button className={mode === "host" ? "selected" : ""} onClick={() => setMode("host")}>Criar nova sala</button><button className={mode === "guest" ? "selected" : ""} onClick={() => setMode("guest")}>Entrar em sessão</button></div><div className="join"><label>SEU NOME<input value={name} onChange={event => setName(event.target.value)}/></label><label>QUALIDADE<select value={quality} onChange={event => setQuality(event.target.value as Quality)}><option value="1080">Full HD · 1080p</option><option value="720">HD · 720p</option></select></label><label>SALA (6 NÚMEROS)<input value={room} inputMode="numeric" maxLength={6} onChange={event => setRoom(event.target.value.replace(/\D/g, ""))}/></label><label>SENHA DE CONFIRMAÇÃO<input value={pin} inputMode="numeric" maxLength={4} onChange={event => setPin(event.target.value.replace(/\D/g, ""))}/></label>{mode === "host" && <button className="secondary" onClick={() => { setRoom(code(6)); setPin(code(4)); }}>Gerar nova sala e senha</button>}<button onClick={() => void join()}>{mode === "host" ? "Criar e entrar na sala" : "Entrar na sessão"} <b>→</b></button>{notice && <p>{notice}</p>}</div></section><div className="orb one"/><div className="orb two"/></main>;
+  const screenActive = sharing || remoteSharing;
+  return <main className="call"><header><div className="brand"><span>◇</span>próximo</div><div className="room"><i/> sala {room} · senha {pin}</div><select className="camera-select" value={deviceId} onChange={event => void selectCamera(event.target.value)} aria-label="Escolher webcam"><option value="">Webcam padrão</option>{devices.map(device => <option key={device.deviceId} value={device.deviceId}>{device.label || "Webcam"}</option>)}</select><button className="invite" onClick={() => void invite()}>⌁ Convidar amigo</button><button className="chat-toggle" onClick={() => setChatOpen(!chatOpen)}>▤ Chat</button><button className="refresh" onClick={() => location.reload()} title="Recarregar a sessão">↻</button></header><section className={"stage " + (screenActive ? "screen-on" : "")}>{screenActive && <div className="tile shared"><video ref={sharing ? screen : remoteScreen} autoPlay playsInline/><label>{sharing ? "Sua tela" : `${friend || "Seu amigo"} está compartilhando`} <b>Compartilhando</b></label></div>}<div className="tile mine"><video ref={mine} autoPlay muted playsInline className={cameraOn ? "" : "hidden"}/>{!cameraOn && <div className="avatar">V</div>}<label>{name} (você) <b>{mic ? "●" : "microfone desligado"}</b></label></div><div className="tile waiting">{friend ? <><video ref={theirs} autoPlay playsInline/><label>{friend} <b>● conectado</b></label></> : <><div className="avatar">?</div><label>Aguardando seu amigo</label><p>Envie o convite para ele entrar nesta sala</p></>}</div></section>{chatOpen && <aside className="chat-panel"><div className="chat-title">Chat da sala <button onClick={() => setChatOpen(false)}>×</button></div><div className="chat-messages">{messages.length ? messages.map((message, index) => <p key={index}><b>{message.name}</b>{message.text}</p>) : <span>Sem mensagens ainda.</span>}</div><div className="chat-compose"><input value={draft} onChange={event => setDraft(event.target.value)} onKeyDown={event => event.key === "Enter" && send()} placeholder="Digite uma mensagem…"/><button onClick={send}>Enviar</button></div></aside>}{notice && <div className="toast">{notice}<button onClick={() => setNotice("")}>×</button></div>}<footer><button className={!mic ? "off" : ""} onClick={() => { toggle("audio", !mic); setMic(!mic); }}><b>{mic ? "◉" : "◌"}</b><small>{mic ? "Microfone" : "Silenciado"}</small></button><button className={!cameraOn ? "off" : ""} onClick={() => { toggle("video", !cameraOn); setCameraOn(!cameraOn); }}><b>{cameraOn ? "◉" : "◌"}</b><small>{cameraOn ? "Câmera" : "Câmera off"}</small></button><button className={sharing ? "active" : ""} onClick={() => void share()}><b>▣</b><small>{sharing ? "Parar tela" : "Compartilhar tela"}</small></button><i/><button className="leave" onClick={leave}><b>⌕</b><small>Sair</small></button></footer></main>;
 }

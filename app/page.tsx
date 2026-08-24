@@ -39,6 +39,7 @@ const constraints = (
 export default function Home() {
   const [inRoom, setInRoom] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false),
+    [editorReturnToCall, setEditorReturnToCall] = useState(false),
     [editorClip, setEditorClip] = useState<EditorClip | null>(null);
   const [booting, setBooting] = useState(true);
   const [room, setRoom] = useState("------"),
@@ -771,7 +772,7 @@ export default function Home() {
     const url = new URL(location.href);
     url.search = "";
     url.searchParams.set("editor", "1");
-    window.open(url.toString(), "_blank", "noopener");
+    window.open(url.toString(), "klip-studio");
   }
   function saveClip() {
     if (!recording || !recorder.current) return;
@@ -1154,10 +1155,16 @@ export default function Home() {
       <ClipEditor
         initialClip={editorClip}
         onBack={() => {
-          setEditorOpen(false);
-          const url = new URL(location.href);
-          url.searchParams.delete("editor");
-          history.replaceState({}, "", url);
+          if (editorReturnToCall) {
+            setEditorOpen(false);
+            setEditorReturnToCall(false);
+            return;
+          }
+          if (window.opener && !window.opener.closed) {
+            window.close();
+            return;
+          }
+          location.assign(location.origin + location.pathname);
         }}
       />
     );
@@ -1759,7 +1766,10 @@ export default function Home() {
           <small>{recording ? "Parar e salvar" : "Gravar local"}</small>
         </button>
         {editorClip && !recording && (
-          <button className="edit-recording" onClick={() => setEditorOpen(true)}>
+          <button className="edit-recording" onClick={() => {
+            setEditorReturnToCall(true);
+            setEditorOpen(true);
+          }}>
             <b>✦</b>
             <small>Editar gravação</small>
           </button>

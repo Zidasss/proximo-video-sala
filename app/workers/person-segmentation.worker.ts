@@ -15,11 +15,19 @@ const WASM_URL =
   "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm";
 const MODEL_URL =
   "https://storage.googleapis.com/mediapipe-models/image_segmenter/selfie_multiclass_256x256/float32/latest/selfie_multiclass_256x256.tflite";
+const neighbors = new Int32Array(4);
 
 let segmenter: ImageSegmenter | null = null;
 let previousAlpha: Float32Array | null = null;
 let coreConfidence: Float32Array | null = null;
-let backgroundIndex = 0;
+let candidateMask: Uint8Array | null = null;
+let retainedMask: Uint8Array | null = null;
+let accessoryMask: Uint8Array | null = null;
+let queue: Int32Array | null = null;
+let hairIndex = 1;
+let bodySkinIndex = 2;
+let faceSkinIndex = 3;
+let clothesIndex = 4;
 let accessoryIndex = -1;
 
 async function initialize() {
@@ -46,7 +54,10 @@ async function initialize() {
     });
   }
   const labels = segmenter.getLabels().map((label) => label.toLowerCase());
-  backgroundIndex = Math.max(0, labels.indexOf("background"));
+  hairIndex = Math.max(1, labels.indexOf("hair"));
+  bodySkinIndex = Math.max(2, labels.indexOf("body-skin"));
+  faceSkinIndex = Math.max(3, labels.indexOf("face-skin"));
+  clothesIndex = Math.max(4, labels.indexOf("clothes"));
   accessoryIndex = labels.findIndex((label) => /other|accessor/.test(label));
   scope.postMessage({ type: "ready" });
 }
@@ -67,39 +78,138 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       if (!previousAlpha || previousAlpha.length !== total) {
         previousAlpha = new Float32Array(total);
         coreConfidence = new Float32Array(total);
+        candidateMask = new Uint8Array(total);
+        retainedMask = new Uint8Array(total);
+        accessoryMask = new Uint8Array(total);
+        queue = new Int32Array(total);
       }
-      const background = masks[backgroundIndex].getAsFloat32Array();
       const resolvedAccessoryIndex =
         accessoryIndex >= 0 ? accessoryIndex : masks.length >= 6 ? 5 : -1;
-      const accessory =
+      const hair = masks[hairIndex].getAsFloat32Array();
+      const bodySkin = masks[bodySkinIndex].getAsFloat32Array();
+      const faceSkin = masks[faceSkinIndex].getAsFloat32Array();
+      const clothes = masks[clothesIndex].getAsFloat32Array();
+      const accessories =
         resolvedAccessoryIndex >= 0
           ? masks[resolvedAccessoryIndex].getAsFloat32Array()
           : null;
       const core = coreConfidence!;
+      const acceptedAccessories = accessoryMask!;
+      const candidates = candidateMask!;
+      const retained = retainedMask!;
+      const workQueue = queue!;
+      acceptedAccessories.fill(0);
+      candidates.fill(0);
+      retained.fill(0);
+
+      // Cabelo escuro e fios finos têm confiança menor que pele/roupa. O peso
+      // próprio evita o efeito de "careca", sem tornar objetos do cenário em
+      // pessoa porque a conectividade é filtrada logo abaixo.
       for (let index = 0; index < total; index += 1) {
-        let confidence = 1 - background[index];
-        if (accessory)
-          confidence = Math.max(0, confidence - accessory[index]);
-        core[index] = confidence;
+        core[index] = Math.min(
+          1,
+          hair[index] * 1.72 +
+            bodySkin[index] * 1.08 +
+            faceSkin[index] * 1.08 +
+            clothes[index],
+        );
       }
+
+      // "Others" significa acessórios no cartão oficial do modelo. Semeamos
+      // somente acessórios próximos de cabelo/rosto/pele e então seguimos o
+      // componente conectado (armação, haste, headset e fio), sem aceitar um
+      // objeto isolado da estante.
+      let queueHead = 0;
+      let queueTail = 0;
+      if (accessories) {
+        for (let index = 0; index < total; index += 1) {
+          if (accessories[index] < 0.3) continue;
+          const x = index % width;
+          const nearHead =
+            hair[index] > 0.07 ||
+            faceSkin[index] > 0.1 ||
+            bodySkin[index] > 0.24 ||
+            hair[Math.max(0, index - width * 9)] > 0.09 ||
+            hair[Math.min(total - 1, index + width * 9)] > 0.09 ||
+            faceSkin[index - Math.min(9, x)] > 0.12 ||
+            faceSkin[index + Math.min(9, width - x - 1)] > 0.12;
+          if (nearHead) {
+            acceptedAccessories[index] = 1;
+            workQueue[queueTail++] = index;
+          }
+        }
+        while (queueHead < queueTail) {
+          const index = workQueue[queueHead++];
+          const x = index % width;
+          neighbors[0] = index - width;
+          neighbors[1] = index + width;
+          neighbors[2] = index - 1;
+          neighbors[3] = index + 1;
+          for (let side = 0; side < 4; side += 1) {
+            const neighbor = neighbors[side];
+            if (
+              neighbor >= 0 &&
+              neighbor < total &&
+              (side < 2 || (side === 2 ? x > 0 : x + 1 < width)) &&
+              !acceptedAccessories[neighbor] &&
+              accessories[neighbor] >= 0.24
+            ) {
+              acceptedAccessories[neighbor] = 1;
+              workQueue[queueTail++] = neighbor;
+            }
+          }
+        }
+      }
+
+      // Mantém apenas regiões ligadas a cabelo ou pele. Isso remove cadeiras,
+      // estantes e manchas de roupa previstas longe da pessoa.
+      queueHead = 0;
+      queueTail = 0;
+      for (let index = 0; index < total; index += 1) {
+        const accessoryConfidence = accessories?.[index] ?? 0;
+        const confidence = Math.max(
+          core[index],
+          acceptedAccessories[index] ? accessoryConfidence * 0.96 : 0,
+        );
+        core[index] = confidence;
+        candidates[index] = confidence > 0.105 ? 1 : 0;
+        if (
+          candidates[index] &&
+          (faceSkin[index] > 0.115 || bodySkin[index] > 0.19)
+        ) {
+          retained[index] = 1;
+          workQueue[queueTail++] = index;
+        }
+      }
+      while (queueHead < queueTail) {
+        const index = workQueue[queueHead++];
+        const x = index % width;
+        neighbors[0] = index - width;
+        neighbors[1] = index + width;
+        neighbors[2] = index - 1;
+        neighbors[3] = index + 1;
+        for (let side = 0; side < 4; side += 1) {
+          const neighbor = neighbors[side];
+          if (
+            neighbor >= 0 &&
+            neighbor < total &&
+            (side < 2 || (side === 2 ? x > 0 : x + 1 < width)) &&
+            candidates[neighbor] &&
+            !retained[neighbor]
+          ) {
+            retained[neighbor] = 1;
+            workQueue[queueTail++] = neighbor;
+          }
+        }
+      }
+
       const alpha = new Uint8ClampedArray(total);
       const previous = previousAlpha!;
       for (let index = 0; index < total; index += 1) {
-        let confidence = core[index];
-        const accessoryConfidence = accessory?.[index] ?? 0;
-        if (accessoryConfidence > 0.42) {
-          const x = index % width;
-          const nearPerson =
-            core[Math.max(0, index - width * 5)] > 0.34 ||
-            core[Math.min(total - 1, index + width * 5)] > 0.34 ||
-            core[index - Math.min(5, x)] > 0.34 ||
-            core[index + Math.min(5, width - x - 1)] > 0.34;
-          if (nearPerson)
-            confidence = Math.max(confidence, accessoryConfidence * 0.88);
-        }
+        const confidence = retained[index] ? core[index] : 0;
         const normalized = Math.max(
           0,
-          Math.min(1, (confidence - 0.25) / 0.43),
+          Math.min(1, (confidence - 0.1) / 0.5),
         );
         const target = normalized * normalized * (3 - 2 * normalized);
         const stabilized =

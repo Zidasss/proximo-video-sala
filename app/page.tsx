@@ -300,6 +300,7 @@ export default function Home() {
     let active = true,
       segmentationFrame = 0,
       renderFrame = 0,
+      premiumInferenceTimer = 0,
       lastInferenceAt = 0,
       inferenceDuration = 24,
       attached = false,
@@ -309,6 +310,8 @@ export default function Home() {
       context = canvas.getContext("2d"),
       maskCanvas = document.createElement("canvas"),
       maskContext = maskCanvas.getContext("2d"),
+      inferenceCanvas = document.createElement("canvas"),
+      inferenceContext = inferenceCanvas.getContext("2d", { alpha: false }),
       foregroundCanvas = document.createElement("canvas"),
       foregroundContext = foregroundCanvas.getContext("2d"),
       image = new Image();
@@ -318,7 +321,7 @@ export default function Home() {
     image.src = background;
     const run = async () => {
       await source.play();
-      if (!active || !context || !maskContext || !foregroundContext) return;
+      if (!active || !context || !maskContext || !inferenceContext || !foregroundContext) return;
       canvas.width = source.videoWidth || 1280;
       canvas.height = source.videoHeight || 720;
       foregroundCanvas.width = canvas.width;
@@ -352,6 +355,15 @@ export default function Home() {
             downsampleRatio: any = tf.scalar(0.25),
             maskPixels: ImageData | null = null,
             inferenceBusy = false;
+          // Perfil "reunião": a webcam continua saindo na resolução original,
+          // mas a máscara é calculada em até 960 px. É a mesma separação de
+          // trabalho usada por apps de chamada: vídeo fluido primeiro, IA em
+          // segundo plano sem monopolizar CPU/GPU.
+          const sourceWidth = source.videoWidth || canvas.width;
+          const sourceHeight = source.videoHeight || canvas.height;
+          const inferenceScale = Math.min(1, 960 / Math.max(sourceWidth, sourceHeight));
+          inferenceCanvas.width = Math.max(2, Math.round((sourceWidth * inferenceScale) / 2) * 2);
+          inferenceCanvas.height = Math.max(2, Math.round((sourceHeight * inferenceScale) / 2) * 2);
           const attachOutput = () => {
             if (attached) return;
             processedLocal.current = output;
@@ -390,6 +402,10 @@ export default function Home() {
               foregroundContext.drawImage(source, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
               foregroundContext.restore();
               context.drawImage(foregroundCanvas, 0, 0, canvas.width, canvas.height);
+            } else {
+              // Nunca congelar/escurecer o vídeo enquanto a primeira máscara
+              // premium ainda está sendo preparada.
+              context.drawImage(source, 0, 0, canvas.width, canvas.height);
             }
             renderFrame = requestAnimationFrame(renderPremium);
           };
@@ -398,7 +414,14 @@ export default function Home() {
             inferenceBusy = true;
             const started = performance.now();
             try {
-              const pixels = tf.browser.fromPixels(source);
+              inferenceContext.drawImage(
+                source,
+                0,
+                0,
+                inferenceCanvas.width,
+                inferenceCanvas.height,
+              );
+              const pixels = tf.browser.fromPixels(inferenceCanvas);
               const src = tf.tidy(() => pixels.toFloat().div(255).expandDims(0));
               pixels.dispose();
               const outputs = (await model.executeAsync(
@@ -432,13 +455,22 @@ export default function Home() {
               r1i.dispose(); r2i.dispose(); r3i.dispose(); r4i.dispose();
               r1i = r1o; r2i = r2o; r3i = r3o; r4i = r4o;
               inferenceDuration = performance.now() - started;
-              if (inferenceDuration < 80) setNotice("IA Premium ativa · recorte temporal na GPU");
+              if (inferenceDuration < 100)
+                setNotice("IA Premium ativa · vídeo fluido e recorte temporal na GPU");
             } catch {
               setNotice("A IA Premium não iniciou. Voltamos para o recorte leve.");
               setMattingQuality("standard");
             } finally {
               inferenceBusy = false;
-              if (active) segmentationFrame = requestAnimationFrame(() => void inferPremium());
+              if (active) {
+                // A máscara não precisa competir com o vídeo em 30 fps. Um teto
+                // de 13 fps mantém o RVM temporal estável, evita uso contínuo de
+                // GPU e deixa espaço para codificar/enviar a chamada. Se a máquina
+                // já estiver ocupada, reduz ainda mais a pressão automaticamente.
+                const targetMaskInterval = inferenceDuration > 85 ? 120 : 76;
+                const pause = Math.min(160, Math.max(12, targetMaskInterval - inferenceDuration));
+                premiumInferenceTimer = window.setTimeout(() => void inferPremium(), pause);
+              }
             }
           };
           renderPremium();
@@ -446,6 +478,7 @@ export default function Home() {
           return () => {
             cancelAnimationFrame(segmentationFrame);
             cancelAnimationFrame(renderFrame);
+            window.clearTimeout(premiumInferenceTimer);
             model.dispose();
             r1i.dispose(); r2i.dispose(); r3i.dispose(); r4i.dispose(); downsampleRatio.dispose();
             output.getTracks().forEach((track) => track.stop());

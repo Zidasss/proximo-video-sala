@@ -495,9 +495,10 @@ export default function Home() {
   function useCall(call: MediaConnection, fallback: string) {
     remoteId.current = call.peer;
     if (!cameraCalls.current.includes(call)) cameraCalls.current.push(call);
-    call.on("stream", (stream) =>
-      showRemote(stream, String(call.metadata?.name || fallback)),
-    );
+    // Em uma chamada PeerJS, `metadata` pertence a quem iniciou a chamada.
+    // A faixa que chega ao convidado é a resposta do anfitrião, portanto usar
+    // metadata aqui fazia o convidado ver o próprio nome nas duas câmeras.
+    call.on("stream", (stream) => showRemote(stream, fallback));
     call.on("error", () =>
       setNotice(
         "A chamada caiu. Atualize os dois navegadores e tente novamente.",

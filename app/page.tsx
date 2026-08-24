@@ -373,15 +373,30 @@ export default function Home() {
     client.on("call", (call) => {
       if (call.metadata?.kind === "screen") {
         call.answer();
+        let received: MediaStream | null = null;
         call.on("stream", (shared) => {
+          // Só uma pessoa apresenta por vez: uma nova apresentação encerra a anterior.
+          if (displayed.current) {
+            displayed.current.getTracks().forEach((track) => track.stop());
+            displayed.current = null;
+            if (screen.current) screen.current.srcObject = null;
+            setSharing(false);
+          }
+          received = shared;
           remoteDisplayed.current = shared;
           if (remoteScreen.current) {
             remoteScreen.current.srcObject = shared;
             void remoteScreen.current.play().catch(() => undefined);
           }
           setRemoteSharing(true);
+          setNotice(`${String(call.metadata?.name || "Seu amigo")} assumiu o compartilhamento.`);
         });
-        call.on("close", () => setRemoteSharing(false));
+        call.on("close", () => {
+          if (remoteDisplayed.current === received) {
+            remoteDisplayed.current = null;
+            setRemoteSharing(false);
+          }
+        });
         return;
       }
       call.answer(stream);
@@ -466,6 +481,10 @@ export default function Home() {
         },
         audio: true,
       });
+      // Ao iniciar sua apresentação, a tela que estava vindo do amigo deixa de ser exibida.
+      remoteDisplayed.current = null;
+      if (remoteScreen.current) remoteScreen.current.srcObject = null;
+      setRemoteSharing(false);
       displayed.current = stream;
       if (screen.current) {
         screen.current.srcObject = stream;

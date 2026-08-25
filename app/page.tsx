@@ -3,6 +3,11 @@
 import { useEffect, useRef, useState } from "react";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
 import GifStudio from "./gif-studio";
+import {
+  analyzeClipForRadar,
+  type RadarMode,
+  type RadarSuggestion,
+} from "./klip-radar";
 
 type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
@@ -19,7 +24,7 @@ type SavedCall = {
   audioInputId?: string;
   startedAt: number;
 };
-type EditorClip = { url: string; name: string };
+type EditorClip = { url: string; name: string; autoAnalyze?: boolean };
 type TextEffect = "none" | "pop" | "slide" | "typewriter" | "zoom" | "bounce";
 type TextLayer = {
   id: string;
@@ -74,7 +79,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.16.0";
+const APP_VERSION = "v0.17.0-update";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -1935,15 +1940,29 @@ export default function Home() {
     `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
   const callTimeLabel = (seconds: number) =>
     `${String(Math.floor(seconds / 3600)).padStart(2, "0")}:${String(Math.floor((seconds % 3600) / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  function downloadRecording(chunks: Blob[], mime: string, label: string) {
-    if (!chunks.length) return;
+  function downloadRecording(
+    chunks: Blob[],
+    mime: string,
+    label: string,
+    autoAnalyze = false,
+  ) {
+    if (!chunks.length) return null;
+    const blob = new Blob(chunks, { type: mime }),
+      editorUrl = URL.createObjectURL(blob),
+      downloadUrl = URL.createObjectURL(blob),
+      nextClip: EditorClip = {
+        url: editorUrl,
+        name: `Gravação ${label}`,
+        autoAnalyze,
+      };
     const link = document.createElement("a"),
-      url = URL.createObjectURL(new Blob(chunks, { type: mime }));
-    setEditorClip({ url, name: `Gravação ${label}` });
-    link.href = url;
+      extension = mime.startsWith("video/mp4") ? "mp4" : "webm";
+    setEditorClip(nextClip);
+    link.href = downloadUrl;
     link.download = `proximo-${label}-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
     link.click();
-    window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+    window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
+    return nextClip;
   }
   function openEditor() {
     const url = new URL(location.href);
@@ -2128,13 +2147,22 @@ export default function Home() {
       }
     };
     rec.onstop = () => {
-      downloadRecording(recordChunks.current, mime, "reel");
+      const finishedClip = downloadRecording(
+        recordChunks.current,
+        mime,
+        "reel",
+        true,
+      );
       recordChunks.current = [];
       cutRequested.current = false;
       setRecording(false);
       setRecordSeconds(0);
       void recordingAudio?.close();
       connection.current?.send({ kind: "recording", active: false });
+      if (finishedClip) {
+        setEditorReturnToCall(true);
+        setEditorOpen(true);
+      }
     };
     rec.start(1000);
     setRecording(true);
@@ -3527,6 +3555,15 @@ function ClipEditorV2({
     [exportProgress, setExportProgress] = useState(0),
     [notice, setNotice] = useState(""),
     [snapGuide, setSnapGuide] = useState<number | null>(null),
+    [radarOpen, setRadarOpen] = useState(false),
+    [radarAnalyzing, setRadarAnalyzing] = useState(false),
+    [radarProgress, setRadarProgress] = useState(0),
+    [radarStatus, setRadarStatus] = useState("Pronto para analisar"),
+    [radarMode, setRadarMode] = useState<RadarMode>("reels"),
+    [radarCount, setRadarCount] = useState(5),
+    [radarSuggestions, setRadarSuggestions] = useState<RadarSuggestion[]>([]),
+    [approvedCuts, setApprovedCuts] = useState<RadarSuggestion[]>([]),
+    [activeRadarCutId, setActiveRadarCutId] = useState(""),
     [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: "text" | "illustration" | "audio" | "video"; id: string } | null>(null);
   const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
   const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
@@ -3566,6 +3603,8 @@ function ClipEditorV2({
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const videoFrameResize = useRef<{ scaleX: number; scaleY: number; startX: number; startY: number; edge: "left" | "right" | "top" | "bottom" | "corner" } | null>(null);
   const baseLoopOffset = useRef(0);
+  const autoRadarAnalyzed = useRef(false);
+  const radarPreviewEnd = useRef<number | null>(null);
 
   useEffect(() => {
     if (!selectedId && !selectedIllustrationId && !selectedAudioId && layers[0]) setSelectedId(layers[0].id);
@@ -3730,6 +3769,12 @@ function ClipEditorV2({
     setIllustrations([]);
     setSelectedId("");
     setSelectedIllustrationId("");
+    setRadarSuggestions([]);
+    setApprovedCuts([]);
+    setActiveRadarCutId("");
+    setRadarProgress(0);
+    setRadarStatus("Pronto para analisar");
+    autoRadarAnalyzed.current = false;
     setNotice(message);
   }
   async function turnPhotoIntoClip(file: File, target: "main" | "scene" = "main") {
@@ -3916,12 +3961,12 @@ function ClipEditorV2({
     } catch { setNotice("Não foi possível ler o arquivo de legenda."); }
   }
   function exportProject() {
-    const project = { version: 2, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, createdAt: new Date().toISOString() };
+    const project = { version: 3, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, radarMode, approvedCuts, createdAt: new Date().toISOString() };
     const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Ao abrir, importe também o vídeo original.");
   }
   async function importProject(file?: File) {
     if (!file) return;
-    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); const restoredStart = Number(project.start) || 0, restoredEnd = Number(project.end) || duration; const restoredIn = Number(project.videoFadeIn) || 0, restoredOut = Number(project.videoFadeOut) || 0; const legacyScale = Number(project.videoTransform?.scale) || 1; setStart(restoredStart); setEnd(restoredEnd); setVideoFadeIn(restoredIn); setVideoFadeOut(restoredOut); setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart)); setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut))); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scaleX: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleX) || legacyScale)), scaleY: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleY) || legacyScale)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
+    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); const restoredStart = Number(project.start) || 0, restoredEnd = Number(project.end) || duration; const restoredIn = Number(project.videoFadeIn) || 0, restoredOut = Number(project.videoFadeOut) || 0; const legacyScale = Number(project.videoTransform?.scale) || 1; const restoredCuts: RadarSuggestion[] = Array.isArray(project.approvedCuts) ? project.approvedCuts.filter((item: RadarSuggestion) => Number.isFinite(item?.start) && Number.isFinite(item?.end) && item.end > item.start).map((item: RadarSuggestion) => ({ ...item, id: item.id || crypto.randomUUID(), selected: true })) : []; setStart(restoredStart); setEnd(restoredEnd); setVideoFadeIn(restoredIn); setVideoFadeOut(restoredOut); setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart)); setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut))); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scaleX: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleX) || legacyScale)), scaleY: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleY) || legacyScale)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setRadarMode(["reels", "shorts", "highlights"].includes(project.radarMode) ? project.radarMode : "reels"); setApprovedCuts(restoredCuts); setRadarSuggestions(restoredCuts); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -4215,6 +4260,97 @@ function ClipEditorV2({
     setCurrent(duration);
     setIsPlaying(false);
   }
+  async function runRadarAnalysis() {
+    if (!clip || !duration || radarAnalyzing) return;
+    setRadarOpen(true);
+    setRadarAnalyzing(true);
+    setRadarProgress(0);
+    setRadarStatus("Preparando a análise…");
+    try {
+      const suggestions = await analyzeClipForRadar(
+        clip.url,
+        sourceDuration || duration,
+        radarMode,
+        radarCount,
+        (progress, status) => {
+          setRadarProgress(progress);
+          setRadarStatus(status);
+        },
+      );
+      setRadarSuggestions(suggestions);
+      setRadarStatus(
+        suggestions.length
+          ? `${suggestions.length} possíveis Klips encontrados. Confira antes de aplicar.`
+          : "Nenhum bloco claro foi encontrado. Tente o modo Destaques.",
+      );
+    } catch {
+      setRadarStatus("Não foi possível analisar este arquivo. O vídeo original continua intacto.");
+    } finally {
+      setRadarAnalyzing(false);
+    }
+  }
+  function toggleRadarSuggestion(id: string) {
+    setRadarSuggestions((items) =>
+      items.map((item) =>
+        item.id === id ? { ...item, selected: !item.selected } : item,
+      ),
+    );
+  }
+  function previewRadarSuggestion(item: RadarSuggestion) {
+    radarPreviewEnd.current = item.end;
+    setRadarOpen(false);
+    setActiveRadarCutId(item.id);
+    seek(item.start);
+    void playTimelineAt(item.start);
+    setNotice(`Prévia do Klip: ${time(item.start)} até ${time(item.end)}.`);
+  }
+  function activateRadarCut(item: RadarSuggestion) {
+    radarPreviewEnd.current = null;
+    setActiveRadarCutId(item.id);
+    setStart(item.start);
+    setEnd(item.end);
+    seek(item.start);
+    setNotice(`${item.title} selecionado para editar e exportar.`);
+  }
+  function applyRadarSuggestions() {
+    const accepted = radarSuggestions.filter((item) => item.selected);
+    if (!accepted.length) {
+      setRadarStatus("Selecione pelo menos uma sugestão para levar à timeline.");
+      return;
+    }
+    setApprovedCuts(accepted);
+    setMarkers((items) =>
+      Array.from(
+        new Set([...items, ...accepted.flatMap((item) => [item.start, item.end])]),
+      ).sort((first, second) => first - second),
+    );
+    setRadarOpen(false);
+    activateRadarCut(accepted[0]);
+    setNotice(
+      `${accepted.length} Klip${accepted.length > 1 ? "s" : ""} adicionado${accepted.length > 1 ? "s" : ""}. O original foi preservado.`,
+    );
+  }
+  function removeRadarCut(id: string) {
+    setApprovedCuts((items) => items.filter((item) => item.id !== id));
+    if (activeRadarCutId === id) setActiveRadarCutId("");
+  }
+  useEffect(() => {
+    const previewEnd = radarPreviewEnd.current;
+    if (previewEnd === null || current < previewEnd - 0.03) return;
+    video.current?.pause();
+    illustrationElements.current.forEach((element) => {
+      if (element instanceof HTMLVideoElement) element.pause();
+    });
+    radarPreviewEnd.current = null;
+    setIsPlaying(false);
+    setRadarOpen(true);
+  }, [current]);
+
+  useEffect(() => {
+    if (!clip?.autoAnalyze || !duration || autoRadarAnalyzed.current) return;
+    autoRadarAnalyzed.current = true;
+    void runRadarAnalysis();
+  }, [clip, duration]);
   function trimAtPlayhead() {
     if (!duration) return;
     remember();
@@ -4747,6 +4883,7 @@ function ClipEditorV2({
         {clip && <div className="editor-header-actions">
           <span className="autosave-note">Projeto local · nada é enviado</span>
           <button onClick={onBack}>← Voltar para sala</button>
+          <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}>✦ Encontrar momentos</button>
           <select className="export-format" aria-label="Formato de saída" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>
             <option value="mp4">MP4</option>
             <option value="webm">WebM</option>
@@ -4778,6 +4915,7 @@ function ClipEditorV2({
         <a href="#klip-preview">▣ Prévia</a>
         <a href="#klip-tools">☷ Ferramentas</a>
         <a href="#klip-timeline">▤ Linha do tempo</a>
+        <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}>✦ Radar</button>
         <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : "⇩ Exportar"}</button>
       </nav>}
       <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
@@ -4796,6 +4934,7 @@ function ClipEditorV2({
             <small className="media-import-help"><b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado do principal. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
           </>}
           {clip && <p className="editor-file">● {clip.name}</p>}
+          {clip && <button className="radar-tool-card" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><span>✦</span><b>Klip Radar</b><small>{approvedCuts.length ? `${approvedCuts.length} corte${approvedCuts.length > 1 ? "s" : ""} na timeline` : "Encontre pausas e bons momentos automaticamente"}</small></button>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           {clip && <>
           <details className="tool-disclosure" open><summary>Templates e aparência</summary>
@@ -4934,6 +5073,7 @@ function ClipEditorV2({
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }} onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline} onContextMenu={openVideoContextMenu}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><button className="primary-video-clip timeline-item-clip" type="button" style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((primaryClipEnd - primaryClipStart) / duration) * 100)}%` : "100%" }} onPointerDown={(event) => event.stopPropagation()} onContextMenu={openVideoContextMenu} title="Vídeo principal. Novos vídeos entram depois deste bloco."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineTrim(event, "start")} /><span>▶ VÍDEO PRINCIPAL · {clip?.name}</span><i className="timeline-clip-meta">origem</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineTrim(event, "end")} /></button>{sceneItems.map((item, index) => <button className={`illustration-clip scene-clip timeline-item-clip ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onClick={(event) => { event.stopPropagation(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag} title="Vídeo na sequência: arraste para mover; use as pontas para encurtar ou aumentar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>▶ VÍDEO {index + 2} · {item.name}</span><i className="timeline-clip-meta">sequência</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button>)}{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%" }}><span>{time(primaryClipStart)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(primaryClipEnd / duration) * 100}%` : "100%" }}><span>{time(primaryClipEnd)}</span></button></div></div>
+          {!!approvedCuts.length && <div className="timeline-lane radar-lane"><b>✦ KLIPS</b><div className="lane-track" title="Sugestões aprovadas pelo Klip Radar. Clique para editar um trecho.">{approvedCuts.map((item, index) => <button type="button" key={item.id} className={`radar-cut ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2.5, ((item.end - item.start) / duration) * 100)}%` : "8%" }} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} title={`${item.title} · ${time(item.start)}–${time(item.end)}`}><span>K{index + 1} · {item.score}%</span><i onClick={(event) => { event.stopPropagation(); removeRadarCut(item.id); }} aria-label="Remover Klip">×</i></button>)}</div></div>}
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {audioTracks.map((track, index) => (
             <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }} onContextMenu={(event) => openContextMenu(event, "audio", track.id)}>
@@ -4961,6 +5101,27 @@ function ClipEditorV2({
           {(selected || selectedIllustration || selectedAudio) && <p className="timeline-shortcuts">Arraste o bloco para mover · arraste as pontas para cortar · <kbd>Del</kbd> remover · <kbd>Ctrl D</kbd> duplicar · <kbd>Espaço</kbd> reproduzir</p>}
         </div>
       </section>}
+      {radarOpen && <aside className="radar-panel" aria-label="Sugestões automáticas de cortes">
+        <div className="radar-panel-header"><div><span>✦ KLIP RADAR</span><b>Onde estão os melhores momentos?</b><small>A análise acontece somente neste navegador.</small></div><button onClick={() => setRadarOpen(false)} aria-label="Fechar">×</button></div>
+        <div className="radar-config">
+          <label>Formato<select value={radarMode} onChange={(event) => setRadarMode(event.target.value as RadarMode)} disabled={radarAnalyzing}><option value="reels">Reels · direto</option><option value="shorts">Shorts · contexto maior</option><option value="highlights">Destaques · conversa longa</option></select></label>
+          <label>Quantidade<select value={radarCount} onChange={(event) => setRadarCount(Number(event.target.value))} disabled={radarAnalyzing}>{[3, 5, 7, 10].map((amount) => <option key={amount} value={amount}>{amount} sugestões</option>)}</select></label>
+          <button className="radar-analyze" disabled={radarAnalyzing} onClick={() => void runRadarAnalysis()}>{radarAnalyzing ? "Analisando…" : radarSuggestions.length ? "↻ Analisar novamente" : "✦ Analisar gravação"}</button>
+        </div>
+        <div className="radar-progress" aria-live="polite"><div><i style={{ width: `${radarProgress}%` }} /></div><span>{radarStatus}</span></div>
+        {!!radarSuggestions.length && <div className="radar-suggestions">
+          <div className="radar-review-title"><b>Revise antes de aplicar</b><small>Desmarque o que não fizer sentido. Nada altera o arquivo original.</small></div>
+          {radarSuggestions.map((item, index) => <article key={item.id} className={item.selected ? "selected" : ""}>
+            <label className="radar-check"><input type="checkbox" checked={item.selected} onChange={() => toggleRadarSuggestion(item.id)} /><span>Klip {index + 1}</span></label>
+            <strong>{item.title}</strong>
+            <div className="radar-score"><b>{item.score}</b><span>pontuação</span></div>
+            <time>{time(item.start)} → {time(item.end)} · {time(item.end - item.start)}</time>
+            <p>{item.reason}</p>
+            <button onClick={() => previewRadarSuggestion(item)}>▶ Conferir trecho</button>
+          </article>)}
+        </div>}
+        <footer><button onClick={() => setRadarOpen(false)}>Continuar editando</button><button className="radar-apply" disabled={!radarSuggestions.some((item) => item.selected)} onClick={applyRadarSuggestions}>Adicionar selecionados à timeline</button></footer>
+      </aside>}
       {contextMenu && <div className="timeline-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseLeave={closeContextMenu}>
         {contextMenu.kind !== "video" && <><button onClick={() => { splitSelectedAtPlayhead(); closeContextMenu(); }}>✂ Dividir no cursor</button><button onClick={() => { duplicateSelected(); closeContextMenu(); }}>⧉ Duplicar</button><button onClick={() => { copySelected(); closeContextMenu(); }}>⌘ Copiar</button>{contextMenu.kind !== "audio" && <><button onClick={() => moveSelectedLayer("front")}>⇧ Trazer para frente</button><button onClick={() => moveSelectedLayer("back")}>⇩ Enviar para trás</button></>}<button className="danger" onClick={() => { deleteSelected(); closeContextMenu(); }}>⌫ Excluir</button><hr /></>}
         <button onClick={() => { trimAtPlayhead(); closeContextMenu(); }}>⌘ Ajustar corte do vídeo base</button>

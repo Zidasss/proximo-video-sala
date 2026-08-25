@@ -96,3 +96,36 @@ test("ships the image-to-GIF motion studio and camera background handoff", async
   assert.match(css, /\.motion-frame-list/);
   assert.match(css, /\.motion-exporting/);
 });
+
+test("ships the local Klip Radar review flow without replacing the source", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const radar = await readFile(new URL("app/klip-radar.ts", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(page, /autoAnalyze\?: boolean/);
+  assert.match(page, /function runRadarAnalysis/);
+  assert.match(page, /function applyRadarSuggestions/);
+  assert.match(page, /function previewRadarSuggestion/);
+  assert.match(page, /setEditorOpen\(true\)/);
+  assert.match(page, /KLIP RADAR/);
+  assert.match(page, /O original foi preservado/);
+  assert.match(radar, /export async function analyzeClipForRadar/);
+  assert.match(radar, /Mapeando ritmo e intensidade/);
+  assert.match(radar, /decodeAudioData/);
+  assert.match(radar, /sugestões estimadas para conferir/);
+  assert.match(css, /\.radar-panel/);
+  assert.match(css, /\.radar-cut/);
+  assert.match(css, /\.radar-trigger/);
+});
+
+test("Klip Radar finds separate speech blocks and keeps them inside the source", async () => {
+  const { buildSuggestions } = await import("../app/klip-radar.ts");
+  const levels = Array.from({ length: 900 }, () => 0.002);
+  for (let index = 50; index < 300; index += 1) levels[index] = index % 37 < 3 ? 0.004 : 0.08;
+  for (let index = 380; index < 680; index += 1) levels[index] = index % 43 < 4 ? 0.004 : 0.065;
+  const suggestions = buildSuggestions(levels, 0.1, 90, "reels", 5);
+  assert.ok(suggestions.length >= 2);
+  assert.ok(suggestions.every((item) => item.start >= 0 && item.end <= 90));
+  assert.ok(suggestions.every((item) => item.end > item.start && item.selected));
+  assert.ok(suggestions.some((item) => item.start < 10));
+  assert.ok(suggestions.some((item) => item.start >= 25));
+});

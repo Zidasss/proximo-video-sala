@@ -1798,3 +1798,11 @@ body {
 .clip-editor-v2 .video-frame-resize.edge.bottom { right: auto; bottom: 8px; left: 50%; top: auto; transform: translateX(-50%); cursor: ns-resize; }
 .clip-editor-v2 .video-frame-resize.corner { right: 8px; bottom: 8px; left: auto; top: auto; cursor: nwse-resize; }
 .clip-editor-v2 .video-layout-hint { max-width: calc(100% - 120px); text-align: center; font-size: 10px; }
+
+/* Empty editor must fill its preview frame; otherwise a black unused strip appears on wide screens. */
+.clip-editor-v2 .editor-stage > .editor-empty {
+  width: 100%;
+  max-width: none;
+  height: 100%;
+  min-height: 0;
+}

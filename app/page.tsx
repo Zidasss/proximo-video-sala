@@ -2059,15 +2059,35 @@ export default function Home() {
             <button className="open-editor" onClick={openEditor}>
               ✦ Editor de clipes
             </button>
-            <button className="nav-action-btn" type="button" onClick={() => setSocialModalOpen(true)}>
-              <Link2 style={{ width: "14px", height: "14px" }} /> Redes Sociais
-            </button>
-            <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
-              <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
-            </button>
-            <button className="nav-action-btn" type="button" onClick={() => setAuthModalOpen(true)}>
-              <User style={{ width: "14px", height: "14px" }} /> {currentUser ? currentUser.name || "Minha Conta" : "Entrar"}
-            </button>
+            {currentUser ? (
+              <>
+                <button className="nav-action-btn" type="button" onClick={() => setSocialModalOpen(true)}>
+                  <Link2 style={{ width: "14px", height: "14px" }} /> Redes Sociais
+                </button>
+                <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
+                  <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#f4f4f5" }}>{currentUser.name || currentUser.email}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem("klip_user");
+                      setCurrentUser(null);
+                    }}
+                    style={{ background: "none", border: "none", color: "#71717a", fontSize: "11px", marginLeft: "4px", cursor: "pointer" }}
+                    title="Sair da conta"
+                  >
+                    (Sair)
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button className="nav-action-btn primary" type="button" onClick={() => setAuthModalOpen(true)}>
+                <User style={{ width: "14px", height: "14px" }} /> Entrar com Login e Senha
+              </button>
+            )}
           </div>
         </nav>
         <section className="hero">
@@ -2111,7 +2131,7 @@ export default function Home() {
               SEU NOME
               <input
                 value={name}
-                placeholder="Digite seu nome"
+                placeholder={currentUser?.name || "Digite seu nome"}
                 onChange={(event) => setName(event.target.value)}
               />
             </label>
@@ -2163,6 +2183,34 @@ export default function Home() {
               <b>→</b>
             </button>
             {notice && <p>{notice}</p>}
+
+            {!currentUser ? (
+              <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                <span style={{ fontSize: "11px", color: "#c7d2fe" }}>
+                  🔐 <b>Fazer Login:</b> Conecte suas contas do YouTube Shorts, TikTok e Instagram Reels.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAuthModalOpen(true)}
+                  style={{ fontSize: "11px", fontWeight: 600, padding: "5px 10px", borderRadius: "8px", background: "#6366f1", color: "#fff", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  Entrar
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: "10px", padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", color: "#6ee7b7" }}>
+                  ✓ Conectado como <b>{currentUser.name || currentUser.email}</b>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSocialModalOpen(true)}
+                  style={{ fontSize: "11px", color: "#a7f3d0", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Configurar Redes Sociais
+                </button>
+              </div>
+            )}
           </div>
         </section>
         <div className="orb one" />

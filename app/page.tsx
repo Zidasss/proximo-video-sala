@@ -787,9 +787,9 @@ export default function Home() {
               }
               for (let index = 0; index < alpha.length; index += 1) {
                 const val = Math.max(0, Math.min(1, alpha[index]));
-                const normalized = Math.max(0, Math.min(1, (val - 0.16) / 0.68));
+                const normalized = Math.max(0, Math.min(1, (val - 0.22) / 0.52));
                 const smooth = normalized * normalized * (3 - 2 * normalized);
-                maskPixels.data[index * 4 + 3] = Math.round(smooth * 255);
+                maskPixels.data[index * 4 + 3] = smooth < 0.03 ? 0 : Math.round(smooth * 255);
               }
               maskContext.putImageData(maskPixels, 0, 0);
               hasMask = true;
@@ -1091,7 +1091,7 @@ export default function Home() {
             foregroundContext.save();
             foregroundContext.imageSmoothingEnabled = true;
             foregroundContext.imageSmoothingQuality = "high";
-            foregroundContext.filter = "blur(1.8px) contrast(1.15)";
+            foregroundContext.filter = "none";
             foregroundContext.drawImage(
               maskCanvas,
               0,

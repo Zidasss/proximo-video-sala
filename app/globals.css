@@ -71,6 +71,53 @@
 .stage-meta > div { display: inline-flex; align-items: center; gap: 7px; }.stage-meta button { width: 24px; height: 24px; border: 1px solid #ffffff28; border-radius: 6px; background: #1c1d1d; color: #fff; font-weight: 800; cursor: pointer; }
 @media (min-width: 1500px) { .clip-editor-v2 .editor-workspace { grid-template-columns: 430px minmax(760px, 1fr); gap: 44px; padding: 34px 48px; min-height: 770px; }.clip-editor-v2 .editor-tools { max-height: calc(100vh - 175px); padding: 24px; border-radius: 18px; }.clip-editor-v2 .tool-heading { margin-top: 9px; margin-bottom: 17px; }.clip-editor-v2 .tool-heading b { font-size: 15px; }.clip-editor-v2 .tool-heading small { font-size: 12px; }.clip-editor-v2 .editor-upload { padding: 15px; font-size: 14px; }.clip-editor-v2 .editor-tools textarea, .clip-editor-v2 .editor-tools select { padding: 12px; font-size: 13px; }.clip-editor-v2 .layer-list button, .clip-editor-v2 .layer-actions button, .clip-editor-v2 .template-grid button { min-height: 38px; font-size: 12px; }.clip-editor-v2 .timeline-panel { margin-inline: 48px; padding: 24px; }.clip-editor-v2 .timeline-top button { padding: 10px 13px; font-size: 13px; }.clip-editor-v2 .stage-help { font-size: 13px; max-width: 760px; } }
 @media (min-width: 1000px) { body { font-size: 17px; }.clip-editor-v2 .editor-tools { font-size: 15px; }.clip-editor-v2 .tool-heading b { font-size: 16px; }.clip-editor-v2 .tool-heading small, .clip-editor-v2 .illustration-help, .clip-editor-v2 .layer-list span, .clip-editor-v2 .layer-list small { font-size: 13px; }.clip-editor-v2 .range-label, .clip-editor-v2 .audio-editor-controls label, .clip-editor-v2 .effect-grid label { font-size: 13px; }.clip-editor-v2 .timeline-top span, .clip-editor-v2 .timeline-ruler, .clip-editor-v2 .timeline-lane > b, .clip-editor-v2 .text-clip span, .clip-editor-v2 .illustration-clip span { font-size: 12px; }.clip-editor-v2 .timeline-trim-help { font-size: 13px; }.clip-editor-v2 .stage-meta { font-size: 13px; }.clip-editor-v2 .transition-shelf button { font-size: 12px; }.clip-editor-v2 .transition-drops b { font-size: 12px; }.clip-editor-v2 .transition-drops span { font-size: 11px; } }
+
+/* Desktop editor: the timeline is a persistent dock, like a real video editor. */
+@media (min-width: 761px) {
+  .clip-editor-v2 {
+    height: 100dvh;
+    overflow: hidden;
+    padding-bottom: 248px;
+  }
+  .clip-editor-v2 .editor-workspace {
+    min-height: 0;
+    height: calc(100dvh - 320px);
+    padding-bottom: 12px;
+    overflow: hidden;
+  }
+  .clip-editor-v2 .editor-stage-wrap {
+    min-height: 0;
+    overflow: auto;
+    padding: 0 14px 18px;
+    scrollbar-color: #ff7160 #111;
+  }
+  .clip-editor-v2 .timeline-panel.multi-timeline {
+    position: fixed;
+    z-index: 40;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    max-height: 238px;
+    margin: 0;
+    overflow: auto;
+    border-right: 0;
+    border-bottom: 0;
+    border-left: 0;
+    border-radius: 16px 16px 0 0;
+    box-shadow: 0 -18px 44px #0009;
+    scrollbar-color: #ff7160 #111;
+  }
+  .clip-editor-v2 .timeline-panel.multi-timeline .timeline-top {
+    position: sticky;
+    top: -20px;
+    z-index: 8;
+    padding: 8px 0 10px;
+    background: #151616;
+  }
+  .clip-editor-v2 .timeline-panel.multi-timeline .timeline-lanes {
+    min-width: 960px;
+  }
+}
 .stage-help { max-width: 480px; margin: 10px 0 0; color: #8f8a85; font-size: 11px; text-align: center; }
 .caption-overlay { z-index: 2; transition: opacity .05s linear; }
 .video-transition-overlay { position: absolute; z-index: 1; inset: 0; pointer-events: none; transition: opacity .05s linear; }

@@ -160,6 +160,10 @@ export default function Home() {
     ),
     [skinSmooth, setSkinSmooth] = useState(false),
     [blurAmount, setBlurAmount] = useState(16),
+    [backgroundScale, setBackgroundScale] = useState(100),
+    [backgroundOffsetX, setBackgroundOffsetX] = useState(0),
+    [backgroundOffsetY, setBackgroundOffsetY] = useState(0),
+    [backgroundFit, setBackgroundFit] = useState<"cover" | "contain" | "original">("cover"),
     [cameraEpoch, setCameraEpoch] = useState(0),
     [virtualEpoch, setVirtualEpoch] = useState(0);
   const [friend, setFriend] = useState(""),
@@ -192,7 +196,15 @@ export default function Home() {
     processedLocal = useRef<MediaStream | null>(null),
     processedAudio = useRef<MediaStream | null>(null),
     blurAmountRef = useRef(16),
+    backgroundScaleRef = useRef(100),
+    backgroundOffsetXRef = useRef(0),
+    backgroundOffsetYRef = useRef(0),
+    backgroundFitRef = useRef<"cover" | "contain" | "original">("cover"),
     connectionSample = useRef({ bytes: 0, at: 0 });
+  backgroundScaleRef.current = backgroundScale;
+  backgroundOffsetXRef.current = backgroundOffsetX;
+  backgroundOffsetYRef.current = backgroundOffsetY;
+  backgroundFitRef.current = backgroundFit;
   const peer = useRef<Peer | null>(null),
     connection = useRef<DataConnection | null>(null),
     remoteId = useRef(""),
@@ -428,13 +440,31 @@ export default function Home() {
         const sourceBackground = backgroundVideo ? backdropVideo : image;
         const sourceWidth = backgroundVideo ? backdropVideo.videoWidth : image.naturalWidth;
         const sourceHeight = backgroundVideo ? backdropVideo.videoHeight : image.naturalHeight;
-        const scale = Math.max(
-          canvas.width / (sourceWidth || canvas.width),
-          canvas.height / (sourceHeight || canvas.height),
-        );
-        const width = (sourceWidth || canvas.width) * scale;
-        const height = (sourceHeight || canvas.height) * scale;
-        target.drawImage(sourceBackground, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
+        if (!sourceWidth || !sourceHeight) return;
+
+        const fit = backgroundFitRef.current;
+        const scalePct = backgroundScaleRef.current;
+        const offX = backgroundOffsetXRef.current;
+        const offY = backgroundOffsetYRef.current;
+
+        let baseScale = 1;
+        if (fit === "contain") {
+          baseScale = Math.min(canvas.width / sourceWidth, canvas.height / sourceHeight);
+        } else if (fit === "original") {
+          baseScale = 1;
+        } else {
+          // cover
+          baseScale = Math.max(canvas.width / sourceWidth, canvas.height / sourceHeight);
+        }
+
+        const finalScale = baseScale * (scalePct / 100);
+        const width = sourceWidth * finalScale;
+        const height = sourceHeight * finalScale;
+
+        const posX = (canvas.width - width) / 2 + (offX / 100) * canvas.width;
+        const posY = (canvas.height - height) / 2 + (offY / 100) * canvas.height;
+
+        target.drawImage(sourceBackground, posX, posY, width, height);
       };
       // A saída fica rápida; a máscara é atualizada em outra cadência abaixo.
       const output = canvas.captureStream(animatedBackdrop ? 24 : 30);
@@ -2319,6 +2349,89 @@ export default function Home() {
                         : "Recorte leve: mais rápido, indicado para computadores comuns"}
                     </p>
                     {backgroundLabel && <p className="background-file-note">● {backgroundLabel}{/(GIF animado|Vídeo animado)/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
+                    {backgroundMode === "image" && (
+                      <div className="background-customizer" style={{ marginTop: "10px", padding: "10px", background: "rgba(255,255,255,0.05)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.09)" }}>
+                        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
+                          <b style={{ fontSize: "12px", color: "#ffd7ce" }}>✦ Ajuste do GIF / Fundo</b>
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setBackgroundScale(100);
+                              setBackgroundOffsetX(0);
+                              setBackgroundOffsetY(0);
+                              setBackgroundFit("cover");
+                            }}
+                            style={{ fontSize: "11px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", color: "#ff8d80", padding: "2px 8px", cursor: "pointer" }}
+                          >
+                            ↺ Redefinir
+                          </button>
+                        </div>
+                        <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
+                          <button
+                            type="button"
+                            className={backgroundFit === "cover" ? "format on" : "format"}
+                            onClick={() => setBackgroundFit("cover")}
+                            style={{ flex: 1, padding: "5px 2px", fontSize: "11px" }}
+                          >
+                            Preencher
+                          </button>
+                          <button
+                            type="button"
+                            className={backgroundFit === "contain" ? "format on" : "format"}
+                            onClick={() => setBackgroundFit("contain")}
+                            style={{ flex: 1, padding: "5px 2px", fontSize: "11px" }}
+                          >
+                            Ajustar (100%)
+                          </button>
+                          <button
+                            type="button"
+                            className={backgroundFit === "original" ? "format on" : "format"}
+                            onClick={() => setBackgroundFit("original")}
+                            style={{ flex: 1, padding: "5px 2px", fontSize: "11px" }}
+                          >
+                            Original
+                          </button>
+                        </div>
+                        <label className="menu-field" style={{ fontSize: "11px", display: "block", marginBottom: "8px" }}>
+                          Zoom / Escala: {backgroundScale}%
+                          <input
+                            type="range"
+                            min="20"
+                            max="250"
+                            step="5"
+                            value={backgroundScale}
+                            onChange={(e) => setBackgroundScale(Number(e.target.value))}
+                            style={{ width: "100%", accentColor: "#ff6b5c" }}
+                          />
+                        </label>
+                        <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
+                          <label className="menu-field" style={{ fontSize: "11px" }}>
+                            Posição X: {backgroundOffsetX}%
+                            <input
+                              type="range"
+                              min="-60"
+                              max="60"
+                              step="2"
+                              value={backgroundOffsetX}
+                              onChange={(e) => setBackgroundOffsetX(Number(e.target.value))}
+                              style={{ width: "100%", accentColor: "#ff6b5c" }}
+                            />
+                          </label>
+                          <label className="menu-field" style={{ fontSize: "11px" }}>
+                            Posição Y: {backgroundOffsetY}%
+                            <input
+                              type="range"
+                              min="-60"
+                              max="60"
+                              step="2"
+                              value={backgroundOffsetY}
+                              onChange={(e) => setBackgroundOffsetY(Number(e.target.value))}
+                              style={{ width: "100%", accentColor: "#ff6b5c" }}
+                            />
+                          </label>
+                        </div>
+                      </div>
+                    )}
                     <div className="webcam-text-layer">
                       <b>Camada na webcam</b>
                       <small>Texto no vídeo, para a chamada e a gravação.</small>

@@ -326,11 +326,13 @@ export default function Home() {
       const supabase = createClient();
       supabase.auth.getUser().then(({ data: { user } }) => {
         if (user) {
-          const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Criador";
+          const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Criador";
+          const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || undefined;
           const userObj = {
             id: user.id,
             email: user.email || "",
             name: userName,
+            avatarUrl,
           };
           setCurrentUser(userObj);
           localStorage.setItem("klip_user", JSON.stringify(userObj));
@@ -339,11 +341,13 @@ export default function Home() {
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
-          const userName = session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Criador";
+          const userName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split("@")[0] || "Criador";
+          const avatarUrl = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || undefined;
           const userObj = {
             id: session.user.id,
             email: session.user.email || "",
             name: userName,
+            avatarUrl,
           };
           setCurrentUser(userObj);
           localStorage.setItem("klip_user", JSON.stringify(userObj));
@@ -2586,40 +2590,42 @@ export default function Home() {
             <button className="open-editor" onClick={openEditor}>✦ Editor de clipes</button>
             <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}>◈ Criador de GIF</button>
             <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}>◉ Estúdio offline</button>
-            <Link href="/perfil" className="nav-action-btn" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-              <User style={{ width: "13px", height: "13px", color: "#ff8879" }} /> Meu Perfil
-            </Link>
             {currentUser ? (
               <>
-                <button className="nav-action-btn" type="button" onClick={() => setSocialModalOpen(true)}>
-                  <Link2 style={{ width: "14px", height: "14px" }} /> Redes Sociais
-                </button>
                 <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
                   <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
                 </button>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.12)" }}>
-                  <Link href="/perfil" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "5px" }}>
-                    <User style={{ width: "13px", height: "13px", color: "#ff8879" }} />
-                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff8f5" }}>{currentUser.name || currentUser.email}</span>
-                  </Link>
-                  <button
-                    type="button"
-                    onClick={async () => {
-                      if (isSupabaseConfigured) {
-                        try {
-                          const supabase = createClient();
-                          await supabase.auth.signOut();
-                        } catch {}
-                      }
-                      localStorage.removeItem("klip_user");
-                      setCurrentUser(null);
-                    }}
-                    style={{ background: "none", border: "none", color: "#9e9690", fontSize: "11px", marginLeft: "4px", cursor: "pointer" }}
-                    title="Sair da conta"
-                  >
-                    (Sair)
-                  </button>
-                </div>
+                <Link href="/perfil" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px 4px 4px", borderRadius: "12px", border: "1px solid rgba(255, 113, 96, 0.25)" }}>
+                  {(currentUser as any).avatarUrl ? (
+                    <img
+                      src={(currentUser as any).avatarUrl}
+                      alt={currentUser.name || "Avatar"}
+                      style={{ width: "26px", height: "26px", borderRadius: "8px", objectFit: "cover", border: "1px solid rgba(255,113,96,0.4)" }}
+                    />
+                  ) : (
+                    <div style={{ width: "26px", height: "26px", borderRadius: "8px", background: "linear-gradient(135deg, #ff7564, #d84f41)", display: "flex", alignItems: "center", justifyContent: "center" }}>
+                      <User style={{ width: "14px", height: "14px", color: "#25100e" }} />
+                    </div>
+                  )}
+                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff8f5" }}>{currentUser.name || currentUser.email}</span>
+                </Link>
+                <button
+                  type="button"
+                  onClick={async () => {
+                    if (isSupabaseConfigured) {
+                      try {
+                        const supabase = createClient();
+                        await supabase.auth.signOut();
+                      } catch {}
+                    }
+                    localStorage.removeItem("klip_user");
+                    setCurrentUser(null);
+                  }}
+                  style={{ background: "none", border: "1px solid rgba(255,255,255,0.12)", color: "#9e9690", fontSize: "11px", padding: "4px 8px", borderRadius: "8px", cursor: "pointer" }}
+                  title="Sair da conta"
+                >
+                  Sair
+                </button>
               </>
             ) : (
               <button className="nav-action-btn primary" type="button" onClick={() => setAuthModalOpen(true)}>

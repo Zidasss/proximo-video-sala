@@ -2,7 +2,7 @@
 
 import React, { useState } from "react";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
-import { X, Mail, Lock, User, LogIn, Sparkles, CheckCircle2, Zap, AlertCircle } from "lucide-react";
+import { X, Mail, Lock, User, LogIn, Sparkles, CheckCircle2, AlertCircle } from "lucide-react";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -16,22 +16,11 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
 
   if (!isOpen) return null;
-
-  const handleDemoLogin = () => {
-    const demoUser = {
-      id: "creator-" + Date.now().toString(36),
-      email: "criador@klip.app",
-      name: name.trim() || "Criador de Conteúdo",
-      avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=KlipCreator",
-    };
-    localStorage.setItem("klip_user", JSON.stringify(demoUser));
-    onSuccess(demoUser);
-    onClose();
-  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -39,24 +28,15 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     setErrorMsg("");
     setSuccessMsg("");
 
-    try {
-      if (!isSupabaseConfigured) {
-        // Modo local de demonstração
-        setTimeout(() => {
-          setLoading(false);
-          const demoUser = {
-            id: "user-" + Math.random().toString(36).substring(2, 9),
-            email: email.trim() || "criador@klip.app",
-            name: name.trim() || email.split("@")[0] || "Criador Klip",
-            avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email || "Klip")}`,
-          };
-          localStorage.setItem("klip_user", JSON.stringify(demoUser));
-          onSuccess(demoUser);
-          onClose();
-        }, 500);
-        return;
-      }
+    if (!isSupabaseConfigured) {
+      setErrorMsg(
+        "Supabase não configurado. Adicione NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no arquivo .env.local"
+      );
+      setLoading(false);
+      return;
+    }
 
+    try {
       const supabase = createClient();
 
       if (isSignUp) {
@@ -64,16 +44,20 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           email: email.trim(),
           password,
           options: {
-            data: {
-              full_name: name.trim(),
-            },
+            data: { full_name: name.trim() },
           },
         });
 
         if (error) throw error;
 
         if (data.user) {
-          const userName = name.trim() || data.user.user_metadata?.full_name || email.split("@")[0];
+          const userName =
+            name.trim() ||
+            data.user.user_metadata?.full_name ||
+            email.split("@")[0];
+          const avatarUrl =
+            data.user.user_metadata?.avatar_url ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`;
 
           try {
             await supabase.from("profiles").upsert(
@@ -81,7 +65,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                 id: data.user.id,
                 email: data.user.email || email.trim(),
                 name: userName,
-                avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`,
+                avatar_url: avatarUrl,
                 updated_at: new Date().toISOString(),
               },
               { onConflict: "id" }
@@ -90,28 +74,23 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             console.warn("Aviso ao salvar profile:", profileErr);
           }
 
+          const userObj = {
+            id: data.user.id,
+            email: data.user.email || email.trim(),
+            name: userName,
+            avatarUrl,
+          };
+          localStorage.setItem("klip_user", JSON.stringify(userObj));
+
           if (!data.session) {
-            setSuccessMsg("Conta criada com sucesso! Verifique seu e-mail para confirmar seu cadastro.");
-            const userObj = {
-              id: data.user.id,
-              email: data.user.email || email.trim(),
-              name: userName,
-              avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`,
-            };
-            localStorage.setItem("klip_user", JSON.stringify(userObj));
+            setSuccessMsg(
+              "Conta criada! Verifique seu e-mail para confirmar o cadastro."
+            );
             onSuccess(userObj);
-            setTimeout(onClose, 2000);
+            setTimeout(onClose, 2500);
           } else {
-            setSuccessMsg("Conta criada e autenticada com sucesso!");
-            const userObj = {
-              id: data.user.id,
-              email: data.user.email || email.trim(),
-              name: userName,
-              avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`,
-            };
-            localStorage.setItem("klip_user", JSON.stringify(userObj));
             onSuccess(userObj);
-            setTimeout(onClose, 900);
+            onClose();
           }
         }
       } else {
@@ -123,8 +102,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         if (error) throw error;
 
         if (data.user) {
-          let displayName = data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Criador";
-          let avatarUrl = data.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(displayName)}`;
+          let displayName =
+            data.user.user_metadata?.full_name ||
+            data.user.email?.split("@")[0] ||
+            "Criador";
+          let avatarUrl =
+            data.user.user_metadata?.avatar_url ||
+            `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(displayName)}`;
 
           try {
             const { data: profile } = await supabase
@@ -135,9 +119,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
             if (profile?.name) displayName = profile.name;
             if (profile?.avatar_url) avatarUrl = profile.avatar_url;
-          } catch (pErr) {
-            console.warn("Aviso ao buscar profile:", pErr);
-          }
+          } catch {}
 
           const userObj = {
             id: data.user.id,
@@ -145,7 +127,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             name: displayName,
             avatarUrl,
           };
-
           localStorage.setItem("klip_user", JSON.stringify(userObj));
           onSuccess(userObj);
           onClose();
@@ -153,13 +134,15 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       }
     } catch (err: any) {
       console.error("Erro auth:", err);
-      let message = err.message || "Erro na autenticação. Verifique os dados.";
+      let message = err.message || "Erro na autenticação.";
       if (message.includes("Invalid login credentials")) {
-        message = "E-mail ou senha incorretos. Por favor, tente novamente.";
+        message = "E-mail ou senha incorretos.";
       } else if (message.includes("User already registered")) {
-        message = "Este e-mail já está cadastrado. Clique em 'Entrar' para fazer login.";
+        message = "E-mail já cadastrado. Clique em 'Entrar' para fazer login.";
       } else if (message.includes("Password should be at least")) {
-        message = "A senha deve conter no mínimo 6 caracteres.";
+        message = "A senha deve ter no mínimo 6 caracteres.";
+      } else if (message.includes("Email not confirmed")) {
+        message = "E-mail não confirmado. Verifique sua caixa de entrada.";
       }
       setErrorMsg(message);
     } finally {
@@ -168,30 +151,57 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   };
 
   const handleGoogleSignIn = async () => {
+    setErrorMsg("");
+    setGoogleLoading(true);
+
     if (!isSupabaseConfigured) {
-      const demoUser = {
-        id: "google-demo-user",
-        email: "google.user@klip.app",
-        name: "Google Criador",
-        avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=GoogleCriador",
-      };
-      localStorage.setItem("klip_user", JSON.stringify(demoUser));
-      onSuccess(demoUser);
-      onClose();
+      setErrorMsg(
+        "Supabase não configurado. Não é possível usar login Google sem o Supabase. Configure NEXT_PUBLIC_SUPABASE_URL e NEXT_PUBLIC_SUPABASE_ANON_KEY no .env.local"
+      );
+      setGoogleLoading(false);
       return;
     }
 
     try {
       const supabase = createClient();
       const redirectUrl = `${window.location.origin}/auth/callback`;
-      await supabase.auth.signInWithOAuth({
+
+      const { data, error } = await supabase.auth.signInWithOAuth({
         provider: "google",
         options: {
           redirectTo: redirectUrl,
+          queryParams: {
+            access_type: "offline",
+            prompt: "consent",
+          },
         },
       });
+
+      if (error) throw error;
+
+      // signInWithOAuth retorna uma URL para redirecionar.
+      // Se a url existe, o browser vai redirecionar automaticamente.
+      // Se não retornou url, algo deu errado.
+      if (!data?.url) {
+        throw new Error(
+          "O Supabase não retornou a URL de redirecionamento do Google. Verifique se o provedor Google está habilitado no painel do Supabase (Authentication > Providers > Google)."
+        );
+      }
+
+      // Redirecionar para o Google OAuth
+      window.location.href = data.url;
     } catch (err: any) {
-      setErrorMsg(err.message || "Erro ao iniciar login com Google.");
+      console.error("Erro Google OAuth:", err);
+      let message = err.message || "Erro ao iniciar login com Google.";
+      if (
+        message.includes("provider") ||
+        message.includes("Provider")
+      ) {
+        message =
+          "Provedor Google não habilitado. Acesse o Supabase Dashboard → Authentication → Providers → Google e habilite com seu Client ID e Secret do Google Cloud Console.";
+      }
+      setErrorMsg(message);
+      setGoogleLoading(false);
     }
   };
 
@@ -202,6 +212,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         background: "rgba(10, 11, 11, 0.85)",
         backdropFilter: "blur(12px)",
       }}
+      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
     >
       <div
         className="relative w-full max-w-md p-6 rounded-3xl text-[#fff8f5] shadow-2xl"
@@ -213,7 +224,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-1 rounded-lg text-[#9e9791] hover:text-white transition"
+          className="absolute top-4 right-4 p-1 rounded-lg text-[#9e9791] hover:text-white transition cursor-pointer"
           style={{ background: "rgba(255,255,255,0.06)" }}
           aria-label="Fechar"
         >
@@ -231,11 +242,60 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             <Sparkles className="w-6 h-6 text-[#24100e]" />
           </div>
           <h2 className="text-xl font-extrabold tracking-tight text-[#fff8f5]">
-            {isSignUp ? "Criar Conta no Klip" : "Acessar Conta Klip"}
+            {isSignUp ? "Criar Conta no Klip" : "Entrar no Klip"}
           </h2>
           <p className="text-xs text-[#bcb4ae] mt-1">
-            Autenticação Supabase conectada ao YouTube, TikTok e Instagram
+            Autenticação segura via Supabase
           </p>
+        </div>
+
+        {/* Google OAuth - Destaque no topo */}
+        <button
+          onClick={handleGoogleSignIn}
+          type="button"
+          disabled={googleLoading}
+          className="w-full py-3 px-4 rounded-xl text-sm font-bold text-[#fff8f5] hover:brightness-110 transition flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 mb-4"
+          style={{
+            background: "#1c1b1b",
+            border: "1px solid rgba(255, 255, 255, 0.2)",
+          }}
+        >
+          {googleLoading ? (
+            <span className="text-xs text-[#bcb4ae]">Redirecionando para o Google...</span>
+          ) : (
+            <>
+              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
+                <path
+                  fill="#EA4335"
+                  d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.4 9 5 12 5z"
+                />
+                <path
+                  fill="#4285F4"
+                  d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
+                />
+                <path
+                  fill="#FBBC05"
+                  d="M5.6 14.7c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.2C.7 9.6 0 12.2 0 15s.7 5.4 1.9 7.8l3.7-2.9z"
+                />
+                <path
+                  fill="#34A853"
+                  d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2-6.4-4.8L1.9 16.4C3.7 20.2 7.5 23 12 23z"
+                />
+              </svg>
+              Entrar com Google
+            </>
+          )}
+        </button>
+
+        <div className="relative mb-4">
+          <div className="absolute inset-0 flex items-center">
+            <div className="w-full border-t border-[#ffffff18]" />
+          </div>
+          <div className="relative flex justify-center text-[11px]">
+            <span className="px-2 text-[#857e79]" style={{ background: "#1d1819" }}>
+              ou com e-mail e senha
+            </span>
+          </div>
         </div>
 
         {/* Tab Switcher */}
@@ -259,7 +319,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               color: !isSignUp ? "#25100e" : "#a8a09a",
             }}
           >
-            Entrar (Login)
+            Entrar
           </button>
           <button
             type="button"
@@ -280,14 +340,14 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
         {errorMsg && (
           <div
-            className="mb-3.5 p-3 rounded-xl text-xs flex items-center gap-2"
+            className="mb-3.5 p-3 rounded-xl text-xs flex items-start gap-2"
             style={{
               background: "rgba(220, 38, 38, 0.12)",
               border: "1px solid rgba(220, 38, 38, 0.35)",
               color: "#ff9990",
             }}
           >
-            <AlertCircle className="w-4 h-4 shrink-0 text-[#ff7160]" />
+            <AlertCircle className="w-4 h-4 shrink-0 text-[#ff7160] mt-0.5" />
             <span>{errorMsg}</span>
           </div>
         )}
@@ -310,7 +370,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           {isSignUp && (
             <div>
               <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
-                Nome completo ou Canal
+                Nome
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
@@ -385,65 +445,29 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             }}
           >
             <LogIn className="w-4 h-4" />
-            {loading ? "Processando..." : isSignUp ? "Cadastrar e Entrar" : "Entrar com E-mail"}
+            {loading
+              ? "Processando..."
+              : isSignUp
+                ? "Cadastrar e Entrar"
+                : "Entrar com E-mail"}
           </button>
         </form>
 
-        <div className="relative my-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[#ffffff18]"></div>
-          </div>
-          <div className="relative flex justify-center text-[11px]">
-            <span className="px-2 text-[#857e79]" style={{ background: "#1c1718" }}>
-              ou acesse com
-            </span>
-          </div>
-        </div>
-
-        <div className="grid grid-cols-2 gap-2">
-          <button
-            onClick={handleGoogleSignIn}
-            type="button"
-            className="py-2.5 px-3 rounded-xl text-xs font-bold text-[#f3ece7] hover:text-white transition flex items-center justify-center gap-2 cursor-pointer"
+        {!isSupabaseConfigured && (
+          <div
+            className="mt-4 p-3 rounded-xl text-[11px]"
             style={{
-              background: "#1c1b1b",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
+              background: "rgba(255, 171, 64, 0.1)",
+              border: "1px solid rgba(255, 171, 64, 0.3)",
+              color: "#ffd49a",
             }}
           >
-            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
-              <path
-                fill="#EA4335"
-                d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.4 9 5 12 5z"
-              />
-              <path
-                fill="#4285F4"
-                d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
-              />
-              <path
-                fill="#FBBC05"
-                d="M5.6 14.7c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.2C.7 9.6 0 12.2 0 15s.7 5.4 1.9 7.8l3.7-2.9z"
-              />
-              <path
-                fill="#34A853"
-                d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2-6.4-4.8L1.9 16.4C3.7 20.2 7.5 23 12 23z"
-              />
-            </svg>
-            Google (OAuth)
-          </button>
-
-          <button
-            onClick={handleDemoLogin}
-            type="button"
-            className="py-2.5 px-3 rounded-xl text-xs font-bold text-[#f3ece7] hover:text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
-            style={{
-              background: "#1c1b1b",
-              border: "1px solid rgba(255, 255, 255, 0.2)",
-            }}
-          >
-            <Zap className="w-4 h-4 text-[#ffc168]" />
-            1-Clique (Demo)
-          </button>
-        </div>
+            <strong>⚠ Supabase não detectado.</strong> Configure as variáveis{" "}
+            <code className="text-[#ff9789]">NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
+            <code className="text-[#ff9789]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>{" "}
+            no arquivo <code>.env.local</code> para habilitar autenticação real.
+          </div>
+        )}
       </div>
     </div>
   );

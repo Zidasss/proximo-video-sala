@@ -3122,6 +3122,9 @@ function ClipEditorV2({
     [exportBitrate, setExportBitrate] = useState<"standard" | "high" | "ultra">("high"),
     [audioGain, setAudioGain] = useState(100),
     [audioEnhance, setAudioEnhance] = useState(true),
+    [waveform, setWaveform] = useState<number[]>([]),
+    [snapEnabled, setSnapEnabled] = useState(true),
+    [markers, setMarkers] = useState<number[]>([]),
     [timelineZoom, setTimelineZoom] = useState(1),
     [safeGuides, setSafeGuides] = useState(true),
     [previewScale, setPreviewScale] = useState(1.2),
@@ -3160,6 +3163,30 @@ function ClipEditorV2({
   useEffect(() => {
     if (!selectedId && layers[0]) setSelectedId(layers[0].id);
   }, [layers, selectedId]);
+
+  useEffect(() => {
+    if (!clip) { setWaveform([]); return; }
+    let cancelled = false;
+    void (async () => {
+      try {
+        const response = await fetch(clip.url);
+        const buffer = await response.arrayBuffer();
+        const context = new AudioContext();
+        const decoded = await context.decodeAudioData(buffer);
+        const data = decoded.getChannelData(0);
+        const bars = 140;
+        const block = Math.max(1, Math.floor(data.length / bars));
+        const values = Array.from({ length: bars }, (_, index) => {
+          let peak = 0;
+          for (let point = index * block; point < Math.min(data.length, (index + 1) * block); point += 8) peak = Math.max(peak, Math.abs(data[point] || 0));
+          return Math.max(.06, Math.min(1, Math.sqrt(peak)));
+        });
+        await context.close();
+        if (!cancelled) setWaveform(values);
+      } catch { if (!cancelled) setWaveform([]); }
+    })();
+    return () => { cancelled = true; };
+  }, [clip]);
 
   const time = (value: number) => {
     const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -3223,6 +3250,7 @@ function ClipEditorV2({
     setEnd(0);
     setVideoFadeIn(0);
     setVideoFadeOut(0);
+    setMarkers([]);
     setLayers([initialLayer()]);
     setIllustrations([]);
     setSelectedId("");
@@ -3352,6 +3380,14 @@ function ClipEditorV2({
     video.current.currentTime = value;
     setCurrent(value);
   }
+  function snapTime(value: number) {
+    const safe = Math.max(0, Math.min(duration, value));
+    if (!snapEnabled || !duration) return safe;
+    const points = [0, duration, start, end, current, ...markers, ...layers.flatMap((layer) => [layer.start, layer.end]), ...illustrations.flatMap((item) => [item.start, item.end])];
+    const threshold = Math.max(.08, duration / 280);
+    const closest = points.reduce((best, point) => Math.abs(point - safe) < Math.abs(best - safe) ? point : best, safe);
+    return Math.abs(closest - safe) <= threshold ? closest : safe;
+  }
   function selectTimeFromTimeline(event: React.PointerEvent<HTMLDivElement>) {
     if (!duration) return;
     const bounds = event.currentTarget.getBoundingClientRect();
@@ -3370,7 +3406,7 @@ function ClipEditorV2({
     const edge = timelineTrim.current;
     if (!edge || !duration) return;
     const bounds = event.currentTarget.getBoundingClientRect();
-    const value = Math.max(0, Math.min(duration, ((event.clientX - bounds.left) / bounds.width) * duration));
+    const value = snapTime(Math.max(0, Math.min(duration, ((event.clientX - bounds.left) / bounds.width) * duration)));
     if (edge === "start") {
       const next = Math.min(value, end - 0.05);
       setStart(Math.max(0, next));
@@ -3398,15 +3434,21 @@ function ClipEditorV2({
       setNotice(`Fim do corte movido para ${time(Math.min(duration, value))}.`);
     }
   }
+  function addMarker() {
+    if (!duration) return;
+    const value = snapTime(current);
+    setMarkers((items) => [...new Set([...items, value])].sort((a, b) => a - b));
+    setNotice(`Marcador adicionado em ${time(value)}. Use-o como referência para corte e camadas.`);
+  }
   function markCut(edge: "start" | "end") {
     if (!duration) return;
     remember();
     if (edge === "start") {
-      const value = Math.min(current, end - 0.05);
+      const value = Math.min(snapTime(current), end - 0.05);
       setStart(Math.max(0, value));
       setNotice(`Corte inicial marcado em ${time(Math.max(0, value))}.`);
     } else {
-      const value = Math.max(current, start + 0.05);
+      const value = Math.max(snapTime(current), start + 0.05);
       setEnd(Math.min(duration, value));
       setNotice(`Corte final marcado em ${time(Math.min(duration, value))}.`);
     }
@@ -3868,6 +3910,8 @@ function ClipEditorV2({
           <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>
           <button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button>
           <button disabled={!clip} onClick={() => video.current?.paused ? void video.current?.play() : video.current?.pause()}>{video.current?.paused === false ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
+          <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores">⌁ Ímã</button>
+          <button disabled={!clip} onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button>
           <button disabled={!clip} onClick={trimAtPlayhead} title="Move a ponta mais próxima do corte para o cursor atual">✂ Cortar no cursor</button>
           <button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button>
           <button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button>
@@ -3876,6 +3920,7 @@ function ClipEditorV2({
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
+          <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>
               <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }}><span>{item.name || "Ilustração"}</span><i>{item.kind === "image" ? "imagem" : "vídeo"}</i></button></div>
@@ -3889,7 +3934,7 @@ function ClipEditorV2({
           <div className="global-playhead" style={{ left: duration ? `calc(74px + (100% - 74px) * ${current / duration})` : "74px" }} />
         </div>
         <div className="cut-controls editor-time-controls">
-          <p className="timeline-trim-help"><b>✂ Corte direto</b> Arraste as duas alças vermelhas na faixa de vídeo. Clique na régua para mover o cursor e use <em>Cortar no cursor</em> para ajustar a ponta mais próxima.</p>
+          <p className="timeline-trim-help"><b>✂ Corte direto</b> Arraste as duas alças vermelhas na faixa de vídeo. A forma de onda ajuda a achar pausas e fala. Com o <em>Ímã</em> ativo, o cursor encaixa em marcadores e bordas de camadas.</p>
           {selected && <><label>Texto entra <span>{time(selected.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selected.end - 0.05); updateLayer(selected.id, { start: value }); seek(value); }} /></label><label>Texto sai <span>{time(selected.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selected.start + 0.05); updateLayer(selected.id, { end: value }); seek(Math.max(selected.start, value - 0.05)); }} /></label></>}
           {selectedIllustration && <><label>Ilustração entra <span>{time(selectedIllustration.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selectedIllustration.end - 0.05); updateIllustration(selectedIllustration.id, { start: value }); seek(value); }} /></label><label>Ilustração sai <span>{time(selectedIllustration.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selectedIllustration.start + 0.05); updateIllustration(selectedIllustration.id, { end: value }); seek(Math.max(selectedIllustration.start, value - 0.05)); }} /></label></>}
         </div>

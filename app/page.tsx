@@ -49,6 +49,7 @@ type IllustrationLayer = {
   fadeIn: number;
   fadeOut: number;
   fit: "cover" | "contain";
+  role?: "overlay" | "scene";
 };
 type AudioTrack = {
   id: string;
@@ -3430,6 +3431,26 @@ function ClipEditorV2({
       name: file.name.replace(/\.[^.]+$/, ""),
     }, "Vídeo carregado. Agora monte as camadas na linha do tempo.");
   }
+  function addSceneVideo(file?: File) {
+    if (!file || !file.type.startsWith("video/")) return;
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("video");
+    probe.preload = "metadata";
+    probe.src = url;
+    probe.onloadedmetadata = () => {
+      const from = Math.max(start, Math.min(current, Math.max(start, end - .4)));
+      const available = Math.max(.4, end - from);
+      const clipLength = Number.isFinite(probe.duration) && probe.duration > 0 ? Math.min(probe.duration, available) : Math.min(6, available);
+      const scene: IllustrationLayer = { id: crypto.randomUUID(), kind: "video", url, name: file.name.replace(/\.[^.]+$/, ""), x: 50, y: 50, size: 140, start: from, end: from + clipLength, fadeIn: .35, fadeOut: .35, fit: "cover", role: "scene" };
+      const sceneAudio: AudioTrack = { id: crypto.randomUUID(), url, name: `Áudio · ${scene.name}`, start: scene.start, end: scene.end, volume: 100, fadeIn: scene.fadeIn, fadeOut: scene.fadeOut };
+      remember();
+      setIllustrations((items) => [...items, scene]);
+      setAudioTracks((items) => [...items, sceneAudio]);
+      setSelectedIllustrationId(scene.id); setSelectedId(""); setSelectedAudioId("");
+      setNotice("Cena de vídeo adicionada. Arraste o clip na timeline e ajuste os fades nas duas pontas para criar a transição.");
+    };
+    probe.onerror = () => { URL.revokeObjectURL(url); setNotice("Não foi possível abrir este vídeo como cena."); };
+  }
   function addAudioTrack(file?: File) {
     if (!file) return;
     const url = URL.createObjectURL(file);
@@ -4146,15 +4167,15 @@ function ClipEditorV2({
           const mediaTime = Math.max(0, Math.min(media.duration - 0.04, source.currentTime - item.start));
           if (Math.abs(media.currentTime - mediaTime) > 0.18) media.currentTime = mediaTime;
         }
-        const boxWidth = (item.size / 100) * canvas.width;
-        const boxHeight = boxWidth * 0.72;
+        const boxWidth = item.role === "scene" ? canvas.width : (item.size / 100) * canvas.width;
+        const boxHeight = item.role === "scene" ? canvas.height : boxWidth * 0.72;
         const scale = item.fit === "cover"
           ? Math.max(boxWidth / mediaWidth, boxHeight / mediaHeight)
           : Math.min(boxWidth / mediaWidth, boxHeight / mediaHeight);
         const drawWidth = mediaWidth * scale;
         const drawHeight = mediaHeight * scale;
-        const x = (item.x / 100) * canvas.width - boxWidth / 2;
-        const y = (item.y / 100) * canvas.height - boxHeight / 2;
+        const x = item.role === "scene" ? 0 : (item.x / 100) * canvas.width - boxWidth / 2;
+        const y = item.role === "scene" ? 0 : (item.y / 100) * canvas.height - boxHeight / 2;
         context.save();
         context.globalAlpha = alpha;
         context.beginPath();
@@ -4287,6 +4308,7 @@ function ClipEditorV2({
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
           <label className="editor-upload">＋ Importar vídeo ou foto<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
           <small className="media-import-help">A primeira foto vira o clipe principal. As próximas entram como camadas, sem apagar as anteriores.</small>
+          {clip && <label className="editor-upload editor-scene-upload">＋ Adicionar cena de vídeo<input type="file" accept="video/*" onChange={(event) => addSceneVideo(event.target.files?.[0])} /></label>}
           {clip && <p className="editor-file">● {clip.name}</p>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           <details className="tool-disclosure" open><summary>Templates e aparência</summary>
@@ -4313,7 +4335,7 @@ function ClipEditorV2({
           {!!illustrations.length && <div className="layer-list illustration-list">
             {illustrations.map((item, index) => (
               <button key={item.id} className={selectedIllustration?.id === item.id ? "selected" : ""} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }}>
-                <b>{item.kind === "image" ? "IMG" : "VID"}</b><span>{item.name || `Ilustração ${index + 1}`}</span><small>{time(item.start)}–{time(item.end)}</small>
+                <b>{item.role === "scene" ? "CENA" : item.kind === "image" ? "IMG" : "VID"}</b><span>{item.name || `Ilustração ${index + 1}`}</span><small>{time(item.start)}–{time(item.end)}</small>
               </button>
             ))}
           </div>}
@@ -4386,7 +4408,7 @@ function ClipEditorV2({
                   else illustrationElements.current.delete(item.id);
                 },
               };
-              return <div key={item.id} className={`illustration-overlay ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current) }}>
+              return <div key={item.id} className={`illustration-overlay ${item.role === "scene" ? "scene-video-overlay" : ""} ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current) }}>
                 {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay loop playsInline />}
                 <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · mover</small>
                 {selectedIllustration?.id === item.id && <div className="illustration-resize-handle" onPointerDown={(event) => beginIllustrationResize(event, item)} onPointerMove={moveIllustrationResize} onPointerUp={() => { illustrationResize.current = null; }} onPointerCancel={() => { illustrationResize.current = null; }} aria-label="Redimensionar camada">↘</div>}
@@ -4428,7 +4450,7 @@ function ClipEditorV2({
           ))}
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)}>
-              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
+              <b>{item.role === "scene" ? `CENA ${index + 1}` : item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.role === "scene" ? "cena" : item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
             </div>
           ))}
           {layers.map((layer, index) => (

@@ -15,6 +15,8 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function pasteSelected/);
   assert.match(page, /function openContextMenu/);
   assert.match(page, /function updateSnapGuide/);
+  assert.match(page, /function addSceneVideo/);
+  assert.match(page, /role: "scene"/);
   assert.match(page, /function turnPhotoIntoClip/);
   assert.match(page, /function togglePreviewPlayback/);
   assert.match(page, /event\.key === "Delete"/);

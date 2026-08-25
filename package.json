@@ -9,7 +9,7 @@
   },
   "scripts": {
     "dev": "next dev",
-    "build": "vinext build",
+    "build": "next build",
     "start": "next start",
     "build:sites": "vinext build",
     "test": "npm run build && node --test tests/rendered-html.test.mjs",

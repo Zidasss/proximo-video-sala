@@ -3123,6 +3123,7 @@ function ClipEditorV2({
   const [clip, setClip] = useState<EditorClip | null>(initialClip),
     [duration, setDuration] = useState(0),
     [current, setCurrent] = useState(0),
+    [isPlaying, setIsPlaying] = useState(false),
     [start, setStart] = useState(0),
     [end, setEnd] = useState(0),
     [videoFadeIn, setVideoFadeIn] = useState(0),

@@ -1848,3 +1848,26 @@ body {
   .clip-editor-v2 .scene-lane { left: 39px; }
   .clip-editor-v2 .scene-lane .lane-track { height: 32px; }
 }
+
+/* Keep all preview UI above the timeline dock at browser zoom levels too. */
+@media (min-width: 761px) {
+  .clip-editor-v2 .editor-stage-wrap {
+    max-height: calc(100dvh - 430px);
+    padding-bottom: 42px;
+  }
+  .clip-editor-v2 .editor-notice {
+    position: fixed;
+    z-index: 85;
+    top: 76px;
+    right: 28px;
+    max-width: min(420px, calc(100vw - 56px));
+    margin: 0;
+    padding: 10px 13px;
+    border: 1px solid #ff8f8077;
+    border-radius: 10px;
+    background: #241b1ae8;
+    box-shadow: 0 12px 32px #0008;
+    color: #ffe2dc;
+    font-size: 13px;
+  }
+}

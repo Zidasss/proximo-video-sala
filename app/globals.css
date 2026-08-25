@@ -1806,3 +1806,16 @@ body {
   height: 100%;
   min-height: 0;
 }
+
+/* Portrait and square canvases must fit in the workspace above the fixed timeline dock. */
+@media (min-width: 761px) {
+  .clip-editor-v2 .editor-stage.editor-stage-tall {
+    width: auto;
+    height: min(760px, calc(100dvh - 470px));
+    max-width: calc(100vw - 520px);
+    max-height: calc(100dvh - 470px);
+  }
+  .clip-editor-v2 .stage-meta.stage-meta-tall {
+    width: min(430px, calc(100vw - 520px));
+  }
+}

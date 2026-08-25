@@ -3191,6 +3191,25 @@ function ClipEditorV2({
     return () => { cancelled = true; };
   }, [clip]);
 
+  useEffect(() => {
+    const player = video.current;
+    if (!player || !clip) return;
+    let animation = 0;
+    let callback = 0;
+    const update = () => {
+      if (!player.paused && Number.isFinite(player.currentTime)) setCurrent(player.currentTime);
+      const framePlayer = player as HTMLVideoElement & { requestVideoFrameCallback?: (handler: () => void) => number; cancelVideoFrameCallback?: (id: number) => void };
+      if (framePlayer.requestVideoFrameCallback) callback = framePlayer.requestVideoFrameCallback(update);
+      else animation = requestAnimationFrame(update);
+    };
+    update();
+    return () => {
+      if (animation) cancelAnimationFrame(animation);
+      const framePlayer = player as HTMLVideoElement & { cancelVideoFrameCallback?: (id: number) => void };
+      if (callback) framePlayer.cancelVideoFrameCallback?.(callback);
+    };
+  }, [clip]);
+
   const time = (value: number) => {
     const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
     const minutes = Math.floor(safe / 60);
@@ -3229,8 +3248,8 @@ function ClipEditorV2({
   const videoTransitionOpacity = (at: number) => {
     if (at < start || at > end) return 1;
     let opacity = 0;
-    if (videoFadeIn > 0) opacity = Math.max(opacity, 1 - (at - start) / videoFadeIn);
-    if (videoFadeOut > 0) opacity = Math.max(opacity, 1 - (end - at) / videoFadeOut);
+    if (videoFadeIn > 0) opacity = Math.max(opacity, Math.pow(1 - Math.min(1, Math.max(0, (at - start) / videoFadeIn)), 1.7));
+    if (videoFadeOut > 0) opacity = Math.max(opacity, Math.pow(1 - Math.min(1, Math.max(0, (end - at) / videoFadeOut)), 1.7));
     return Math.max(0, Math.min(1, opacity));
   };
   const effectProgress = (layer: TextLayer, at: number) =>
@@ -3571,7 +3590,7 @@ function ClipEditorV2({
     setVideoTransform((currentFrame) => ({ ...currentFrame, scale: Math.max(.75, Math.min(2.5, resize.scale + ((event.clientX - resize.startX) / bounds.width) * 2)) }));
   }
   function applyTransition(kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
-    const duration = kind === "none" ? 0 : .55;
+    const duration = kind === "none" ? 0 : .38;
     if (kind !== "none") setTransitionColor(kind === "fade-white" ? "white" : "black");
     if (edge === "in") setVideoFadeIn(duration); else setVideoFadeOut(duration);
     setNotice(kind === "none" ? `Transição de ${edge === "in" ? "entrada" : "saída"} removida.` : `${kind === "fade-white" ? "Fade branco" : "Fade preto"} aplicado na ${edge === "in" ? "entrada" : "saída"}.`);
@@ -3967,7 +3986,7 @@ function ClipEditorV2({
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
-          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Clique para remover a transição de entrada">↘ {transitionColor === "white" ? "Branco" : "Preto"}</button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${((end - videoFadeOut) / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Clique para remover a transição de saída">{transitionColor === "white" ? "Branco" : "Preto"} ↗</button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>

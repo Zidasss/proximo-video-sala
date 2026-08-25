@@ -172,6 +172,7 @@ export default function Home() {
     [backgroundOffsetX, setBackgroundOffsetX] = useState(0),
     [backgroundOffsetY, setBackgroundOffsetY] = useState(0),
     [backgroundFit, setBackgroundFit] = useState<"cover" | "contain" | "original">("cover"),
+    [shareScreenAudio, setShareScreenAudio] = useState(true),
     [cameraEpoch, setCameraEpoch] = useState(0),
     [virtualEpoch, setVirtualEpoch] = useState(0);
   const [friend, setFriend] = useState(""),
@@ -1485,14 +1486,25 @@ export default function Home() {
       return;
     }
     try {
-      const stream = await navigator.mediaDevices.getDisplayMedia({
+      const displayMediaOptions: any = {
         video: {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
           frameRate: { ideal: 60 },
         },
-        audio: true,
-      });
+        audio: shareScreenAudio
+          ? {
+              echoCancellation: false,
+              noiseSuppression: false,
+              autoGainControl: false,
+              suppressLocalAudioPlayback: false,
+            }
+          : false,
+        systemAudio: shareScreenAudio ? "include" : "exclude",
+        selfBrowserSurface: "include",
+        surfaceSwitching: "include",
+      };
+      const stream = await navigator.mediaDevices.getDisplayMedia(displayMediaOptions);
       // Ao iniciar sua apresentação, a tela que estava vindo do amigo deixa de ser exibida.
       remoteDisplayed.current = null;
       if (remoteScreen.current) remoteScreen.current.srcObject = null;
@@ -1503,6 +1515,12 @@ export default function Home() {
         await screen.current.play().catch(() => undefined);
       }
       stream.getVideoTracks()[0].onended = () => setSharing(false);
+      const audioTracks = stream.getAudioTracks();
+      if (audioTracks.length > 0) {
+        setNotice("Compartilhando tela com áudio do sistema / aba.");
+      } else {
+        setNotice("Compartilhando tela.");
+      }
       setSharing(true);
       if (peer.current && remoteId.current)
         peer.current.call(remoteId.current, stream, {
@@ -2388,6 +2406,18 @@ export default function Home() {
                         ))}
                       </select>
                     </label>
+                    <label className="menu-field" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginTop: "4px", background: "rgba(255,255,255,0.04)", padding: "8px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.08)" }}>
+                      <input
+                        type="checkbox"
+                        checked={shareScreenAudio}
+                        onChange={(e) => setShareScreenAudio(e.target.checked)}
+                        style={{ width: "16px", height: "16px", accentColor: "#6366f1", cursor: "pointer" }}
+                      />
+                      <div>
+                        <b style={{ fontSize: "11px", display: "block", color: "#f4f4f5" }}>Compartilhar som da tela</b>
+                        <small style={{ fontSize: "10px", color: "#a1a1aa" }}>Inclui áudio do sistema / aba / vídeo ao transmitir tela</small>
+                      </div>
+                    </label>
                     <div className="setting-actions">
                       <label className="background-upload">
                         ▧ Escolher imagem
@@ -2713,12 +2743,16 @@ export default function Home() {
       <section className={"stage " + (resenhaMode ? "resenha-stage" : screenActive ? "screen-on" : "")}>
         {screenActive && !resenhaMode && (
           <div className="tile shared">
-            <video ref={sharing ? screen : remoteScreen} autoPlay playsInline />
+            {sharing ? (
+              <video ref={screen} autoPlay playsInline muted />
+            ) : (
+              <video ref={remoteScreen} autoPlay playsInline />
+            )}
             <label>
               {sharing
                 ? "Sua tela"
                 : `${friend || "Seu amigo"} está compartilhando`}{" "}
-              <b>Compartilhando</b>
+              <b>{shareScreenAudio ? "Compartilhando com áudio" : "Compartilhando"}</b>
             </label>
           </div>
         )}

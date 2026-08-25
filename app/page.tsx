@@ -2049,50 +2049,28 @@ export default function Home() {
             </span>
             Klip
           </div>
-          <button className="open-editor" onClick={openEditor}>
-            ✦ Editor de clipes
-          </button>
-          <button className="open-editor" onClick={() => setLocalStudio(true)}>
-            ◉ Estúdio offline
-          </button>
-        </nav>
-        <section className="hero">
-          <div className="eyebrow">vídeo privado em tempo real</div>
-          <h1>
-            {mode === "host" ? (
-              <>
-                Crie sua
-                <br />
-                <em>sala.</em>
-              </>
-            ) : (
-              <>
-                Entre na
-                <br />
-                <em>sala.</em>
-              </>
-            )}
-          </h1>
-          <p>
-            {mode === "host"
-              ? "Informe seu nome, entre e envie o convite. Mantenha a aba aberta."
-              : `Você vai entrar na sala de ${owner || "seu amigo"}.`}
-          </p>
-          <div className="entry-tabs">
-            <button
-              className={mode === "host" ? "selected" : ""}
-              onClick={() => setMode("host")}
-            >
-              Criar nova sala
-            </button>
-            <button
-              className={mode === "guest" ? "selected" : ""}
-              onClick={() => setMode("guest")}
-            >
-              Entrar em sessão
-            </button>
+          <div className="landing-nav-actions">
+            <button className="open-editor" onClick={openEditor}>✦ Editor de clipes</button>
+            <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}>◉ Estúdio offline</button>
           </div>
-          <div className="join">
+        </nav>
+        <section className="hero landing-hero-v2">
+          <div className="landing-copy">
+            <div className="eyebrow">Klip Room · conversa que vira conteúdo</div>
+            <h1>Do seu papo<br />ao seu <em>próximo clipe.</em></h1>
+            <p>Converse com qualidade, compartilhe a tela, grave localmente e leve o melhor momento direto para o Klip Studio.</p>
+            <div className="landing-proof">
+              <span><b>1080p</b> vídeo Full HD</span><span><b>MP4</b> gravação local</span><span><b>9:16</b> pronto para Reels</span>
+            </div>
+          </div>
+          <div className="landing-entry-card">
+            <div className="entry-card-heading"><div><small>SALA KLIP</small><b>{mode === "host" ? "Abra sua sessão" : "Entre na sessão"}</b></div><span>● privado</span></div>
+            <p className="entry-card-description">{mode === "host" ? "Crie um link protegido e convide quem vai gravar com você." : `Você vai entrar na sala de ${owner || "seu amigo"}.`}</p>
+            <div className="entry-tabs">
+              <button className={mode === "host" ? "selected" : ""} onClick={() => setMode("host")}>Criar sala</button>
+              <button className={mode === "guest" ? "selected" : ""} onClick={() => setMode("guest")}>Entrar</button>
+            </div>
+            <div className="join">
             <label>
               SEU NOME
               <input
@@ -2149,6 +2127,13 @@ export default function Home() {
               <b>→</b>
             </button>
             {notice && <p>{notice}</p>}
+            </div>
+            <div className="entry-quality-note"><i>✓</i><span><b>{quality === "1080" ? "Full HD · 1080p" : "HD · 720p"}</b><small>Câmera, microfone e tela configuráveis antes de entrar.</small></span></div>
+          </div>
+          <div className="landing-showcase" aria-hidden="true">
+            <div className="showcase-top"><span>● AO VIVO</span><b>Qualidade adaptativa</b></div>
+            <div className="showcase-canvas"><div className="showcase-camera"><i>CAM 01</i><strong>Você</strong></div><div className="showcase-camera friend"><i>CAM 02</i><strong>Amigo</strong></div><div className="showcase-screen"><span>Compartilhamento de tela</span><b>Seu conteúdo, grande e nítido.</b></div></div>
+            <div className="showcase-footer"><span>● GRAVANDO LOCAL</span><b>00:24:18</b><i>MP4 · áudio incluso</i></div>
           </div>
         </section>
         <div className="orb one" />

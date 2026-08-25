@@ -171,9 +171,9 @@
 
 /* Mobile editor: large touch targets, a full-width preview and quick jumps for one-handed use. */
 .mobile-editor-nav { display: none; }
-@media (max-width: 760px) {
+@media (max-width: 1050px) {
   html { scroll-behavior: smooth; }
-  .clip-editor-v2 { min-height: 100dvh; overflow-x: hidden; }
+  .clip-editor-v2 { height: auto; min-height: 100dvh; overflow-x: hidden; padding-bottom: 0; }
   .clip-editor-v2 .editor-header {
     position: sticky;
     top: 0;
@@ -230,7 +230,7 @@
   }
   .mobile-editor-nav button { border-color: #ff6d5c; background: #ff6d5c; color: #2d110f; }
   .mobile-editor-nav button:disabled { opacity: .42; }
-  .clip-editor-v2 .editor-workspace { gap: 14px; padding: 14px 12px 16px; }
+  .clip-editor-v2 .editor-workspace { grid-template-columns: 1fr !important; height: auto; min-height: 0; gap: 14px; padding: 14px 12px 16px; overflow: visible; }
   .clip-editor-v2 .editor-stage-wrap { order: 1; padding: 4px 0 12px; }
   .clip-editor-v2 .editor-stage,
   .clip-editor-v2 .stage-meta {
@@ -269,6 +269,11 @@
   .clip-editor-v2 .video-frame-resize { width: 38px; height: 38px; font-size: 19px; }
   .clip-editor-v2 .illustration-resize-handle { width: 33px; height: 33px; font-size: 18px; }
   .clip-editor-v2 .timeline-panel.multi-timeline {
+    position: relative;
+    right: auto;
+    bottom: auto;
+    left: auto;
+    max-height: none;
     margin: 0 12px 18px;
     padding: 15px 12px 17px;
     overflow-x: auto;

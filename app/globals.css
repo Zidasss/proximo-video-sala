@@ -1824,6 +1824,23 @@ body {
 .clip-editor-v2 .scene-track-heading,
 .clip-editor-v2 .scene-lane { display: none; }
 .clip-editor-v2 .video-lane .lane-track { overflow: visible; }
+.clip-editor-v2 .primary-video-clip {
+  position: absolute;
+  z-index: 1;
+  top: 3px;
+  bottom: 3px;
+  min-width: 54px;
+  overflow: hidden;
+  padding: 0 9px;
+  border: 1px solid #ff9f9077;
+  border-radius: 6px;
+  background: linear-gradient(90deg, #8d463c, #59302d);
+  color: #fff3ef;
+  font: 800 10px Inter, sans-serif;
+  text-align: left;
+  white-space: nowrap;
+}
+.clip-editor-v2 .primary-video-clip .timeline-clip-handle { opacity: .8; }
 .clip-editor-v2 .video-lane .scene-clip {
   z-index: 2;
   top: 3px;

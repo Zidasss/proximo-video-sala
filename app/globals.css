@@ -1861,8 +1861,9 @@ body {
   .clip-editor-v2 .editor-notice {
     position: fixed;
     z-index: 85;
-    top: 76px;
-    right: 28px;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
     max-width: min(420px, calc(100vw - 56px));
     margin: 0;
     padding: 10px 13px;

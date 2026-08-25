@@ -97,32 +97,39 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
           ? masks[resolvedAccessoryIndex].getAsFloat32Array()
           : null;
 
-      // A máscara por componentes conectados era rígida demais na saída de
-      // 256px do modelo: em algumas câmeras ela virava uma escada de blocos.
-      // Aqui usamos a confiança contínua de pessoa e uma transição suave,
-      // mantendo cabelo, rosto, roupa e acessórios sem recortar em quadrados.
+      // Fusão multi-sinal otimizada para pessoa de frente e de perfil lateral:
+      // Quando a pessoa vira de lado, a detecção facial frontal diminui, mas a silhueta
+      // (1 - background), pele do pescoço/orelha (bodySkin/faceSkin), cabelo e ombros sustentam o recorte.
       const softAlpha = new Uint8ClampedArray(total);
       const previous = previousAlpha!;
       for (let index = 0; index < total; index += 1) {
+        const bgConfidence = background[index];
+        const personSilhouette = Math.max(0, 1 - bgConfidence);
         const detail = Math.max(
-          hair[index] * 1.22,
-          bodySkin[index],
-          faceSkin[index] * 1.08,
-          clothes[index],
+          hair[index] * 1.34,
+          bodySkin[index] * 1.25,
+          faceSkin[index] * 1.18,
+          clothes[index] * 1.20,
         );
-        let confidence = Math.max(1 - background[index], detail);
-        if (accessories && detail > 0.055)
-          confidence = Math.max(confidence, accessories[index] * 0.68);
+        // Combina silhueta do corpo inteiro com partes detalhadas
+        let confidence = Math.max(personSilhouette, detail);
+        if (detail > 0.06) {
+          confidence = Math.max(confidence, personSilhouette * 0.82 + detail * 0.48);
+        }
+        if (accessories && (detail > 0.04 || personSilhouette > 0.32)) {
+          confidence = Math.max(confidence, accessories[index] * 0.80);
+        }
+        // Limiar suave adaptativo (0.11) para não morder as bordas do perfil da cabeça, nariz, orelhas e ombros
         const normalized = Math.max(
           0,
-          Math.min(1, (confidence - 0.18) / 0.46),
+          Math.min(1, (confidence - 0.11) / 0.42),
         );
         const target = normalized * normalized * (3 - 2 * normalized);
         const stabilized =
           target > previous[index]
-            ? previous[index] * 0.22 + target * 0.78
-            : previous[index] * 0.46 + target * 0.54;
-        previous[index] = stabilized < 0.025 ? 0 : stabilized;
+            ? previous[index] * 0.18 + target * 0.82
+            : previous[index] * 0.38 + target * 0.62;
+        previous[index] = stabilized < 0.015 ? 0 : stabilized;
         softAlpha[index] = Math.round(previous[index] * 255);
       }
       scope.postMessage(

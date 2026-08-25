@@ -3116,6 +3116,7 @@ function ClipEditorV2({
     [videoFadeIn, setVideoFadeIn] = useState(0),
     [videoFadeOut, setVideoFadeOut] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
+    [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scale: 1 }),
     [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
     [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
     [exportFps, setExportFps] = useState(30),
@@ -3159,6 +3160,8 @@ function ClipEditorV2({
   } | null>(null);
   const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
+  const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
+  const videoFrameResize = useRef<{ scale: number; startX: number } | null>(null);
 
   useEffect(() => {
     if (!selectedId && layers[0]) setSelectedId(layers[0].id);
@@ -3212,8 +3215,8 @@ function ClipEditorV2({
   };
   useEffect(() => {
     if (!clip) return;
-    try { localStorage.setItem("klip-editor-draft", JSON.stringify({ name: clip.name, start, end, videoFadeIn, videoFadeOut, exportAspect, exportResolution, layers, illustrations })); } catch { /* storage may be unavailable */ }
-  }, [clip, start, end, videoFadeIn, videoFadeOut, exportAspect, exportResolution, layers, illustrations]);
+    try { localStorage.setItem("klip-editor-draft", JSON.stringify({ name: clip.name, start, end, videoFadeIn, videoFadeOut, videoTransform, exportAspect, exportResolution, layers, illustrations })); } catch { /* storage may be unavailable */ }
+  }, [clip, start, end, videoFadeIn, videoFadeOut, videoTransform, exportAspect, exportResolution, layers, illustrations]);
   const layerOpacity = (layer: TimedLayer, at: number) => {
     if (at < layer.start || at > layer.end) return 0;
     let opacity = 1;
@@ -3250,6 +3253,7 @@ function ClipEditorV2({
     setEnd(0);
     setVideoFadeIn(0);
     setVideoFadeOut(0);
+    setVideoTransform({ x: 0, y: 0, scale: 1 });
     setMarkers([]);
     setLayers([initialLayer()]);
     setIllustrations([]);
@@ -3303,12 +3307,12 @@ function ClipEditorV2({
     } catch { setNotice("Não foi possível ler o arquivo de legenda."); }
   }
   function exportProject() {
-    const project = { version: 1, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, transitionColor, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, createdAt: new Date().toISOString() };
+    const project = { version: 1, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, createdAt: new Date().toISOString() };
     const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Ao abrir, importe também o vídeo original.");
   }
   async function importProject(file?: File) {
     if (!file) return;
-    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); setStart(Number(project.start) || 0); setEnd(Number(project.end) || duration); setVideoFadeIn(Number(project.videoFadeIn) || 0); setVideoFadeOut(Number(project.videoFadeOut) || 0); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
+    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); setStart(Number(project.start) || 0); setEnd(Number(project.end) || duration); setVideoFadeIn(Number(project.videoFadeIn) || 0); setVideoFadeOut(Number(project.videoFadeOut) || 0); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scale: Math.max(.75, Math.min(2.5, Number(project.videoTransform?.scale) || 1)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -3537,6 +3541,46 @@ function ClipEditorV2({
       size: Math.max(18, Math.min(90, resize.size + ((event.clientX - resize.startX) / bounds.width) * 100)),
     });
   }
+  function beginVideoFrameDrag(event: React.PointerEvent<HTMLVideoElement>) {
+    if (!clip) return;
+    videoFrameDrag.current = { x: videoTransform.x, y: videoTransform.y, startX: event.clientX, startY: event.clientY };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveVideoFrameDrag(event: React.PointerEvent<HTMLVideoElement>) {
+    const drag = videoFrameDrag.current;
+    const stage = event.currentTarget.parentElement;
+    if (!drag || !stage) return;
+    const bounds = stage.getBoundingClientRect();
+    setVideoTransform((currentFrame) => ({
+      ...currentFrame,
+      x: Math.max(-45, Math.min(45, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
+      y: Math.max(-45, Math.min(45, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
+    }));
+  }
+  function beginVideoFrameResize(event: React.PointerEvent<HTMLDivElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    videoFrameResize.current = { scale: videoTransform.scale, startX: event.clientX };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveVideoFrameResize(event: React.PointerEvent<HTMLDivElement>) {
+    const resize = videoFrameResize.current;
+    const stage = event.currentTarget.parentElement;
+    if (!resize || !stage) return;
+    const bounds = stage.getBoundingClientRect();
+    setVideoTransform((currentFrame) => ({ ...currentFrame, scale: Math.max(.75, Math.min(2.5, resize.scale + ((event.clientX - resize.startX) / bounds.width) * 2)) }));
+  }
+  function applyTransition(kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
+    const duration = kind === "none" ? 0 : .55;
+    if (kind !== "none") setTransitionColor(kind === "fade-white" ? "white" : "black");
+    if (edge === "in") setVideoFadeIn(duration); else setVideoFadeOut(duration);
+    setNotice(kind === "none" ? `Transição de ${edge === "in" ? "entrada" : "saída"} removida.` : `${kind === "fade-white" ? "Fade branco" : "Fade preto"} aplicado na ${edge === "in" ? "entrada" : "saída"}.`);
+  }
+  function dropTransition(event: React.DragEvent<HTMLDivElement>, edge: "in" | "out") {
+    event.preventDefault();
+    const kind = event.dataTransfer.getData("application/x-klip-transition") as "fade-black" | "fade-white" | "none";
+    if (kind) applyTransition(kind, edge);
+  }
   function previewStyle(layer: TextLayer): React.CSSProperties {
     const progress = effectProgress(layer, current);
     const scale = layer.effect === "pop" ? 0.68 + progress * 0.32 : layer.effect === "zoom" ? 1.42 - progress * .42 : layer.effect === "bounce" ? .75 + Math.sin(progress * Math.PI) * .22 : 1;
@@ -3628,15 +3672,15 @@ function ClipEditorV2({
       const scale = Math.max(
         canvas.width / source.videoWidth,
         canvas.height / source.videoHeight,
-      );
+      ) * videoTransform.scale;
       const width = source.videoWidth * scale,
         height = source.videoHeight * scale;
       context.fillStyle = "#090909";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.drawImage(
         source,
-        (canvas.width - width) / 2,
-        (canvas.height - height) / 2,
+        (canvas.width - width) / 2 + (videoTransform.x / 100) * canvas.width,
+        (canvas.height - height) / 2 + (videoTransform.y / 100) * canvas.height,
         width,
         height,
       );
@@ -3798,11 +3842,15 @@ function ClipEditorV2({
           {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div>}
           {clip && <div className="video-transition-controls">
             <b>Transições do vídeo</b>
-            <small>Aplicadas na prévia e na exportação.</small>
-            <div className="effect-grid">
-              <label>Fade in<input type="number" min="0" max="5" step="0.1" value={videoFadeIn} onChange={(event) => setVideoFadeIn(Math.max(0, Number(event.target.value)))} /></label>
-              <label>Fade out<input type="number" min="0" max="5" step="0.1" value={videoFadeOut} onChange={(event) => setVideoFadeOut(Math.max(0, Number(event.target.value)))} /></label>
-              <label>Cor<select value={transitionColor} onChange={(event) => setTransitionColor(event.target.value as "black" | "white")}><option value="black">Preto</option><option value="white">Branco</option></select></label>
+            <small>Arraste um cartão para Entrada ou Saída. A prévia e o arquivo exportado usam a mesma transição.</small>
+            <div className="transition-shelf">
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-black")} onClick={() => applyTransition("fade-black", "in")}>◐ Fade preto</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-white")} onClick={() => applyTransition("fade-white", "in")}>◐ Fade branco</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "none")} onClick={() => applyTransition("none", "in")}>⊘ Sem transição</button>
+            </div>
+            <div className="transition-drops">
+              <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "in")}><b>Entrada</b><span>{videoFadeIn ? `${transitionColor === "white" ? "Fade branco" : "Fade preto"} · ${videoFadeIn.toFixed(1)}s` : "Solte aqui"}</span></div>
+              <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "out")}><b>Saída</b><span>{videoFadeOut ? `${transitionColor === "white" ? "Fade branco" : "Fade preto"} · ${videoFadeOut.toFixed(1)}s` : "Solte aqui"}</span></div>
             </div>
           </div>}
 
@@ -3871,7 +3919,7 @@ function ClipEditorV2({
           <div className="stage-meta" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)` }}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><div><button onClick={() => setPreviewScale((value) => Math.max(.7, Number((value - .1).toFixed(1))))}>−</button><b>{Math.round(previewScale * 100)}%</b><button onClick={() => setPreviewScale((value) => Math.min(2, Number((value + .1).toFixed(1))))}>＋</button></div><b>{time(current)}</b></div>
           <div className="editor-stage" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} />
+              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scale})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o vídeo para enquadrar</div><div className="video-frame-resize" onPointerDown={beginVideoFrameResize} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir o vídeo">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scale: 1 })}>↺ Enquadrar</button></>
             ) : (
               <div className="editor-empty"><b>Monte seu próximo reel.</b><span>Importe um vídeo para editar corte, textos e efeitos.</span></div>
             )}
@@ -3897,7 +3945,7 @@ function ClipEditorV2({
             })}
             {safeGuides && exportAspect === "vertical" && <div className="safe-area-guides" aria-label="Área segura para TikTok, Reels e Shorts"><i /><span>Área segura</span></div>}
           </div>
-          <p className="stage-help">Clique em um texto para selecionar. Arraste para posicionar. O resultado exportado segue esta prévia.</p>
+          <p className="stage-help">Arraste o vídeo para reposicionar e use o canto ↘ para redimensionar. Textos e ilustrações também são arrastáveis. O resultado exportado segue esta prévia.</p>
           {notice && <p className="editor-notice">{notice}</p>}
         </section>
       </section>

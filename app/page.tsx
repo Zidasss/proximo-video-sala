@@ -419,9 +419,10 @@ export default function Home() {
     source.srcObject = local.current;
     source.muted = true;
     source.playsInline = true;
-    image.src = background;
-    overlayImage.src = cameraOverlayRef.current;
-    backdropVideo.src = backgroundVideo;
+    if (background) image.src = background;
+    let loadedOverlaySource = cameraOverlayRef.current;
+    if (loadedOverlaySource) overlayImage.src = loadedOverlaySource;
+    if (backgroundVideo) backdropVideo.src = backgroundVideo;
     backdropVideo.muted = true;
     backdropVideo.loop = true;
     backdropVideo.playsInline = true;
@@ -470,7 +471,6 @@ export default function Home() {
       const attachOverlayOutput = () => {
         if (attached) return;
         processedLocal.current = output;
-        replaceOutgoingVideo(output);
         refreshCameraForPeer();
         if (mine.current) {
           mine.current.srcObject = output;
@@ -502,8 +502,13 @@ export default function Home() {
       };
       const drawCameraOverlay = () => {
         const overlay = cameraOverlayRef.current;
-        if (overlayImage.src !== overlay) overlayImage.src = overlay;
-        if (!overlay || !overlayImage.complete || !overlayImage.naturalWidth) return;
+        if (!overlay) return;
+        if (loadedOverlaySource !== overlay) {
+          loadedOverlaySource = overlay;
+          overlayImage.src = overlay;
+          return;
+        }
+        if (!overlayImage.complete || !overlayImage.naturalWidth) return;
         context.save();
         context.globalAlpha = cameraOverlayOpacityRef.current;
         context.drawImage(overlayImage, 0, 0, canvas.width, canvas.height);
@@ -564,7 +569,6 @@ export default function Home() {
           const attachOutput = () => {
             if (attached) return;
             processedLocal.current = output;
-            replaceOutgoingVideo(output);
             refreshCameraForPeer();
             if (mine.current) {
               mine.current.srcObject = output;
@@ -754,7 +758,6 @@ export default function Home() {
           hasMask = true;
           if (!attached) {
             processedLocal.current = output;
-            replaceOutgoingVideo(output);
             refreshCameraForPeer();
             if (mine.current) {
               mine.current.srcObject = output;

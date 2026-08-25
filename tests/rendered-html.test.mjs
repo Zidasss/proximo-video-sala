@@ -35,6 +35,8 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
   assert.match(page, /const stream = processedLocal\.current \|\| local\.current/);
+  assert.match(page, /let loadedOverlaySource = cameraOverlayRef\.current/);
+  assert.match(page, /if \(background\) image\.src = background/);
   assert.match(page, /Nunca faça composição em 4K implícita/);
   assert.match(page, /Usando IA Premium compatível com este navegador/);
   assert.match(page, /inferenceDuration > 95 \? 384/);

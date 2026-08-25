@@ -87,8 +87,9 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       const softAlpha = new Uint8ClampedArray(total);
       const previous = previousAlpha!;
 
-      // Algoritmo anti-halo para cabelos pretos, castanhos e loiros,
-      // preservando fones, óculos e contornos laterais da cabeça e pescoço.
+      // Algoritmo de precisão anatômica:
+      // Usa estritamente as classes semânticas da pessoa (cabelo, rosto, pele, roupas e fones)
+      // para eliminar sombras de parede, encosto de cadeira e névoa escura acima da cabeça.
       for (let index = 0; index < total; index += 1) {
         const hairVal = hair[index];
         const bodySkinVal = bodySkin[index];
@@ -97,40 +98,34 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
         const accVal = accessories ? accessories[index] : 0;
         const bgVal = background[index];
 
-        // 1. Soma ponderada de componentes do corpo
-        const personFg = hairVal * 1.08 + faceSkinVal * 1.02 + bodySkinVal * 1.02 + clothesVal * 1.0 + accVal * 0.95;
+        // 1. Confiança semântica direta do corpo
+        const personFg =
+          hairVal * 1.30 +
+          faceSkinVal * 1.15 +
+          bodySkinVal * 1.15 +
+          clothesVal * 1.05 +
+          accVal * 0.95;
 
-        // 2. Razão normalizada em relação ao fundo
-        const totalEnergy = personFg + bgVal + 1e-4;
-        const fgRatio = personFg / totalEnergy;
+        // 2. Razão discriminante contra o fundo
+        const relativeFg = personFg / (personFg + bgVal * 1.12 + 1e-4);
 
-        // 3. Silhueta real sem expansão artificial
-        const silhouette = Math.max(0, 1 - bgVal);
-
-        // 4. Confiança nítida que não infla o halo escuro no topo da cabeça
-        let confidence = Math.max(fgRatio, personFg);
-        if (silhouette > 0.50 && personFg > 0.15) {
-          confidence = Math.max(confidence, (silhouette * 0.7) + (personFg * 0.3));
-        }
-        if (accVal > 0.30) {
-          confidence = Math.max(confidence, accVal);
-        }
-
-        // 5. Curva de corte adaptativa precisa (elimina o capacete/ovo preto)
+        // 3. Corte firme para eliminar sombras de parede e encosto de cadeira:
+        // Qualquer sombra ou vazamento com relativeFg < 0.42 é cortado a zero.
+        // A transição entre 0.42 e 0.76 garante suavização perfeita das bordas do cabelo real.
         const normalized = Math.max(
           0,
-          Math.min(1, (confidence - 0.30) / 0.44),
+          Math.min(1, (relativeFg - 0.42) / 0.34),
         );
         const target = normalized * normalized * (3 - 2 * normalized);
 
-        // 6. Estabilização temporal sem rastro
+        // 4. Estabilização temporal rápida (evita fantasmas e sombras residuais)
         const prev = previous[index];
         const stabilized =
           target > prev
-            ? prev * 0.12 + target * 0.88
-            : prev * 0.28 + target * 0.72;
+            ? prev * 0.08 + target * 0.92
+            : prev * 0.20 + target * 0.80;
 
-        previous[index] = stabilized < 0.02 ? 0 : stabilized;
+        previous[index] = stabilized < 0.015 ? 0 : stabilized;
         softAlpha[index] = Math.round(previous[index] * 255);
       }
 

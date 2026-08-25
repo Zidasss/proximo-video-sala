@@ -3133,7 +3133,7 @@ function ClipEditorV2({
     [videoFadeOutAt, setVideoFadeOutAt] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
     [visualPreset, setVisualPreset] = useState<VisualPreset>("clean"),
-    [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scale: 1 }),
+    [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1 }),
     [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
     [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
     [exportFps, setExportFps] = useState(30),
@@ -3146,7 +3146,6 @@ function ClipEditorV2({
     [markers, setMarkers] = useState<number[]>([]),
     [timelineZoom, setTimelineZoom] = useState(1),
     [safeGuides, setSafeGuides] = useState(true),
-    [previewScale, setPreviewScale] = useState(1.2),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
     [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
@@ -3190,7 +3189,7 @@ function ClipEditorV2({
   const transitionResize = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const transitionMove = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
-  const videoFrameResize = useRef<{ scale: number; startX: number; startY: number; axis: "horizontal" | "vertical" } | null>(null);
+  const videoFrameResize = useRef<{ scaleX: number; scaleY: number; startX: number; startY: number; edge: "left" | "right" | "top" | "bottom" | "corner" } | null>(null);
 
   useEffect(() => {
     if (!selectedId && !selectedIllustrationId && !selectedAudioId && layers[0]) setSelectedId(layers[0].id);
@@ -3344,7 +3343,7 @@ function ClipEditorV2({
     setVideoFadeOut(0);
     setVideoFadeInAt(0);
     setVideoFadeOutAt(0);
-    setVideoTransform({ x: 0, y: 0, scale: 1 });
+    setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
     setMarkers([]);
     setLayers([initialLayer()]);
     setIllustrations([]);
@@ -3541,7 +3540,7 @@ function ClipEditorV2({
   }
   async function importProject(file?: File) {
     if (!file) return;
-    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); const restoredStart = Number(project.start) || 0, restoredEnd = Number(project.end) || duration; const restoredIn = Number(project.videoFadeIn) || 0, restoredOut = Number(project.videoFadeOut) || 0; setStart(restoredStart); setEnd(restoredEnd); setVideoFadeIn(restoredIn); setVideoFadeOut(restoredOut); setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart)); setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut))); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scale: Math.max(1, Math.min(2.5, Number(project.videoTransform?.scale) || 1)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
+    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); const restoredStart = Number(project.start) || 0, restoredEnd = Number(project.end) || duration; const restoredIn = Number(project.videoFadeIn) || 0, restoredOut = Number(project.videoFadeOut) || 0; const legacyScale = Number(project.videoTransform?.scale) || 1; setStart(restoredStart); setEnd(restoredEnd); setVideoFadeIn(restoredIn); setVideoFadeOut(restoredOut); setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart)); setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut))); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scaleX: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleX) || legacyScale)), scaleY: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleY) || legacyScale)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -3999,10 +3998,10 @@ function ClipEditorV2({
       y: Math.max(-45, Math.min(45, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
     }));
   }
-  function beginVideoFrameResize(event: React.PointerEvent<HTMLDivElement>, axis: "horizontal" | "vertical" = "horizontal") {
+  function beginVideoFrameResize(event: React.PointerEvent<HTMLDivElement>, edge: "left" | "right" | "top" | "bottom" | "corner") {
     event.preventDefault();
     event.stopPropagation();
-    videoFrameResize.current = { scale: videoTransform.scale, startX: event.clientX, startY: event.clientY, axis };
+    videoFrameResize.current = { scaleX: videoTransform.scaleX, scaleY: videoTransform.scaleY, startX: event.clientX, startY: event.clientY, edge };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function moveVideoFrameResize(event: React.PointerEvent<HTMLDivElement>) {
@@ -4010,8 +4009,14 @@ function ClipEditorV2({
     const stage = event.currentTarget.parentElement;
     if (!resize || !stage) return;
     const bounds = stage.getBoundingClientRect();
-    const delta = resize.axis === "vertical" ? (event.clientY - resize.startY) / bounds.height : (event.clientX - resize.startX) / bounds.width;
-    setVideoTransform((currentFrame) => ({ ...currentFrame, scale: Math.max(1, Math.min(2.5, resize.scale + delta * 2)) }));
+    const deltaX = ((event.clientX - resize.startX) / bounds.width) * 2;
+    const deltaY = ((event.clientY - resize.startY) / bounds.height) * 2;
+    const clamp = (value: number) => Math.max(.25, Math.min(4, value));
+    setVideoTransform((currentFrame) => ({
+      ...currentFrame,
+      scaleX: clamp(resize.scaleX + (resize.edge === "left" ? -deltaX : resize.edge === "right" || resize.edge === "corner" ? deltaX : 0)),
+      scaleY: clamp(resize.scaleY + (resize.edge === "top" ? -deltaY : resize.edge === "bottom" || resize.edge === "corner" ? deltaY : 0)),
+    }));
   }
   function applyTransition(kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
     const fadeDuration = kind === "none" ? 0 : 1;
@@ -4138,9 +4143,9 @@ function ClipEditorV2({
       const scale = Math.max(
         canvas.width / source.videoWidth,
         canvas.height / source.videoHeight,
-      ) * Math.max(1, videoTransform.scale);
-      const width = source.videoWidth * scale,
-        height = source.videoHeight * scale;
+      );
+      const width = source.videoWidth * scale * videoTransform.scaleX,
+        height = source.videoHeight * scale * videoTransform.scaleY;
       context.fillStyle = "#090909";
       context.fillRect(0, 0, canvas.width, canvas.height);
       context.filter = visualFilter;
@@ -4270,7 +4275,7 @@ function ClipEditorV2({
         <div className="brand">
           <span className="brand-mark"><i /><i /></span>Klip <em>Studio</em>
         </div>
-        <div className="editor-header-actions">
+        {clip && <div className="editor-header-actions">
           <span className="autosave-note">Projeto local · nada é enviado</span>
           <button onClick={onBack}>← Voltar para sala</button>
           <select className="export-format" aria-label="Formato de saída" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>
@@ -4298,15 +4303,15 @@ function ClipEditorV2({
             {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
           </button>
           {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar {exportProgress}%</button>}
-        </div>
+        </div>}
       </header>
-      <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
+      {clip && <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
         <a href="#klip-preview">▣ Prévia</a>
         <a href="#klip-tools">☷ Ferramentas</a>
         <a href="#klip-timeline">▤ Linha do tempo</a>
         <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : "⇩ Exportar"}</button>
-      </nav>
-      <section className="editor-workspace">
+      </nav>}
+      <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
         <aside className="editor-tools" id="klip-tools">
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
           {!clip ? <>
@@ -4404,10 +4409,10 @@ function ClipEditorV2({
         </aside>
 
         <section className="editor-stage-wrap" id="klip-preview">
-          {clip && <div className="stage-meta" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)` }}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><div><button onClick={() => setPreviewScale((value) => Math.max(.7, Number((value - .1).toFixed(1))))}>−</button><b>{Math.round(previewScale * 100)}%</b><button onClick={() => setPreviewScale((value) => Math.min(2, Number((value + .1).toFixed(1))))}>＋</button></div><b>{time(current)}</b></div>}
-          <div className={`editor-stage preset-${visualPreset}`} style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
+          {clip && <div className="stage-meta"><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>}
+          <div className={`editor-stage preset-${visualPreset}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${Math.max(1, videoTransform.scale)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o vídeo para enquadrar</div><div className="video-frame-resize vertical top" onPointerDown={(event) => beginVideoFrameResize(event, "vertical")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para ajustar a altura do enquadramento">↕</div><div className="video-frame-resize vertical bottom" onPointerDown={(event) => beginVideoFrameResize(event, "vertical")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para ajustar a altura do enquadramento">↕</div><div className="video-frame-resize" onPointerDown={beginVideoFrameResize} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar o zoom">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scale: 1 })}>↺ Enquadrar</button></>
+              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scaleX}, ${videoTransform.scaleY})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
             ) : (
               <div className="editor-empty"><small>Klip Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload">＋ Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}
@@ -4434,12 +4439,11 @@ function ClipEditorV2({
             })}
             {safeGuides && exportAspect === "vertical" && <div className="safe-area-guides" aria-label="Área segura para TikTok, Reels e Shorts"><i /><span>Área segura</span></div>}
           </div>
-          <p className="stage-help">Arraste o vídeo para reposicionar e use o canto ↘ para redimensionar. Textos e ilustrações também são arrastáveis. O resultado exportado segue esta prévia.</p>
           {notice && <p className="editor-notice">{notice}</p>}
         </section>
       </section>
 
-      <section className={`timeline-panel multi-timeline ${clip ? "" : "empty-timeline"}`} id="klip-timeline">
+      {clip && <section className="timeline-panel multi-timeline" id="klip-timeline">
         <div className="timeline-top">
           <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
           <button disabled={!history.current.length} onClick={undo} title="Desfazer">↶ Desfazer</button>
@@ -4449,7 +4453,6 @@ function ClipEditorV2({
           <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores">⌁ Ímã</button>
           <details className="timeline-more"><summary>••• Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button><button disabled={!clip} onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button><button disabled={!clip} onClick={trimAtPlayhead} title="Move a ponta mais próxima do corte para o cursor atual">✂ Cortar no cursor</button><button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button><button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button><button disabled={!clip} onClick={() => seek(start)}>↶ Início</button></div></details>
         </div>
-        {!clip && <p className="empty-timeline-message">A timeline aparece aqui assim que você importar a primeira mídia.</p>}
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }} onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
@@ -4479,7 +4482,7 @@ function ClipEditorV2({
           <p className="timeline-trim-help"><b>{selected ? `T${layers.findIndex((layer) => layer.id === selected.id) + 1}` : selectedIllustration ? selectedIllustration.kind === "image" ? "Imagem" : "Vídeo" : selectedAudio ? "Áudio" : "Edição direta"}</b><span>{selected ? selected.text : selectedIllustration ? selectedIllustration.name : selectedAudio ? selectedAudio.name : "Selecione e arraste um clipe na linha do tempo."}</span></p>
           {(selected || selectedIllustration || selectedAudio) && <p className="timeline-shortcuts">Arraste o bloco para mover · arraste as pontas para cortar · <kbd>Del</kbd> remover · <kbd>Ctrl D</kbd> duplicar · <kbd>Espaço</kbd> reproduzir</p>}
         </div>
-      </section>
+      </section>}
       {contextMenu && <div className="timeline-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseLeave={closeContextMenu}>
         <button onClick={() => { duplicateSelected(); closeContextMenu(); }}>⧉ Duplicar</button>
         <button onClick={() => { copySelected(); closeContextMenu(); }}>⌘ Copiar</button>

@@ -1763,3 +1763,37 @@ body {
   .clip-editor-v2 .timeline-lane > b, .clip-editor-v2 .timeline-ruler span, .clip-editor-v2 .timeline-clip-meta { font-size: 11px; }
   .clip-editor-v2 .text-clip span, .clip-editor-v2 .illustration-clip span, .clip-editor-v2 .audio-clip { font-size: 11px; }
 }
+
+/* The canvas itself gets the space; the old percentage control was only a visual zoom. */
+@media (min-width: 761px) {
+  .clip-editor-v2 .editor-stage,
+  .clip-editor-v2 .stage-meta {
+    width: min(1120px, calc(100vw - 520px));
+    max-width: none;
+  }
+}
+
+/* Free transform: each side adjusts one dimension and the corner adjusts both. */
+.clip-editor-v2 .video-frame-resize.edge,
+.clip-editor-v2 .video-frame-resize.corner {
+  position: absolute;
+  z-index: 7;
+  display: grid;
+  place-items: center;
+  width: 30px;
+  height: 30px;
+  margin: 0;
+  border: 2px solid #241311;
+  border-radius: 50%;
+  background: #ff7769;
+  color: #281312;
+  font: 900 15px/1 Inter, sans-serif;
+  box-shadow: 0 4px 14px #0009;
+  touch-action: none;
+}
+.clip-editor-v2 .video-frame-resize.edge.left { left: 8px; right: auto; top: 50%; bottom: auto; transform: translateY(-50%); cursor: ew-resize; }
+.clip-editor-v2 .video-frame-resize.edge.right { right: 8px; left: auto; top: 50%; bottom: auto; transform: translateY(-50%); cursor: ew-resize; }
+.clip-editor-v2 .video-frame-resize.edge.top { top: 8px; right: auto; bottom: auto; left: 50%; transform: translateX(-50%); cursor: ns-resize; }
+.clip-editor-v2 .video-frame-resize.edge.bottom { right: auto; bottom: 8px; left: 50%; top: auto; transform: translateX(-50%); cursor: ns-resize; }
+.clip-editor-v2 .video-frame-resize.corner { right: 8px; bottom: 8px; left: auto; top: auto; cursor: nwse-resize; }
+.clip-editor-v2 .video-layout-hint { max-width: calc(100% - 120px); text-align: center; font-size: 10px; }

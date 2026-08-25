@@ -729,7 +729,7 @@ export default function Home() {
               foregroundContext.save();
               foregroundContext.imageSmoothingEnabled = true;
               foregroundContext.imageSmoothingQuality = "high";
-              foregroundContext.filter = "blur(1.2px) contrast(1.12)";
+              foregroundContext.filter = "none";
               foregroundContext.drawImage(maskCanvas, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
               foregroundContext.globalCompositeOperation = "source-in";
               foregroundContext.filter = skinSmoothRef.current ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)" : "none";

@@ -3157,13 +3157,15 @@ function ClipEditorV2({
     [exportProgress, setExportProgress] = useState(0),
     [notice, setNotice] = useState(""),
     [snapGuide, setSnapGuide] = useState<number | null>(null),
-    [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: "text" | "illustration" | "audio"; id: string } | null>(null);
+    [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: "text" | "illustration" | "audio" | "video"; id: string } | null>(null);
   const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
   const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
   const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
   const selected = layers.find((layer) => layer.id === selectedId);
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
   const selectedAudio = audioTracks.find((track) => track.id === selectedAudioId);
+  const sceneItems = illustrations.filter((item) => item.role === "scene");
+  const overlayItems = illustrations.filter((item) => item.role !== "scene");
   const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
   const audioElements = useRef<Map<string, HTMLAudioElement>>(new Map());
   const layerDrag = useRef<{
@@ -3802,6 +3804,44 @@ function ClipEditorV2({
       setNotice(`Fim do corte movido para ${time(Math.min(duration, value))}.`);
     }
   }
+  function splitSelectedAtPlayhead() {
+    const at = snapTime(current);
+    const inRange = (item: TimedLayer) => at > item.start + .08 && at < item.end - .08;
+    if (selectedIllustration) {
+      if (!inRange(selectedIllustration)) { setNotice("Posicione o cursor dentro da cena/camada para dividir."); return; }
+      remember();
+      const second: IllustrationLayer = { ...selectedIllustration, id: crypto.randomUUID(), start: at, fadeIn: 0 };
+      setIllustrations((items) => items.flatMap((item) => item.id === selectedIllustration.id ? [{ ...item, end: at, fadeOut: 0 }, second] : [item]));
+      if (selectedIllustration.role === "scene") {
+        setAudioTracks((tracks) => tracks.flatMap((track) => {
+          const belongsToScene = track.url === selectedIllustration.url && Math.abs(track.start - selectedIllustration.start) < .08 && Math.abs(track.end - selectedIllustration.end) < .08;
+          return belongsToScene ? [{ ...track, end: at, fadeOut: 0 }, { ...track, id: crypto.randomUUID(), name: `${track.name} · parte 2`, start: at, fadeIn: 0 }] : [track];
+        }));
+      }
+      setSelectedIllustrationId(second.id);
+      setNotice(`Cena/camada dividida em ${time(at)}.`);
+      return;
+    }
+    if (selectedAudio) {
+      if (!inRange(selectedAudio)) { setNotice("Posicione o cursor dentro do áudio para dividir."); return; }
+      remember();
+      const second: AudioTrack = { ...selectedAudio, id: crypto.randomUUID(), name: `${selectedAudio.name} · parte 2`, start: at, fadeIn: 0 };
+      setAudioTracks((items) => items.flatMap((item) => item.id === selectedAudio.id ? [{ ...item, end: at, fadeOut: 0 }, second] : [item]));
+      setSelectedAudioId(second.id);
+      setNotice(`Áudio dividido em ${time(at)}.`);
+      return;
+    }
+    if (selected) {
+      if (!inRange(selected)) { setNotice("Posicione o cursor dentro do texto para dividir."); return; }
+      remember();
+      const second: TextLayer = { ...selected, id: crypto.randomUUID(), start: at, fadeIn: 0 };
+      setLayers((items) => items.flatMap((item) => item.id === selected.id ? [{ ...item, end: at, fadeOut: 0 }, second] : [item]));
+      setSelectedId(second.id);
+      setNotice(`Texto dividido em ${time(at)}.`);
+      return;
+    }
+    trimAtPlayhead();
+  }
   function addMarker() {
     if (!duration) return;
     const value = snapTime(current);
@@ -3870,10 +3910,15 @@ function ClipEditorV2({
   }
   function openContextMenu(event: React.MouseEvent, kind: "text" | "illustration" | "audio", id: string) {
     event.preventDefault();
+    event.stopPropagation();
     if (kind === "text") { setSelectedId(id); setSelectedIllustrationId(""); setSelectedAudioId(""); }
     if (kind === "illustration") { setSelectedIllustrationId(id); setSelectedId(""); setSelectedAudioId(""); }
     if (kind === "audio") { setSelectedAudioId(id); setSelectedId(""); setSelectedIllustrationId(""); }
     setContextMenu({ x: event.clientX, y: event.clientY, kind, id });
+  }
+  function openVideoContextMenu(event: React.MouseEvent) {
+    event.preventDefault();
+    setContextMenu({ x: event.clientX, y: event.clientY, kind: "video", id: "" });
   }
   function closeContextMenu() { setContextMenu(null); }
   function moveSelectedLayer(direction: "front" | "back") {
@@ -4451,10 +4496,10 @@ function ClipEditorV2({
           <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>
           <button className="timeline-play-toggle" disabled={!clip} onClick={() => void togglePreviewPlayback()}>{isPlaying ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
           <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores">⌁ Ímã</button>
-          <details className="timeline-more"><summary>••• Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button><button disabled={!clip} onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button><button disabled={!clip} onClick={trimAtPlayhead} title="Move a ponta mais próxima do corte para o cursor atual">✂ Cortar no cursor</button><button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button><button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button><button disabled={!clip} onClick={() => seek(start)}>↶ Início</button></div></details>
+          <details className="timeline-more"><summary>••• Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button><button onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button><button onClick={splitSelectedAtPlayhead} title="Divide a cena, camada, texto ou áudio selecionado">✂ Dividir selecionado no cursor</button><button onClick={trimAtPlayhead} title="Move a ponta mais próxima do vídeo base para o cursor atual">⌘ Ajustar corte do vídeo base</button><button onClick={() => markCut("start")}>◀ Começar aqui</button><button onClick={() => markCut("end")}>Terminar aqui ▶</button><button onClick={() => seek(start)}>↶ Ir ao início</button></div></details>
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
-        <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }} onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline}>
+        <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }} onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline} onContextMenu={openVideoContextMenu}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {audioTracks.map((track, index) => (
@@ -4465,9 +4510,15 @@ function ClipEditorV2({
               </button></div>
             </div>
           ))}
-          {illustrations.map((item, index) => (
+          {!!sceneItems.length && <div className="scene-track-heading"><b>SEQUÊNCIA DE CENAS</b><span>Cenas substituem o vídeo base no intervalo delas</span></div>}
+          {sceneItems.map((item, index) => (
+            <div className={`timeline-lane scene-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)}>
+              <b>CENA {index + 1}</b><div className="lane-track"><button className="illustration-clip scene-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>◆ CENA {index + 1} · {item.name}</span><i className="timeline-clip-meta">substitui vídeo</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
+            </div>
+          ))}
+          {overlayItems.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)}>
-              <b>{item.role === "scene" ? `CENA ${index + 1}` : item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.role === "scene" ? "cena" : item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
+              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
             </div>
           ))}
           {layers.map((layer, index) => (
@@ -4484,10 +4535,13 @@ function ClipEditorV2({
         </div>
       </section>}
       {contextMenu && <div className="timeline-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseLeave={closeContextMenu}>
-        <button onClick={() => { duplicateSelected(); closeContextMenu(); }}>⧉ Duplicar</button>
-        <button onClick={() => { copySelected(); closeContextMenu(); }}>⌘ Copiar</button>
-        {contextMenu.kind !== "audio" && <><button onClick={() => moveSelectedLayer("front")}>⇧ Trazer para frente</button><button onClick={() => moveSelectedLayer("back")}>⇩ Enviar para trás</button></>}
-        <button className="danger" onClick={() => { deleteSelected(); closeContextMenu(); }}>⌫ Excluir</button>
+        {contextMenu.kind !== "video" && <><button onClick={() => { splitSelectedAtPlayhead(); closeContextMenu(); }}>✂ Dividir no cursor</button><button onClick={() => { duplicateSelected(); closeContextMenu(); }}>⧉ Duplicar</button><button onClick={() => { copySelected(); closeContextMenu(); }}>⌘ Copiar</button>{contextMenu.kind !== "audio" && <><button onClick={() => moveSelectedLayer("front")}>⇧ Trazer para frente</button><button onClick={() => moveSelectedLayer("back")}>⇩ Enviar para trás</button></>}<button className="danger" onClick={() => { deleteSelected(); closeContextMenu(); }}>⌫ Excluir</button><hr /></>}
+        <button onClick={() => { trimAtPlayhead(); closeContextMenu(); }}>⌘ Ajustar corte do vídeo base</button>
+        <button onClick={() => { addMarker(); closeContextMenu(); }}>◆ Adicionar marcador</button>
+        <button onClick={() => { markCut("start"); closeContextMenu(); }}>◀ Começar aqui</button>
+        <button onClick={() => { markCut("end"); closeContextMenu(); }}>Terminar aqui ▶</button>
+        <button onClick={() => { setSafeGuides((value) => !value); closeContextMenu(); }}>▣ {safeGuides ? "Ocultar" : "Mostrar"} área segura</button>
+        <button onClick={() => { seek(start); closeContextMenu(); }}>↶ Ir ao início</button>
       </div>}
     </main>
   );

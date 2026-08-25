@@ -1861,6 +1861,75 @@ body {
   .clip-editor-v2 .editor-tools small { font-size: 13px; }
   .clip-editor-v2 .timeline-panel.multi-timeline { font-size: 15px; }
 }
+
+/* Screen sharing choice: audio is explicit instead of hidden in Settings. */
+.screen-share-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 1300;
+  display: grid;
+  place-items: center;
+  padding: 20px;
+  background: rgba(5, 8, 7, .72);
+  backdrop-filter: blur(10px);
+}
+.screen-share-dialog {
+  width: min(520px, 100%);
+  display: grid;
+  gap: 12px;
+  padding: 22px;
+  border: 1px solid #ff79675c;
+  border-radius: 20px;
+  background: linear-gradient(155deg, #211a19, #111513 72%);
+  box-shadow: 0 28px 90px #000b, 0 0 38px #ff6b5c17;
+  color: #fff7f2;
+}
+.screen-share-dialog > header { display: flex; align-items: start; justify-content: space-between; gap: 16px; }
+.screen-share-dialog > header div { display: grid; gap: 5px; }
+.screen-share-dialog > header small { color: #ff8878; font-size: 12px; font-weight: 900; letter-spacing: .13em; }
+.screen-share-dialog > header b { font-size: 24px; line-height: 1.15; }
+.screen-share-dialog > header button {
+  width: 36px;
+  height: 36px;
+  border: 1px solid #ffffff1f;
+  border-radius: 10px;
+  background: #ffffff08;
+  color: #fff;
+  font-size: 24px;
+  cursor: pointer;
+}
+.screen-share-dialog > p { margin: 2px 0 5px; color: #c2b9b4; font-size: 15px; line-height: 1.5; }
+.screen-share-choice {
+  width: 100%;
+  min-height: 78px;
+  display: grid;
+  grid-template-columns: 44px 1fr auto;
+  align-items: center;
+  gap: 12px;
+  padding: 13px 14px;
+  border: 1px solid #ffffff1a;
+  border-radius: 14px;
+  background: #ffffff08;
+  color: #fff7f2;
+  text-align: left;
+  cursor: pointer;
+  transition: transform .15s ease, border-color .15s ease, background .15s ease;
+}
+.screen-share-choice:hover { transform: translateY(-1px); border-color: #ff897870; background: #ff6d5d10; }
+.screen-share-choice.with-audio { border-color: #ff79675c; background: #ff6d5d12; }
+.screen-share-choice > span { display: grid; place-items: center; width: 44px; height: 44px; border-radius: 12px; background: #0c100f; font-size: 21px; }
+.screen-share-choice > div { display: grid; gap: 4px; }
+.screen-share-choice b { font-size: 16px; }
+.screen-share-choice small { color: #aaa29e; font-size: 13px; line-height: 1.35; }
+.screen-share-choice i { padding: 5px 7px; border-radius: 99px; background: #ff6d5d; color: #2a100d; font-size: 10px; font-style: normal; font-weight: 900; text-transform: uppercase; }
+.screen-share-hint { color: #8f8985; font-size: 12px; line-height: 1.45; }
+@media (max-width: 560px) {
+  .screen-share-backdrop { align-items: end; padding: 10px; }
+  .screen-share-dialog { padding: 18px; border-radius: 18px; }
+  .screen-share-dialog > header b { font-size: 21px; }
+  .screen-share-choice { grid-template-columns: 42px 1fr; }
+  .screen-share-choice i { display: none; }
+}
 .preview-title {
   cursor: grab;
   user-select: none;

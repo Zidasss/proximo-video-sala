@@ -83,7 +83,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.17.1";
+const APP_VERSION = "v0.17.2";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -214,6 +214,9 @@ export default function Home() {
     [backgroundOffsetY, setBackgroundOffsetY] = useState(0),
     [backgroundFit, setBackgroundFit] = useState<"cover" | "contain" | "original">("cover"),
     [shareScreenAudio, setShareScreenAudio] = useState(true),
+    [shareScreenDialogOpen, setShareScreenDialogOpen] = useState(false),
+    [screenAudioActive, setScreenAudioActive] = useState(false),
+    [remoteScreenAudioActive, setRemoteScreenAudioActive] = useState(false),
     [virtualEffectLoading, setVirtualEffectLoading] = useState(""),
     [cameraEpoch, setCameraEpoch] = useState(0),
     [virtualEpoch, setVirtualEpoch] = useState(0);
@@ -1598,6 +1601,7 @@ export default function Home() {
             displayed.current = null;
             if (screen.current) screen.current.srcObject = null;
             setSharing(false);
+            setScreenAudioActive(false);
           }
           received = shared;
           remoteDisplayed.current = shared;
@@ -1606,14 +1610,16 @@ export default function Home() {
             void remoteScreen.current.play().catch(() => undefined);
           }
           setRemoteSharing(true);
+          setRemoteScreenAudioActive(shared.getAudioTracks().length > 0);
           setNotice(
-            `${String(call.metadata?.name || "Seu amigo")} assumiu o compartilhamento.`,
+            `${String(call.metadata?.name || "Seu amigo")} assumiu o compartilhamento${shared.getAudioTracks().length ? " com áudio" : ""}.`,
           );
         });
         call.on("close", () => {
           if (remoteDisplayed.current === received) {
             remoteDisplayed.current = null;
             setRemoteSharing(false);
+            setRemoteScreenAudioActive(false);
           }
         });
         return;
@@ -1835,11 +1841,13 @@ export default function Home() {
       setNotice("Este microfone não permite alterar a supressão de ruído em tempo real.");
     }
   }
-  async function share() {
+  async function share(includeAudio = shareScreenAudio) {
     if (sharing) {
       displayed.current?.getTracks().forEach((track) => track.stop());
       displayed.current = null;
       setSharing(false);
+      setScreenAudioActive(false);
+      setNotice("Compartilhamento de tela encerrado.");
       return;
     }
     try {
@@ -1851,7 +1859,7 @@ export default function Home() {
           // Para reunião e gravação, 30 fps em 1080p é a opção estável.
           frameRate: { ideal: 30, max: 30 },
         },
-        audio: shareScreenAudio
+        audio: includeAudio
           ? {
               echoCancellation: false,
               noiseSuppression: false,
@@ -1859,7 +1867,7 @@ export default function Home() {
               suppressLocalAudioPlayback: false,
             }
           : false,
-        systemAudio: shareScreenAudio ? "include" : "exclude",
+        systemAudio: includeAudio ? "include" : "exclude",
         selfBrowserSurface: "include",
         surfaceSwitching: "include",
       };
@@ -1868,24 +1876,36 @@ export default function Home() {
       remoteDisplayed.current = null;
       if (remoteScreen.current) remoteScreen.current.srcObject = null;
       setRemoteSharing(false);
+      setRemoteScreenAudioActive(false);
       displayed.current = stream;
       if (screen.current) {
         screen.current.srcObject = stream;
         await screen.current.play().catch(() => undefined);
       }
-      stream.getVideoTracks()[0].onended = () => setSharing(false);
+      stream.getVideoTracks()[0].onended = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        if (displayed.current === stream) displayed.current = null;
+        setSharing(false);
+        setScreenAudioActive(false);
+        setNotice("Compartilhamento de tela encerrado.");
+      };
       const audioTracks = stream.getAudioTracks();
+      setScreenAudioActive(audioTracks.length > 0);
+      setShareScreenDialogOpen(false);
       if (audioTracks.length > 0) {
         setNotice("Compartilhando tela com áudio do sistema / aba.");
+      } else if (includeAudio) {
+        setNotice("A tela está sendo compartilhada, mas o navegador não enviou áudio. No seletor do Chrome, marque ‘Compartilhar áudio’ e prefira uma guia.");
       } else {
-        setNotice("Compartilhando tela.");
+        setNotice("Compartilhando somente a imagem da tela.");
       }
       setSharing(true);
       if (peer.current && remoteId.current)
         peer.current.call(remoteId.current, stream, {
-          metadata: { kind: "screen", name },
+          metadata: { kind: "screen", name, audio: audioTracks.length > 0 },
         });
     } catch {
+      setShareScreenDialogOpen(false);
       setNotice("O compartilhamento de tela foi cancelado.");
     }
   }
@@ -3235,7 +3255,7 @@ export default function Home() {
               {sharing
                 ? "Sua tela"
                 : `${friend || "Seu amigo"} está compartilhando`}{" "}
-              <b>{shareScreenAudio ? "Compartilhando com áudio" : "Compartilhando"}</b>
+              <b>{(sharing ? screenAudioActive : remoteScreenAudioActive) ? "Compartilhando com áudio" : "Somente imagem"}</b>
             </label>
           </div>
         )}
@@ -3418,6 +3438,48 @@ export default function Home() {
           </div>
         </aside>
       )}
+      {shareScreenDialogOpen && !sharing && (
+        <div
+          className="screen-share-backdrop"
+          role="presentation"
+          onPointerDown={(event) => {
+            if (event.target === event.currentTarget) setShareScreenDialogOpen(false);
+          }}
+        >
+          <section className="screen-share-dialog" role="dialog" aria-modal="true" aria-labelledby="screen-share-title">
+            <header>
+              <div>
+                <small>APRESENTAR</small>
+                <b id="screen-share-title">Como você quer compartilhar?</b>
+              </div>
+              <button onClick={() => setShareScreenDialogOpen(false)} aria-label="Fechar">×</button>
+            </header>
+            <p>Escolha se o seu amigo também deve ouvir vídeos, músicas, jogos ou sons da guia compartilhada.</p>
+            <button
+              className="screen-share-choice with-audio"
+              onClick={() => {
+                setShareScreenAudio(true);
+                void share(true);
+              }}
+            >
+              <span>🔊</span>
+              <div><b>Tela com áudio</b><small>Envia imagem e som do sistema ou da guia</small></div>
+              <i>Recomendado</i>
+            </button>
+            <button
+              className="screen-share-choice"
+              onClick={() => {
+                setShareScreenAudio(false);
+                void share(false);
+              }}
+            >
+              <span>▣</span>
+              <div><b>Somente imagem</b><small>Seu microfone continua normal, mas o som da tela não é enviado</small></div>
+            </button>
+            <small className="screen-share-hint">No Chrome, confirme também “Compartilhar áudio da guia” ou “Compartilhar áudio do sistema” no seletor que será aberto. A disponibilidade depende do sistema e do tipo de tela escolhido.</small>
+          </section>
+        </div>
+      )}
       {connectionOpen && (
         <aside className="connection-panel" aria-label="Status da conexão">
           <div className="connection-title">
@@ -3472,7 +3534,10 @@ export default function Home() {
         </button>
         <button
           className={sharing ? "active" : ""}
-          onClick={() => void share()}
+          onClick={() => {
+            if (sharing) void share();
+            else setShareScreenDialogOpen(true);
+          }}
         >
           <b>▣</b>
           <small>{sharing ? "Parar tela" : "Compartilhar tela"}</small>

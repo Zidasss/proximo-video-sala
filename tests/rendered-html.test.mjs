@@ -42,6 +42,11 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /const usePremiumMatting = mattingQuality === "premium" && !isMacOS/);
   assert.match(page, /"Identity:0", "Identity_1:0", "Identity_2:0"/);
   assert.match(page, /frameRate: \{ ideal: 30, max: 30 \}/);
+  assert.match(page, /shareScreenDialogOpen/);
+  assert.match(page, /Tela com áudio/);
+  assert.match(page, /Somente imagem/);
+  assert.match(page, /systemAudio: includeAudio \? "include" : "exclude"/);
+  assert.match(page, /setRemoteScreenAudioActive\(shared\.getAudioTracks\(\)\.length > 0\)/);
   assert.match(page, /firstMaskTimer = window\.setTimeout/);
   assert.match(page, /const macPort: SegmentPort/);
   assert.match(page, /Recorte compatível com macOS pronto/);
@@ -73,6 +78,7 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.video-frame-resize\.edge/);
   assert.match(css, /\.scene-track-heading/);
   assert.match(css, /\.primary-video-clip/);
+  assert.match(css, /\.screen-share-dialog/);
   assert.match(css, /\.timeline-more/);
   assert.match(css, /\.video-properties-grid/);
   assert.match(css, /\.position-grid/);

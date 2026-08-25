@@ -167,6 +167,9 @@
 .illustration-clip i { margin-left: auto; color: #ffe5a1; font-size: 8px; font-style: normal; text-transform: uppercase; }
 .global-playhead { position: absolute; z-index: 6; top: -5px; bottom: -5px; width: 3px; padding: 0; border: 0; pointer-events: auto; background: #fff; box-shadow: 0 0 0 2px #ffffff38; cursor: ew-resize; touch-action: none; }
 .global-playhead::before { content: ""; position: absolute; left: -4px; top: -2px; width: 10px; height: 7px; border-radius: 2px; background: #fff; }
+.timeline-snap-guide { position: absolute; z-index: 5; top: -3px; bottom: -3px; width: 1px; border-left: 1px dashed #ffcf75; pointer-events: none; box-shadow: 0 0 12px #ffd17e99; }.timeline-snap-guide span { position: absolute; top: -22px; left: 4px; padding: 2px 5px; border-radius: 4px; background: #47331c; color: #ffe4a8; font: 800 9px Inter, sans-serif; white-space: nowrap; }
+.timeline-context-menu { position: fixed; z-index: 90; display: grid; min-width: 188px; padding: 6px; border: 1px solid #ff8d8066; border-radius: 10px; background: #241e1d; box-shadow: 0 16px 46px #000d; }.timeline-context-menu button { min-height: 34px; padding: 7px 9px; border: 0; border-radius: 6px; background: transparent; color: #f7eae5; font: 700 12px Inter, sans-serif; text-align: left; cursor: pointer; }.timeline-context-menu button:hover { background: #ff716028; }.timeline-context-menu button.danger { color: #ff978a; }
+.tool-disclosure { margin-top: 12px; border: 1px solid #ffffff14; border-radius: 10px; background: #ffffff04; }.tool-disclosure summary { display: flex; align-items: center; min-height: 42px; padding: 0 12px; color: #f0e5df; font: 800 13px Inter, sans-serif; cursor: pointer; user-select: none; }.tool-disclosure summary::after { content: "⌄"; margin-left: auto; color: #ff8d80; transition: transform .16s ease; }.tool-disclosure[open] summary { border-bottom: 1px solid #ffffff12; }.tool-disclosure[open] summary::after { transform: rotate(180deg); }.tool-disclosure > :not(summary) { margin-left: 12px; margin-right: 12px; }.tool-disclosure > :last-child { margin-bottom: 12px; }.tool-disclosure .audio-editor-controls { border: 0; border-radius: 0; background: transparent; }
 .editor-time-controls { grid-template-columns: 1fr; padding-top: 12px; border-top: 1px solid #ffffff12; }
 .editor-time-controls label { position: relative; }
 .editor-time-controls label span { float: right; color: #ff9a8e; font-variant-numeric: tabular-nums; }
@@ -307,6 +310,14 @@
   .clip-editor-v2 .cut-marker { width: 8px; }
   .clip-editor-v2 .timeline-transition { min-width: 78px; font-size: 11px; }
   .clip-editor-v2 .editor-time-controls { grid-template-columns: 1fr 1fr; gap: 12px; }
+}
+@media (max-width: 760px) {
+  .clip-editor-v2 .timeline-panel.multi-timeline .timeline-top { min-width: 590px; position: sticky; left: 0; }
+  .clip-editor-v2 .timeline-panel.multi-timeline .timeline-lanes { min-width: 760px; }
+  .clip-editor-v2 .global-playhead { display: block; width: 4px; }
+  .clip-editor-v2 .timeline-item-clip { min-width: 36px; }
+  .clip-editor-v2 .timeline-lane.selected .clip-fade-handle { opacity: 1; width: 17px; }
+  .clip-editor-v2 .timeline-context-menu { max-width: calc(100vw - 20px); }
 }
 .tiktok-preview {
   position: fixed;

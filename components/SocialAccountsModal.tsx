@@ -1,4 +1,4 @@
-﻿"use client";
+"use client";
 
 import React, { useState, useEffect } from "react";
 import { X, CheckCircle2, AlertCircle, Link2, Unlink, RefreshCw } from "lucide-react";
@@ -45,7 +45,8 @@ export function SocialAccountsModal({ isOpen, onClose }: SocialAccountsModalProp
 
   const handleConnect = (platform: string) => {
     setActionLoading(platform);
-    window.location.href = `/api/auth/connect/${platform}`;
+    const returnTo = typeof window !== "undefined" ? window.location.pathname : "/";
+    window.location.href = `/api/auth/connect/${platform}?next=${encodeURIComponent(returnTo)}`;
   };
 
   const handleDisconnect = async (platform: string) => {

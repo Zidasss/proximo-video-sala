@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import Link from "next/link";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
 import { AuthModal } from "../components/AuthModal";
 import { SocialAccountsModal } from "../components/SocialAccountsModal";
 import { PublishModal } from "../components/PublishModal";
+import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
 import { Share2, Link2, User, Sparkles } from "lucide-react";
 import GifStudio from "./gif-studio";
 import {
@@ -319,6 +321,39 @@ export default function Home() {
       const savedUser = localStorage.getItem("klip_user");
       if (savedUser) setCurrentUser(JSON.parse(savedUser));
     } catch {}
+
+    if (isSupabaseConfigured) {
+      const supabase = createClient();
+      supabase.auth.getUser().then(({ data: { user } }) => {
+        if (user) {
+          const userName = user.user_metadata?.full_name || user.email?.split("@")[0] || "Criador";
+          const userObj = {
+            id: user.id,
+            email: user.email || "",
+            name: userName,
+          };
+          setCurrentUser(userObj);
+          localStorage.setItem("klip_user", JSON.stringify(userObj));
+        }
+      }).catch(() => undefined);
+
+      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        if (session?.user) {
+          const userName = session.user.user_metadata?.full_name || session.user.email?.split("@")[0] || "Criador";
+          const userObj = {
+            id: session.user.id,
+            email: session.user.email || "",
+            name: userName,
+          };
+          setCurrentUser(userObj);
+          localStorage.setItem("klip_user", JSON.stringify(userObj));
+        } else if (event === "SIGNED_OUT") {
+          setCurrentUser(null);
+          localStorage.removeItem("klip_user");
+        }
+      });
+    }
+
     const query = new URLSearchParams(location.search);
     if (query.get("editor") === "1") {
       setEditorOpen(true);
@@ -651,7 +686,7 @@ export default function Home() {
             r2i: any = tf.scalar(0),
             r3i: any = tf.scalar(0),
             r4i: any = tf.scalar(0),
-            downsampleRatio: any = tf.scalar(0.25),
+            downsampleRatio: any = tf.scalar(0.38),
             maskPixels: ImageData | null = null,
             inferenceBusy = false;
           // Perfil "reunião": a webcam continua saindo na resolução original,
@@ -694,7 +729,7 @@ export default function Home() {
               foregroundContext.save();
               foregroundContext.imageSmoothingEnabled = true;
               foregroundContext.imageSmoothingQuality = "high";
-              foregroundContext.filter = "blur(.6px)";
+              foregroundContext.filter = "blur(1.2px) contrast(1.12)";
               foregroundContext.drawImage(maskCanvas, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
               foregroundContext.globalCompositeOperation = "source-in";
               foregroundContext.filter = skinSmoothRef.current ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)" : "none";
@@ -750,8 +785,12 @@ export default function Home() {
                   maskPixels.data[offset + 2] = 255;
                 }
               }
-              for (let index = 0; index < alpha.length; index += 1)
-                maskPixels.data[index * 4 + 3] = Math.round(Math.max(0, Math.min(1, alpha[index])) * 255);
+              for (let index = 0; index < alpha.length; index += 1) {
+                const val = Math.max(0, Math.min(1, alpha[index]));
+                const normalized = Math.max(0, Math.min(1, (val - 0.16) / 0.68));
+                const smooth = normalized * normalized * (3 - 2 * normalized);
+                maskPixels.data[index * 4 + 3] = Math.round(smooth * 255);
+              }
               maskContext.putImageData(maskPixels, 0, 0);
               hasMask = true;
               setVirtualEffectLoading("");
@@ -1052,7 +1091,7 @@ export default function Home() {
             foregroundContext.save();
             foregroundContext.imageSmoothingEnabled = true;
             foregroundContext.imageSmoothingQuality = "high";
-            foregroundContext.filter = "blur(1.15px)";
+            foregroundContext.filter = "blur(1.8px) contrast(1.15)";
             foregroundContext.drawImage(
               maskCanvas,
               0,
@@ -2547,6 +2586,9 @@ export default function Home() {
             <button className="open-editor" onClick={openEditor}>✦ Editor de clipes</button>
             <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}>◈ Criador de GIF</button>
             <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}>◉ Estúdio offline</button>
+            <Link href="/perfil" className="nav-action-btn" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "5px" }}>
+              <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} /> Meu Perfil
+            </Link>
             {currentUser ? (
               <>
                 <button className="nav-action-btn" type="button" onClick={() => setSocialModalOpen(true)}>
@@ -2556,11 +2598,19 @@ export default function Home() {
                   <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
                 </button>
                 <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)" }}>
-                  <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} />
-                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#f4f4f5" }}>{currentUser.name || currentUser.email}</span>
+                  <Link href="/perfil" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "5px" }}>
+                    <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} />
+                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#f4f4f5" }}>{currentUser.name || currentUser.email}</span>
+                  </Link>
                   <button
                     type="button"
-                    onClick={() => {
+                    onClick={async () => {
+                      if (isSupabaseConfigured) {
+                        try {
+                          const supabase = createClient();
+                          await supabase.auth.signOut();
+                        } catch {}
+                      }
                       localStorage.removeItem("klip_user");
                       setCurrentUser(null);
                     }}
@@ -2573,7 +2623,7 @@ export default function Home() {
               </>
             ) : (
               <button className="nav-action-btn primary" type="button" onClick={() => setAuthModalOpen(true)}>
-                <User style={{ width: "14px", height: "14px" }} /> Entrar com Login e Senha
+                <User style={{ width: "14px", height: "14px" }} /> Entrar / Criar Conta
               </button>
             )}
           </div>
@@ -2662,21 +2712,20 @@ export default function Home() {
                   onClick={() => setAuthModalOpen(true)}
                   style={{ fontSize: "11px", fontWeight: 600, padding: "5px 10px", borderRadius: "8px", background: "#6366f1", color: "#fff", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
                 >
-                  Entrar
+                  Entrar / Cadastrar
                 </button>
               </div>
             ) : (
               <div style={{ marginTop: "10px", padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <span style={{ fontSize: "11px", color: "#6ee7b7" }}>
+                <Link href="/perfil" style={{ fontSize: "11px", color: "#6ee7b7", textDecoration: "none" }}>
                   ✓ Conectado como <b>{currentUser.name || currentUser.email}</b>
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setSocialModalOpen(true)}
-                  style={{ fontSize: "11px", color: "#a7f3d0", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
+                </Link>
+                <Link
+                  href="/perfil"
+                  style={{ fontSize: "11px", color: "#a7f3d0", textDecoration: "underline" }}
                 >
-                  Configurar Redes Sociais
-                </button>
+                  Ver Perfil & Redes
+                </Link>
               </div>
             )}
             </div>

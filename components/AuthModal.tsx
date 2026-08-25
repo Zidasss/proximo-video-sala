@@ -1,13 +1,13 @@
-﻿"use client";
+"use client";
 
 import React, { useState } from "react";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
-import { X, Mail, Lock, User, LogIn, Sparkles, CheckCircle2, UserCheck, Zap } from "lucide-react";
+import { X, Mail, Lock, User, LogIn, Sparkles, CheckCircle2, Zap, AlertCircle } from "lucide-react";
 
 interface AuthModalProps {
   isOpen: boolean;
   onClose: () => void;
-  onSuccess: (user: { id: string; email: string; name?: string }) => void;
+  onSuccess: (user: { id: string; email: string; name?: string; avatarUrl?: string }) => void;
 }
 
 export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
@@ -26,6 +26,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       id: "creator-" + Date.now().toString(36),
       email: "criador@klip.app",
       name: name.trim() || "Criador de Conteúdo",
+      avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=KlipCreator",
     };
     localStorage.setItem("klip_user", JSON.stringify(demoUser));
     onSuccess(demoUser);
@@ -40,13 +41,14 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
     try {
       if (!isSupabaseConfigured) {
-        // Local simulation / direct mode
+        // Modo local de demonstração
         setTimeout(() => {
           setLoading(false);
           const demoUser = {
             id: "user-" + Math.random().toString(36).substring(2, 9),
             email: email.trim() || "criador@klip.app",
             name: name.trim() || email.split("@")[0] || "Criador Klip",
+            avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(email || "Klip")}`,
           };
           localStorage.setItem("klip_user", JSON.stringify(demoUser));
           onSuccess(demoUser);
@@ -58,44 +60,113 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       const supabase = createClient();
 
       if (isSignUp) {
+        // 1. Criar conta no Supabase Auth
         const { data, error } = await supabase.auth.signUp({
-          email,
+          email: email.trim(),
           password,
           options: {
-            data: { full_name: name },
+            data: {
+              full_name: name.trim(),
+            },
           },
         });
+
         if (error) throw error;
+
         if (data.user) {
-          setSuccessMsg("Conta criada com sucesso!");
-          const userObj = {
-            id: data.user.id,
-            email: data.user.email || email,
-            name: name || data.user.user_metadata?.full_name || "Criador",
-          };
-          localStorage.setItem("klip_user", JSON.stringify(userObj));
-          onSuccess(userObj);
-          setTimeout(onClose, 800);
+          const userName = name.trim() || data.user.user_metadata?.full_name || email.split("@")[0];
+
+          // 2. Salvar ou atualizar tabela profiles
+          try {
+            await supabase.from("profiles").upsert(
+              {
+                id: data.user.id,
+                email: data.user.email || email.trim(),
+                name: userName,
+                avatar_url: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "id" }
+            );
+          } catch (profileErr) {
+            console.warn("Aviso ao salvar profile:", profileErr);
+          }
+
+          if (!data.session) {
+            // E-mail confirmation required
+            setSuccessMsg("Conta criada com sucesso! Verifique seu e-mail para confirmar o acesso ou faça login.");
+            const userObj = {
+              id: data.user.id,
+              email: data.user.email || email.trim(),
+              name: userName,
+              avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`,
+            };
+            localStorage.setItem("klip_user", JSON.stringify(userObj));
+            onSuccess(userObj);
+            setTimeout(onClose, 2000);
+          } else {
+            setSuccessMsg("Conta criada e conectada com sucesso!");
+            const userObj = {
+              id: data.user.id,
+              email: data.user.email || email.trim(),
+              name: userName,
+              avatarUrl: `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(userName)}`,
+            };
+            localStorage.setItem("klip_user", JSON.stringify(userObj));
+            onSuccess(userObj);
+            setTimeout(onClose, 900);
+          }
         }
       } else {
+        // Login com E-mail e Senha
         const { data, error } = await supabase.auth.signInWithPassword({
-          email,
+          email: email.trim(),
           password,
         });
+
         if (error) throw error;
+
         if (data.user) {
+          // Buscar nome do perfil se disponível
+          let displayName = data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Criador";
+          let avatarUrl = data.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(displayName)}`;
+
+          try {
+            const { data: profile } = await supabase
+              .from("profiles")
+              .select("name, avatar_url")
+              .eq("id", data.user.id)
+              .maybeSingle();
+
+            if (profile?.name) displayName = profile.name;
+            if (profile?.avatar_url) avatarUrl = profile.avatar_url;
+          } catch (pErr) {
+            console.warn("Aviso ao buscar profile:", pErr);
+          }
+
           const userObj = {
             id: data.user.id,
-            email: data.user.email || email,
-            name: data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Criador",
+            email: data.user.email || email.trim(),
+            name: displayName,
+            avatarUrl,
           };
+
           localStorage.setItem("klip_user", JSON.stringify(userObj));
           onSuccess(userObj);
           onClose();
         }
       }
     } catch (err: any) {
-      setErrorMsg(err.message || "Erro na autenticação. Verifique e-mail e senha.");
+      console.error("Erro auth:", err);
+      let message = err.message || "Erro na autenticação. Verifique os dados.";
+      if (message.includes("Invalid login credentials")) {
+        message = "E-mail ou senha incorretos. Por favor, tente novamente.";
+      } else if (message.includes("User already registered")) {
+        message = "Este e-mail já está cadastrado. Clique em 'Entrar' para fazer login.";
+      } else if (message.includes("Password should be at least")) {
+        message = "A senha deve conter no mínimo 6 caracteres.";
+      }
+      setErrorMsg(message);
     } finally {
       setLoading(false);
     }
@@ -107,6 +178,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         id: "google-demo-user",
         email: "google.user@klip.app",
         name: "Google Criador",
+        avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=GoogleCriador",
       };
       localStorage.setItem("klip_user", JSON.stringify(demoUser));
       onSuccess(demoUser);
@@ -114,13 +186,18 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       return;
     }
 
-    const supabase = createClient();
-    await supabase.auth.signInWithOAuth({
-      provider: "google",
-      options: {
-        redirectTo: window.location.origin,
-      },
-    });
+    try {
+      const supabase = createClient();
+      const redirectUrl = `${window.location.origin}/auth/callback`;
+      await supabase.auth.signInWithOAuth({
+        provider: "google",
+        options: {
+          redirectTo: redirectUrl,
+        },
+      });
+    } catch (err: any) {
+      setErrorMsg(err.message || "Erro ao iniciar login com Google.");
+    }
   };
 
   return (
@@ -129,6 +206,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         <button
           onClick={onClose}
           className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition"
+          aria-label="Fechar"
         >
           <X className="w-5 h-5" />
         </button>
@@ -141,7 +219,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             {isSignUp ? "Criar Conta no Klip" : "Acessar Conta Klip"}
           </h2>
           <p className="text-xs text-zinc-400 mt-0.5">
-            Faça login para conectar YouTube, TikTok, Instagram e publicar com 1 clique
+            Autenticação Supabase conectada ao YouTube, TikTok e Instagram
           </p>
         </div>
 
@@ -152,6 +230,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             onClick={() => {
               setIsSignUp(false);
               setErrorMsg("");
+              setSuccessMsg("");
             }}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
               !isSignUp
@@ -166,6 +245,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             onClick={() => {
               setIsSignUp(true);
               setErrorMsg("");
+              setSuccessMsg("");
             }}
             className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
               isSignUp
@@ -178,15 +258,16 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         </div>
 
         {errorMsg && (
-          <div className="mb-3.5 p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs">
-            {errorMsg}
+          <div className="mb-3.5 p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs flex items-center gap-2">
+            <AlertCircle className="w-4 h-4 shrink-0" />
+            <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
           <div className="mb-3.5 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2">
             <CheckCircle2 className="w-4 h-4 shrink-0" />
-            {successMsg}
+            <span>{successMsg}</span>
           </div>
         )}
 
@@ -194,7 +275,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           {isSignUp && (
             <div>
               <label className="block text-xs font-medium text-zinc-300 mb-1">
-                Nome ou Canal
+                Nome completo ou Canal
               </label>
               <div className="relative">
                 <User className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
@@ -236,9 +317,10 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               <input
                 type="password"
                 required
+                minLength={6}
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
-                placeholder="Digite sua senha"
+                placeholder="Mínimo 6 caracteres"
                 className="w-full pl-9 pr-3 py-2 bg-zinc-800/90 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
               />
             </div>
@@ -247,10 +329,10 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 text-white font-semibold rounded-xl text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2"
+            className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 text-white font-semibold rounded-xl text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2 cursor-pointer"
           >
             <LogIn className="w-4 h-4" />
-            {loading ? "Entrando..." : isSignUp ? "Cadastrar e Entrar" : "Entrar com Login e Senha"}
+            {loading ? "Processando..." : isSignUp ? "Cadastrar e Entrar" : "Entrar com E-mail"}
           </button>
         </form>
 
@@ -259,24 +341,15 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             <div className="w-full border-t border-zinc-800"></div>
           </div>
           <div className="relative flex justify-center text-[11px]">
-            <span className="bg-zinc-900 px-2 text-zinc-500">ou acesse rápido</span>
+            <span className="bg-zinc-900 px-2 text-zinc-500">ou acesse com</span>
           </div>
         </div>
 
         <div className="grid grid-cols-2 gap-2">
           <button
-            onClick={handleDemoLogin}
-            type="button"
-            className="py-2 px-3 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-medium text-zinc-200 hover:text-white transition flex items-center justify-center gap-1.5"
-          >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
-            1-Clique (Demo)
-          </button>
-
-          <button
             onClick={handleGoogleSignIn}
             type="button"
-            className="py-2 px-3 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-medium text-zinc-200 hover:text-white transition flex items-center justify-center gap-1.5"
+            className="py-2 px-3 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-medium text-zinc-200 hover:text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
           >
             <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
               <path
@@ -296,7 +369,16 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                 d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2-6.4-4.8L1.9 16.4C3.7 20.2 7.5 23 12 23z"
               />
             </svg>
-            Google
+            Google (OAuth)
+          </button>
+
+          <button
+            onClick={handleDemoLogin}
+            type="button"
+            className="py-2 px-3 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-medium text-zinc-200 hover:text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
+          >
+            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            1-Clique (Demo)
           </button>
         </div>
       </div>

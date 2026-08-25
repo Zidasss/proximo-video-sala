@@ -87,9 +87,7 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       const softAlpha = new Uint8ClampedArray(total);
       const previous = previousAlpha!;
 
-      // Algoritmo de precisão anatômica:
-      // Usa estritamente as classes semânticas da pessoa (cabelo, rosto, pele, roupas e fones)
-      // para eliminar sombras de parede, encosto de cadeira e névoa escura acima da cabeça.
+      // Algoritmo de Alta Precisão Anti-Pixelado & Preservação de Fones Pretos:
       for (let index = 0; index < total; index += 1) {
         const hairVal = hair[index];
         const bodySkinVal = bodySkin[index];
@@ -98,34 +96,38 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
         const accVal = accessories ? accessories[index] : 0;
         const bgVal = background[index];
 
-        // 1. Confiança semântica direta do corpo
+        // 1. Confiança semântica total com boost em acessórios/fones pretos
         const personFg =
-          hairVal * 1.30 +
+          hairVal * 1.32 +
           faceSkinVal * 1.15 +
           bodySkinVal * 1.15 +
-          clothesVal * 1.05 +
-          accVal * 0.95;
+          clothesVal * 1.08 +
+          accVal * 1.45;
 
-        // 2. Razão discriminante contra o fundo
-        const relativeFg = personFg / (personFg + bgVal * 1.12 + 1e-4);
+        // 2. Razão direta contra fundo
+        const relativeFg = personFg / (personFg + bgVal * 1.05 + 1e-4);
 
-        // 3. Corte firme para eliminar sombras de parede e encosto de cadeira:
-        // Qualquer sombra ou vazamento com relativeFg < 0.42 é cortado a zero.
-        // A transição entre 0.42 e 0.76 garante suavização perfeita das bordas do cabelo real.
+        // 3. Fones e óculos têm prioridade para nunca sumirem
+        let confidence = Math.max(relativeFg, personFg * 0.95);
+        if (accVal > 0.18) {
+          confidence = Math.max(confidence, accVal * 1.25);
+        }
+
+        // 4. Curva de corte suave (0.36 a 0.72) para bordas sem pixelado e sem fumaça
         const normalized = Math.max(
           0,
-          Math.min(1, (relativeFg - 0.42) / 0.34),
+          Math.min(1, (confidence - 0.36) / 0.36),
         );
         const target = normalized * normalized * (3 - 2 * normalized);
 
-        // 4. Estabilização temporal rápida (evita fantasmas e sombras residuais)
+        // 5. Estabilização temporal de alta resposta
         const prev = previous[index];
         const stabilized =
           target > prev
             ? prev * 0.08 + target * 0.92
-            : prev * 0.20 + target * 0.80;
+            : prev * 0.18 + target * 0.82;
 
-        previous[index] = stabilized < 0.015 ? 0 : stabilized;
+        previous[index] = stabilized < 0.01 ? 0 : stabilized;
         softAlpha[index] = Math.round(previous[index] * 255);
       }
 

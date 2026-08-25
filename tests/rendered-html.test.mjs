@@ -33,6 +33,11 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /onEnded=\{\(event\) => void playTimelineAt/);
   assert.match(page, /const hasFriendVideo/);
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
+  assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
+  assert.match(page, /const stream = processedLocal\.current \|\| local\.current/);
+  assert.match(page, /Nunca faça composição em 4K implícita/);
+  assert.match(page, /Usando IA Premium compatível com este navegador/);
+  assert.match(page, /inferenceDuration > 95 \? 384/);
   assert.match(page, /Vídeo e enquadramento/);
   assert.match(page, /Arraste diretamente na prévia ou faça o ajuste preciso aqui/);
   assert.match(page, /Horizontal · \{Math\.round\(selectedIllustration\.x\)\}%/);
@@ -60,5 +65,6 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.timeline-more/);
   assert.match(css, /\.video-properties-grid/);
   assert.match(css, /\.position-grid/);
+  assert.match(css, /\.settings-panel::-webkit-scrollbar/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });

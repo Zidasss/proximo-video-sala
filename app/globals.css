@@ -1532,9 +1532,18 @@ body {
 .settings-panel {
   min-width: 360px;
   min-height: 100px;
-  overflow: auto;
+  max-height: calc(100dvh - 96px);
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-width: thin;
+  scrollbar-color: #ff7769 #171414;
   resize: both;
 }
+.settings-panel::-webkit-scrollbar { width: 11px; }
+.settings-panel::-webkit-scrollbar-track { margin: 10px 3px; border-radius: 9px; background: #171414; }
+.settings-panel::-webkit-scrollbar-thumb { min-height: 48px; border: 3px solid #171414; border-radius: 9px; background: #ff7769; }
+.settings-panel::-webkit-scrollbar-thumb:hover { background: #ff968b; }
 .settings-panel.minimized,
 .tiktok-preview.minimized {
   min-height: 0;

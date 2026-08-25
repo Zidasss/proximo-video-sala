@@ -194,6 +194,12 @@ export default function Home() {
     processedLocal = useRef<MediaStream | null>(null),
     processedAudio = useRef<MediaStream | null>(null),
     blurAmountRef = useRef(16),
+    visualCompositionActive = useRef(false),
+    webcamTextRef = useRef(webcamText),
+    webcamTextPositionRef = useRef(webcamTextPosition),
+    cameraOverlayRef = useRef(cameraOverlay),
+    cameraOverlayOpacityRef = useRef(cameraOverlayOpacity),
+    skinSmoothRef = useRef(skinSmooth),
     connectionSample = useRef({ bytes: 0, at: 0 });
   const peer = useRef<Peer | null>(null),
     connection = useRef<DataConnection | null>(null),
@@ -235,6 +241,14 @@ export default function Home() {
     previewMine = useRef<HTMLVideoElement>(null),
     previewFriend = useRef<HTMLVideoElement>(null),
     previewScreen = useRef<HTMLVideoElement>(null);
+
+  // Texto, opacidade e suavização são ajustes por frame; não devem reconstruir
+  // Worker, canvas ou conexão WebRTC enquanto a pessoa arrasta um controle.
+  useEffect(() => { webcamTextRef.current = webcamText; }, [webcamText]);
+  useEffect(() => { webcamTextPositionRef.current = webcamTextPosition; }, [webcamTextPosition]);
+  useEffect(() => { cameraOverlayRef.current = cameraOverlay; }, [cameraOverlay]);
+  useEffect(() => { cameraOverlayOpacityRef.current = cameraOverlayOpacity; }, [cameraOverlayOpacity]);
+  useEffect(() => { skinSmoothRef.current = skinSmooth; }, [skinSmooth]);
 
   useEffect(() => {
     const query = new URLSearchParams(location.search);
@@ -380,7 +394,9 @@ export default function Home() {
       backgroundMode === "image" &&
       (Boolean(backgroundVideo) || /GIF animado/.test(backgroundLabel));
     const composedBackdrop = backgroundMode !== "none";
-    const compositeRate = animatedBackdrop ? 20 : composedBackdrop ? 24 : 30;
+    // Fundo estático/desfoque continua em 30 fps. Só GIF/MP4 é limitado,
+    // pois também precisa ser decodificado enquanto a chamada está ao vivo.
+    const compositeRate = animatedBackdrop ? 20 : 30;
     const shouldSkipAnimatedRender = () => {
       if (!composedBackdrop) return false;
       const now = performance.now();
@@ -404,7 +420,7 @@ export default function Home() {
     source.muted = true;
     source.playsInline = true;
     image.src = background;
-    overlayImage.src = cameraOverlay;
+    overlayImage.src = cameraOverlayRef.current;
     backdropVideo.src = backgroundVideo;
     backdropVideo.muted = true;
     backdropVideo.loop = true;
@@ -412,13 +428,13 @@ export default function Home() {
     const run = async () => {
       await source.play();
       if (!active || !context || !maskContext || !inferenceContext || !foregroundContext) return;
-      // Com GIF/MP4, uma composição Full HD disputa recursos com IA e WebRTC.
-      // 720p/20 fps é mais suave que 1080p caindo para 9 fps.
+      // Nunca faça composição em 4K implícita. A câmera pode ser 4K, mas a
+      // chamada configurada em 1080p precisa de canvas 1080p; renderizar 4K
+      // antes do encoder reduzi-la era a causa de quedas enormes de FPS.
       const sourceWidthForOutput = source.videoWidth || 1280;
       const sourceHeightForOutput = source.videoHeight || 720;
-      const virtualOutputScale = animatedBackdrop
-        ? Math.min(1, 1280 / Math.max(sourceWidthForOutput, sourceHeightForOutput))
-        : 1;
+      const outputEdge = animatedBackdrop ? 1280 : quality === "1080" ? 1920 : 1280;
+      const virtualOutputScale = Math.min(1, outputEdge / Math.max(sourceWidthForOutput, sourceHeightForOutput));
       canvas.width = Math.max(2, Math.round(sourceWidthForOutput * virtualOutputScale));
       canvas.height = Math.max(2, Math.round(sourceHeightForOutput * virtualOutputScale));
       foregroundCanvas.width = canvas.width;
@@ -464,7 +480,7 @@ export default function Home() {
         attached = true;
       };
       const drawWebcamText = () => {
-        const text = webcamText.trim();
+        const text = webcamTextRef.current.trim();
         if (!text || !context) return;
         const fontSize = Math.max(26, Math.round(canvas.width * 0.047));
         context.save();
@@ -475,7 +491,7 @@ export default function Home() {
         const width = Math.min(canvas.width - 32, context.measureText(text).width + paddingX * 2);
         const height = fontSize * 1.72;
         const x = (canvas.width - width) / 2;
-        const y = webcamTextPosition === "top" ? 24 : canvas.height - height - 24;
+        const y = webcamTextPositionRef.current === "top" ? 24 : canvas.height - height - 24;
         context.fillStyle = "rgba(17,14,16,.74)";
         context.beginPath();
         context.roundRect(x, y, width, height, height / 2);
@@ -485,13 +501,18 @@ export default function Home() {
         context.restore();
       };
       const drawCameraOverlay = () => {
-        if (!cameraOverlay || !overlayImage.complete || !overlayImage.naturalWidth) return;
+        const overlay = cameraOverlayRef.current;
+        if (overlayImage.src !== overlay) overlayImage.src = overlay;
+        if (!overlay || !overlayImage.complete || !overlayImage.naturalWidth) return;
         context.save();
-        context.globalAlpha = cameraOverlayOpacity;
+        context.globalAlpha = cameraOverlayOpacityRef.current;
         context.drawImage(overlayImage, 0, 0, canvas.width, canvas.height);
         context.restore();
       };
       try {
+        // Entrega o canvas imediatamente com a câmera crua. A máscara chega
+        // depois, sem trocar a chamada WebRTC nem deixar uma tela preta no meio.
+        attachOverlayOutput();
         if (backgroundMode === "none") {
           const renderOverlay = () => {
             if (!active || !context) return;
@@ -507,7 +528,7 @@ export default function Home() {
             output.getTracks().forEach((track) => track.stop());
             if (processedLocal.current === output) {
               processedLocal.current = null;
-              if (local.current) replaceOutgoingVideo(local.current);
+              if (!visualCompositionActive.current && local.current) replaceOutgoingVideo(local.current);
               setVirtualEpoch((epoch) => epoch + 1);
             }
           };
@@ -575,7 +596,7 @@ export default function Home() {
               foregroundContext.filter = "blur(.6px)";
               foregroundContext.drawImage(maskCanvas, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
               foregroundContext.globalCompositeOperation = "source-in";
-              foregroundContext.filter = skinSmooth ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)" : "none";
+              foregroundContext.filter = skinSmoothRef.current ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)" : "none";
               foregroundContext.drawImage(source, 0, 0, foregroundCanvas.width, foregroundCanvas.height);
               foregroundContext.restore();
               context.drawImage(foregroundCanvas, 0, 0, canvas.width, canvas.height);
@@ -665,7 +686,7 @@ export default function Home() {
             output.getTracks().forEach((track) => track.stop());
             if (processedLocal.current === output) {
               processedLocal.current = null;
-              if (local.current) replaceOutgoingVideo(local.current);
+              if (!visualCompositionActive.current && local.current) replaceOutgoingVideo(local.current);
               setVirtualEpoch((epoch) => epoch + 1);
             }
           };
@@ -676,7 +697,15 @@ export default function Home() {
         );
         let workerReady = false,
           workerBusy = false,
+          bitmapFailures = 0,
           maskPixels: ImageData | null = null;
+        const fallbackToPremium = () => {
+          // Safari/macOS pode não oferecer ImageBitmap/OffscreenCanvas de modo
+          // compatível dentro do Worker. Em máquinas fortes, como Apple Silicon,
+          // a IA Premium no WebGL principal é um fallback funcional.
+          setMattingQuality("premium");
+          setNotice("Usando IA Premium compatível com este navegador para o fundo virtual.");
+        };
         worker.onmessage = (
           event: MessageEvent<
             | { type: "ready" }
@@ -697,9 +726,7 @@ export default function Home() {
           }
           workerBusy = false;
           if (event.data.type === "error") {
-            setNotice(
-              "Não foi possível aplicar o recorte por IA. A câmera continua normal.",
-            );
+            fallbackToPremium();
             return;
           }
           inferenceDuration = event.data.inferenceMs;
@@ -739,9 +766,7 @@ export default function Home() {
         };
         worker.onerror = () => {
           workerBusy = false;
-          setNotice(
-            "Não foi possível aplicar o recorte por IA. A câmera continua normal.",
-          );
+          fallbackToPremium();
         };
         worker.postMessage({ type: "init" });
         const render = () => {
@@ -786,7 +811,7 @@ export default function Home() {
               foregroundCanvas.height,
             );
             foregroundContext.globalCompositeOperation = "source-in";
-            foregroundContext.filter = skinSmooth
+            foregroundContext.filter = skinSmoothRef.current
               ? "blur(.22px) brightness(1.012) contrast(.992) saturate(.985)"
               : "none";
             foregroundContext.drawImage(
@@ -818,7 +843,10 @@ export default function Home() {
           ) {
             workerBusy = true;
             lastInferenceAt = now;
-            const bitmapWidth = animatedBackdrop ? 512 : 640;
+            // Ajuste adaptativo: em uma máquina forte usa 640px; quando a
+            // inferência começa a disputar GPU/encoder, reduz a máscara antes
+            // de deixar o vídeo da chamada cair de frame rate.
+            const bitmapWidth = animatedBackdrop ? 512 : inferenceDuration > 95 ? 384 : inferenceDuration > 60 ? 480 : 640;
             const bitmapHeight = Math.max(
               2,
               Math.round(
@@ -843,6 +871,8 @@ export default function Home() {
               })
               .catch(() => {
                 workerBusy = false;
+                bitmapFailures += 1;
+                if (bitmapFailures >= 3) fallbackToPremium();
               });
           }
           segmentationFrame = requestAnimationFrame(next);
@@ -857,7 +887,7 @@ export default function Home() {
           output.getTracks().forEach((track) => track.stop());
           if (processedLocal.current === output) {
             processedLocal.current = null;
-            if (local.current) replaceOutgoingVideo(local.current);
+            if (!visualCompositionActive.current && local.current) replaceOutgoingVideo(local.current);
             setVirtualEpoch((epoch) => epoch + 1);
           }
         };
@@ -881,15 +911,11 @@ export default function Home() {
     background,
     backgroundVideo,
     backgroundLabel,
-    cameraOverlay,
-    cameraOverlayOpacity,
     backgroundMode,
-    webcamText,
-    webcamTextPosition,
     mattingQuality,
-    skinSmooth,
     cameraEpoch,
     inRoom,
+    quality,
   ]);
   const refreshConnectionStats = async () => {
     const calls = cameraCalls.current as Array<
@@ -1184,14 +1210,11 @@ export default function Home() {
     read();
   }
   function refreshCameraForPeer() {
-    const client = peer.current;
-    if (!client || !remoteId.current || !local.current) return;
-    const updatedCall = client.call(
-      remoteId.current,
-      callStream(local.current),
-      { metadata: { name, kind: "camera", refresh: true } },
-    );
-    useCall(updatedCall, friend || "Seu amigo");
+    // Nunca abra uma segunda chamada ao alterar fundo/overlay. Isso criava
+    // conexões concorrentes, jitter alto e vídeo piscando. replaceTrack mantém
+    // a mesma conexão e troca apenas a faixa de vídeo.
+    const stream = processedLocal.current || local.current;
+    if (stream) replaceOutgoingVideo(stream);
   }
   function useCall(call: MediaConnection, fallback: string) {
     remoteId.current = call.peer;
@@ -1468,7 +1491,9 @@ export default function Home() {
         video: {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
-          frameRate: { ideal: 60 },
+          // 60 fps concorre com encoder da webcam/IA e pode derrubar a chamada.
+          // Para reunião e gravação, 30 fps em 1080p é a opção estável.
+          frameRate: { ideal: 30, max: 30 },
         },
         audio: true,
       });
@@ -1517,6 +1542,7 @@ export default function Home() {
       return;
     }
     if (video) {
+      visualCompositionActive.current = true;
       setBackgroundVideo(URL.createObjectURL(file));
       setBackground("");
       setBackgroundLabel(`Vídeo animado · ${file.name}`);
@@ -1526,6 +1552,7 @@ export default function Home() {
     }
     const reader = new FileReader();
     reader.onload = () => {
+      visualCompositionActive.current = true;
       setBackground(String(reader.result));
       setBackgroundVideo("");
       setBackgroundLabel(`${animated ? "GIF animado" : "Imagem"} · ${file.name}`);
@@ -1546,23 +1573,53 @@ export default function Home() {
     }
     const reader = new FileReader();
     reader.onload = () => {
-      setCameraOverlay(String(reader.result));
+      const overlay = String(reader.result);
+      const needsPipeline = !processedLocal.current;
+      visualCompositionActive.current = true;
+      cameraOverlayRef.current = overlay;
+      setCameraOverlay(overlay);
+      if (needsPipeline) setCameraEpoch((epoch) => epoch + 1);
       setNotice("Moldura aplicada à sua câmera online e à gravação.");
     };
     reader.readAsDataURL(file);
   }
+  function updateWebcamLayerText(value: string) {
+    const needsPipeline = Boolean(value.trim()) && !processedLocal.current;
+    webcamTextRef.current = value;
+    if (value.trim()) visualCompositionActive.current = true;
+    if (!value.trim() && backgroundMode === "none" && !cameraOverlayRef.current) {
+      visualCompositionActive.current = false;
+      if (local.current) replaceOutgoingVideo(local.current);
+    }
+    setWebcamText(value);
+    if (needsPipeline || (!value.trim() && backgroundMode === "none" && !cameraOverlayRef.current))
+      setCameraEpoch((epoch) => epoch + 1);
+  }
+  function clearCameraOverlay() {
+    cameraOverlayRef.current = "";
+    setCameraOverlay("");
+    if (backgroundMode === "none" && !webcamTextRef.current.trim()) {
+      visualCompositionActive.current = false;
+      if (local.current) replaceOutgoingVideo(local.current);
+      setCameraEpoch((epoch) => epoch + 1);
+    }
+  }
   function toggleBlur() {
     const next = backgroundMode === "blur" ? "none" : "blur";
+    visualCompositionActive.current = next !== "none";
     setBackgroundMode(next);
     if (next === "none" && mine.current && local.current) {
+      replaceOutgoingVideo(local.current);
       mine.current.srcObject = local.current;
       void mine.current.play().catch(() => undefined);
     }
   }
   function toggleBackgroundRemoval() {
     const next = backgroundMode === "remove" ? "none" : "remove";
+    visualCompositionActive.current = next !== "none";
     setBackgroundMode(next);
     if (next === "none" && mine.current && local.current) {
+      replaceOutgoingVideo(local.current);
       mine.current.srcObject = local.current;
       void mine.current.play().catch(() => undefined);
     }
@@ -2333,13 +2390,13 @@ export default function Home() {
                       <input
                         value={webcamText}
                         maxLength={80}
-                        onChange={(event) => setWebcamText(event.target.value)}
+                        onChange={(event) => updateWebcamLayerText(event.target.value)}
                         placeholder="Ex.: AO VIVO · Episódio 01"
                       />
                       <div>
                         <button className={webcamTextPosition === "top" ? "selected" : ""} onClick={() => setWebcamTextPosition("top")}>Em cima</button>
                         <button className={webcamTextPosition === "bottom" ? "selected" : ""} onClick={() => setWebcamTextPosition("bottom")}>Embaixo</button>
-                        <button onClick={() => setWebcamText("")}>Limpar</button>
+                        <button onClick={() => updateWebcamLayerText("")}>Limpar</button>
                       </div>
                       <label className="background-upload">
                         ▣ Subir moldura / overlay
@@ -2360,10 +2417,10 @@ export default function Home() {
                               max="1"
                               step="0.05"
                               value={cameraOverlayOpacity}
-                              onChange={(event) => setCameraOverlayOpacity(Number(event.target.value))}
+                              onChange={(event) => { const opacity = Number(event.target.value); cameraOverlayOpacityRef.current = opacity; setCameraOverlayOpacity(opacity); }}
                             />
                           </label>
-                          <button className="format" onClick={() => setCameraOverlay("")}>Limpar moldura</button>
+                          <button className="format" onClick={clearCameraOverlay}>Limpar moldura</button>
                         </>
                       )}
                     </div>
@@ -2387,9 +2444,7 @@ export default function Home() {
                       <input
                         type="checkbox"
                         checked={skinSmooth}
-                        onChange={(event) =>
-                          setSkinSmooth(event.target.checked)
-                        }
+                        onChange={(event) => { skinSmoothRef.current = event.target.checked; setSkinSmooth(event.target.checked); }}
                       />
                       <span>Suavizar pele (leve)</span>
                     </label>

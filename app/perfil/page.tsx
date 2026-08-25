@@ -24,6 +24,7 @@ import {
   Film,
   Zap,
   ShieldCheck,
+  ExternalLink,
 } from "lucide-react";
 
 interface SocialAccountData {
@@ -81,7 +82,6 @@ export default function ProfilePage() {
           setSocialAccounts(data.socialAccounts);
         }
       } else {
-        // Fallback to localStorage if any
         const saved = localStorage.getItem("klip_user");
         if (saved) {
           const parsed = JSON.parse(saved);
@@ -106,7 +106,6 @@ export default function ProfilePage() {
   useEffect(() => {
     fetchProfile();
 
-    // Check query params for OAuth callbacks or errors
     const params = new URLSearchParams(window.location.search);
     const connectedPlatform = params.get("connected");
     const authError = params.get("auth_error");
@@ -121,12 +120,11 @@ export default function ProfilePage() {
         type: "success",
         text: `Conta ${platformNames[connectedPlatform] || connectedPlatform} vinculada com sucesso!`,
       });
-      // Limpar parâmetros da URL sem recarregar
       window.history.replaceState({}, "", "/perfil");
     } else if (authError) {
       setToastMessage({
         type: "error",
-        text: `Erro na vinculação: ${authError}`,
+        text: `${authError}`,
       });
       window.history.replaceState({}, "", "/perfil");
     }
@@ -231,11 +229,9 @@ export default function ProfilePage() {
       id: "youtube" as const,
       name: "YouTube Shorts",
       apiName: "Google & YouTube Data API v3",
-      desc: "Publicação automática de vídeos curtos com #Shorts, título, descrição e tags na sua conta oficial.",
-      badgeColor: "bg-red-500/10 text-red-400 border-red-500/20",
-      accentBg: "bg-red-600 hover:bg-red-500",
+      desc: "Publicação oficial com escopos de upload de Shorts, título, descrição e privacidade na sua conta Google.",
       icon: (
-        <div className="w-12 h-12 rounded-2xl bg-red-600 flex items-center justify-center text-white shadow-lg shadow-red-600/20">
+        <div className="w-12 h-12 rounded-2xl bg-red-600 flex items-center justify-center text-white shadow-lg">
           <YouTubeIcon className="w-6 h-6" />
         </div>
       ),
@@ -244,9 +240,7 @@ export default function ProfilePage() {
       id: "tiktok" as const,
       name: "TikTok",
       apiName: "TikTok Content Posting API",
-      desc: "Envio de clipes e cortes direto para o feed do TikTok com legendas personalizadas e privacidade.",
-      badgeColor: "bg-cyan-500/10 text-cyan-400 border-cyan-500/20",
-      accentBg: "bg-zinc-800 hover:bg-zinc-700 border border-zinc-600",
+      desc: "Conexão oficial OAuth com a API do TikTok para publicação no Feed com legendas personalizadas.",
       icon: (
         <div className="w-12 h-12 rounded-2xl bg-black border border-zinc-700 flex items-center justify-center text-white shadow-lg">
           <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
@@ -259,11 +253,9 @@ export default function ProfilePage() {
       id: "instagram" as const,
       name: "Instagram Reels",
       apiName: "Meta & Instagram Graph API",
-      desc: "Publicação instantânea no Feed e no Reels do Instagram com capa e proporção 9:16 vertical.",
-      badgeColor: "bg-pink-500/10 text-pink-400 border-pink-500/20",
-      accentBg: "bg-gradient-to-r from-purple-600 via-pink-600 to-amber-500 hover:opacity-90",
+      desc: "Publicação instantânea no Feed e no Reels do Instagram com proporção 9:16 através da API da Meta.",
       icon: (
-        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-lg shadow-pink-500/20">
+        <div className="w-12 h-12 rounded-2xl bg-gradient-to-tr from-amber-500 via-rose-500 to-purple-600 flex items-center justify-center text-white shadow-lg">
           <svg className="w-6 h-6 fill-current" viewBox="0 0 24 24">
             <path d="M12 2.163c3.204 0 3.584.012 4.85.07 3.252.148 4.771 1.691 4.919 4.919.058 1.265.069 1.645.069 4.849 0 3.205-.012 3.584-.069 4.849-.149 3.225-1.664 4.771-4.919 4.919-1.266.058-1.644.07-4.85.07-3.204 0-3.584-.012-4.849-.07-3.26-.149-4.771-1.699-4.919-4.92-.058-1.265-.07-1.644-.07-4.849 0-3.204.013-3.583.07-4.849.149-3.227 1.664-4.771 4.919-4.919 1.266-.057 1.645-.069 4.849-.069zm0-2.163c-3.259 0-3.667.014-4.947.072-4.358.2-6.78 2.618-6.98 6.98-.059 1.281-.073 1.689-.073 4.948 0 3.259.014 3.668.072 4.948.2 4.358 2.618 6.78 6.98 6.98 1.281.058 1.689.072 4.948.072 3.259 0 3.668-.014 4.948-.072 4.354-.2 6.782-2.618 6.979-6.98.059-1.28.073-1.689.073-4.948 0-3.259-.014-3.667-.072-4.947-.196-4.354-2.617-6.78-6.979-6.98-1.281-.059-1.69-.073-4.949-.073zm0 5.838c-3.403 0-6.162 2.759-6.162 6.162s2.759 6.163 6.162 6.163 6.162-2.759 6.162-6.163c0-3.403-2.759-6.162-6.162-6.162zm0 10.162c-2.209 0-4-1.79-4-4 0-2.209 1.791-4 4-4s4 1.791 4 4c0 2.21-1.791 4-4 4zm6.406-11.845c-.796 0-1.441.645-1.441 1.44s.645 1.44 1.441 1.44c.795 0 1.439-.645 1.439-1.44s-.644-1.44-1.439-1.44z" />
           </svg>
@@ -273,26 +265,38 @@ export default function ProfilePage() {
   ];
 
   return (
-    <div className="min-h-screen bg-[#0d0f12] text-zinc-100 antialiased flex flex-col selection:bg-indigo-500 selection:text-white">
+    <div
+      className="min-h-screen text-[#fff8f5] flex flex-col font-sans"
+      style={{
+        background: "radial-gradient(circle at 65% 20%, #312225 0%, #151314 45%, #0d0e0e 85%)",
+      }}
+    >
       {/* Toast Notification */}
       {toastMessage && (
-        <div className="fixed top-6 right-6 z-50 animate-in fade-in slide-in-from-top-4 duration-300">
+        <div className="fixed top-6 right-6 z-50 animate-in fade-in duration-300">
           <div
-            className={`flex items-center gap-3 px-4 py-3 rounded-xl shadow-2xl border ${
-              toastMessage.type === "success"
-                ? "bg-emerald-950/90 border-emerald-500/40 text-emerald-200"
-                : "bg-rose-950/90 border-rose-500/40 text-rose-200"
-            }`}
+            className="flex items-center gap-3 px-4 py-3 rounded-2xl shadow-2xl"
+            style={{
+              background:
+                toastMessage.type === "success"
+                  ? "linear-gradient(145deg, #1c271ee8, #101912ef)"
+                  : "linear-gradient(145deg, #321c1be8, #1e1111ef)",
+              border:
+                toastMessage.type === "success"
+                  ? "1px solid rgba(16, 185, 129, 0.4)"
+                  : "1px solid rgba(255, 113, 96, 0.5)",
+              color: toastMessage.type === "success" ? "#a7f3d0" : "#ffb5aa",
+            }}
           >
             {toastMessage.type === "success" ? (
-              <CheckCircle2 className="w-5 h-5 text-emerald-400 shrink-0" />
+              <CheckCircle2 className="w-5 h-5 text-[#10b981] shrink-0" />
             ) : (
-              <AlertCircle className="w-5 h-5 text-rose-400 shrink-0" />
+              <AlertCircle className="w-5 h-5 text-[#ff7160] shrink-0" />
             )}
-            <span className="text-xs font-medium">{toastMessage.text}</span>
+            <span className="text-xs font-bold">{toastMessage.text}</span>
             <button
               onClick={() => setToastMessage(null)}
-              className="ml-2 text-zinc-400 hover:text-white text-xs"
+              className="ml-2 text-[#999] hover:text-white text-xs cursor-pointer"
             >
               ✕
             </button>
@@ -300,28 +304,51 @@ export default function ProfilePage() {
         </div>
       )}
 
-      {/* Navbar */}
-      <header className="border-b border-zinc-800/80 bg-zinc-950/60 backdrop-blur-md sticky top-0 z-40">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
+      {/* Navbar / Header */}
+      <header
+        className="sticky top-0 z-40"
+        style={{
+          height: "72px",
+          borderBottom: "1px solid rgba(255, 255, 255, 0.12)",
+          background: "rgba(17, 18, 18, 0.92)",
+          backdropFilter: "blur(14px)",
+        }}
+      >
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-full flex items-center justify-between">
           <div className="flex items-center gap-4">
             <Link
               href="/"
-              className="flex items-center gap-2 text-zinc-400 hover:text-white transition group"
+              className="flex items-center gap-2 text-[#beb6b1] hover:text-white transition"
+              title="Voltar para a página principal"
             >
-              <div className="w-8 h-8 rounded-lg bg-zinc-800 border border-zinc-700 flex items-center justify-center group-hover:border-indigo-500 transition">
+              <div
+                className="w-8 h-8 rounded-xl flex items-center justify-center transition"
+                style={{
+                  background: "#1e1b1b",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                }}
+              >
                 <ArrowLeft className="w-4 h-4" />
               </div>
-              <span className="text-xs font-medium hidden sm:inline">Voltar para a Sala</span>
+              <span className="text-xs font-bold hidden sm:inline">Voltar para a Sala</span>
             </Link>
 
-            <div className="h-4 w-px bg-zinc-800 hidden sm:block" />
+            <div className="h-4 w-px bg-[#ffffff18] hidden sm:block" />
 
             <Link href="/" className="flex items-center gap-2">
-              <span className="inline-flex items-center justify-center w-7 h-7 rounded-lg bg-gradient-to-tr from-indigo-500 to-pink-500 text-white font-black text-xs">
-                K
+              <span className="brand-mark" aria-hidden="true">
+                <i />
+                <i />
               </span>
-              <span className="font-bold tracking-tight text-white text-base">Klip</span>
-              <span className="text-[10px] uppercase font-bold tracking-wider px-1.5 py-0.5 rounded bg-indigo-500/20 text-indigo-300 border border-indigo-500/30">
+              <span className="font-bold tracking-tight text-[#fff8f5] text-xl">Klip</span>
+              <span
+                className="text-[10px] uppercase font-black tracking-wider px-2 py-0.5 rounded-md"
+                style={{
+                  background: "#ff716024",
+                  color: "#ff9789",
+                  border: "1px solid #ff716045",
+                }}
+              >
                 Perfil
               </span>
             </Link>
@@ -330,77 +357,119 @@ export default function ProfilePage() {
           <div className="flex items-center gap-2 sm:gap-3">
             <Link
               href="/?editor=1"
-              className="px-3 py-1.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:border-zinc-700 text-zinc-300 hover:text-white text-xs font-medium transition flex items-center gap-1.5"
+              className="open-editor"
+              style={{
+                minHeight: "38px",
+                padding: "8px 12px",
+                borderRadius: "10px",
+                fontSize: "12px",
+                fontWeight: 700,
+                display: "inline-flex",
+                alignItems: "center",
+                gap: "6px",
+                textDecoration: "none",
+              }}
             >
-              <Film className="w-3.5 h-3.5 text-indigo-400" />
-              <span className="hidden sm:inline">Editor de Clipes</span>
+              ✦ Editor de clipes
             </Link>
 
             <button
               onClick={() => setPublishModalOpen(true)}
-              className="px-3.5 py-1.5 rounded-xl bg-indigo-600 hover:bg-indigo-500 text-white text-xs font-semibold shadow-md shadow-indigo-600/20 transition flex items-center gap-1.5 cursor-pointer"
+              className="nav-action-btn primary"
+              style={{ minHeight: "38px" }}
             >
-              <Share2 className="w-3.5 h-3.5" />
+              <Share2 style={{ width: "14px", height: "14px" }} />
               <span>Publicar</span>
             </button>
 
             {user && (
               <button
                 onClick={handleLogout}
-                className="p-1.5 rounded-xl bg-zinc-900 border border-zinc-800 hover:bg-rose-950/40 hover:border-rose-900 text-zinc-400 hover:text-rose-300 transition cursor-pointer"
+                className="nav-action-btn"
+                style={{ minHeight: "38px", padding: "8px 10px" }}
                 title="Sair da conta"
               >
-                <LogOut className="w-4 h-4" />
+                <LogOut className="w-4 h-4 text-[#ff998c]" />
               </button>
             )}
           </div>
         </div>
       </header>
 
-      {/* Main Content Area */}
+      {/* Main Content */}
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex-1 w-full">
         {loading ? (
-          <div className="py-24 flex flex-col items-center justify-center gap-3 text-zinc-400">
-            <RefreshCw className="w-8 h-8 animate-spin text-indigo-500" />
-            <p className="text-sm">Carregando dados do perfil e integrações...</p>
+          <div className="py-24 flex flex-col items-center justify-center gap-3 text-[#beb6b1]">
+            <RefreshCw className="w-8 h-8 animate-spin text-[#ff7160]" />
+            <p className="text-sm font-bold">Carregando dados do perfil e integrações...</p>
           </div>
         ) : !user ? (
-          /* Not Logged In State */
-          <div className="max-w-md mx-auto my-12 p-8 bg-zinc-900/90 border border-zinc-800 rounded-3xl shadow-2xl text-center">
-            <div className="w-16 h-16 rounded-2xl bg-indigo-500/10 border border-indigo-500/30 text-indigo-400 flex items-center justify-center mx-auto mb-4">
+          /* Not Logged In Prompt */
+          <div
+            className="max-w-md mx-auto my-12 p-8 rounded-3xl text-center shadow-2xl"
+            style={{
+              background: "linear-gradient(145deg, #241b1be8, #171a19ef)",
+              border: "1px solid rgba(255, 113, 96, 0.3)",
+              boxShadow: "0 28px 70px rgba(0, 0, 0, 0.8)",
+            }}
+          >
+            <div
+              className="w-16 h-16 rounded-2xl flex items-center justify-center mx-auto mb-4"
+              style={{
+                background: "linear-gradient(135deg, #ff7564, #d84f41)",
+                color: "#25100e",
+              }}
+            >
               <User className="w-8 h-8" />
             </div>
-            <h2 className="text-xl font-bold text-white mb-2">Acesse seu Perfil Klip</h2>
-            <p className="text-xs text-zinc-400 mb-6 leading-relaxed">
+            <h2 className="text-2xl font-extrabold text-[#fff8f5] mb-2 tracking-tight">
+              Acesse seu Perfil Klip
+            </h2>
+            <p className="text-xs text-[#bcb4ae] mb-6 leading-relaxed">
               Faça login com Supabase para gerenciar seus dados, vincular seus canais do YouTube, TikTok e Instagram e publicar seus vídeos com 1 clique.
             </p>
             <div className="space-y-3">
               <button
                 onClick={() => setAuthModalOpen(true)}
-                className="w-full py-3 px-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 text-white font-semibold rounded-xl text-xs shadow-lg shadow-indigo-500/20 transition cursor-pointer"
+                className="nav-action-btn primary w-full justify-center py-3 text-sm cursor-pointer"
               >
                 Entrar ou Criar Conta
               </button>
               <Link
                 href="/"
-                className="block w-full py-2.5 px-4 bg-zinc-800 hover:bg-zinc-700 text-zinc-300 font-medium rounded-xl text-xs transition"
+                className="block w-full py-2.5 px-4 rounded-xl text-xs font-bold text-[#beb6b1] hover:text-white transition"
+                style={{
+                  background: "#1c1b1b",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                }}
               >
                 Voltar para a Sala de Gravação
               </Link>
             </div>
           </div>
         ) : (
-          /* Logged In Profile Screen */
+          /* Logged In Screen */
           <div className="space-y-8 animate-in fade-in duration-300">
             {/* Top User Profile Card */}
-            <div className="bg-gradient-to-b from-zinc-900/90 to-zinc-900/50 border border-zinc-800/90 rounded-3xl p-6 sm:p-8 shadow-xl relative overflow-hidden">
-              <div className="absolute top-0 right-0 w-96 h-96 bg-indigo-500/5 rounded-full blur-3xl pointer-events-none" />
-
+            <div
+              className="rounded-3xl p-6 sm:p-8 shadow-2xl relative overflow-hidden"
+              style={{
+                background: "linear-gradient(145deg, #261c1ce8, #141716f5)",
+                border: "1px solid rgba(255, 113, 96, 0.28)",
+                boxShadow: "0 28px 70px rgba(0, 0, 0, 0.7)",
+              }}
+            >
               <div className="flex flex-col md:flex-row items-start md:items-center justify-between gap-6 relative z-10">
                 <div className="flex items-center gap-5">
                   {/* Avatar */}
                   <div className="relative group">
-                    <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden bg-zinc-800 border-2 border-indigo-500/30 shadow-lg flex items-center justify-center">
+                    <div
+                      className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden shadow-lg flex items-center justify-center"
+                      style={{
+                        background: "#121414",
+                        border: "2px solid #ff7160",
+                      }}
+                    >
                       {user.avatarUrl ? (
                         <img
                           src={user.avatarUrl}
@@ -408,19 +477,22 @@ export default function ProfilePage() {
                           className="w-full h-full object-cover"
                         />
                       ) : (
-                        <User className="w-10 h-10 text-zinc-400" />
+                        <User className="w-10 h-10 text-[#9e9791]" />
                       )}
                     </div>
                     <button
                       onClick={() => setShowAvatarEdit(!showAvatarEdit)}
-                      className="absolute -bottom-2 -right-2 p-1.5 rounded-lg bg-indigo-600 hover:bg-indigo-500 text-white shadow transition cursor-pointer"
-                      title="Alterar Avatar"
+                      className="absolute -bottom-2 -right-2 p-1.5 rounded-lg text-[#25100e] shadow transition cursor-pointer"
+                      style={{
+                        background: "linear-gradient(135deg, #ff7564, #d84f41)",
+                      }}
+                      title="Alterar Foto de Perfil"
                     >
-                      <Edit2 className="w-3 h-3" />
+                      <Edit2 className="w-3.5 h-3.5 font-bold" />
                     </button>
                   </div>
 
-                  {/* Name & Basic Info */}
+                  {/* Name & Details */}
                   <div>
                     <div className="flex items-center gap-2">
                       {editingName ? (
@@ -429,42 +501,57 @@ export default function ProfilePage() {
                             type="text"
                             value={nameInput}
                             onChange={(e) => setNameInput(e.target.value)}
-                            className="px-3 py-1 bg-zinc-800 border border-indigo-500 rounded-lg text-sm text-white font-bold focus:outline-none"
+                            className="px-3 py-1 rounded-lg text-sm text-white font-bold focus:outline-none"
+                            style={{
+                              background: "#0f1010",
+                              border: "1px solid #ff7160",
+                            }}
                             placeholder="Seu nome"
                           />
                           <button
                             onClick={handleSaveProfile}
                             disabled={savingProfile}
-                            className="p-1.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-lg text-xs cursor-pointer"
+                            className="p-1.5 rounded-lg text-xs cursor-pointer"
+                            style={{
+                              background: "#ff6b5c",
+                              color: "#25100e",
+                            }}
                           >
                             <Check className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       ) : (
                         <div className="flex items-center gap-2">
-                          <h1 className="text-xl sm:text-2xl font-extrabold text-white">
+                          <h1 className="text-xl sm:text-2xl font-black text-[#fff8f5] tracking-tight">
                             {user.name}
                           </h1>
                           <button
                             onClick={() => setEditingName(true)}
-                            className="text-zinc-500 hover:text-indigo-400 transition"
+                            className="text-[#999] hover:text-[#ff7160] transition cursor-pointer"
                             title="Editar Nome"
                           >
                             <Edit2 className="w-3.5 h-3.5" />
                           </button>
                         </div>
                       )}
-                      <span className="inline-flex items-center gap-1 text-[10px] font-semibold bg-emerald-500/10 text-emerald-400 px-2 py-0.5 rounded-full border border-emerald-500/20">
-                        <ShieldCheck className="w-3 h-3" /> Supabase
+                      <span
+                        className="inline-flex items-center gap-1 text-[10px] font-bold px-2 py-0.5 rounded-full"
+                        style={{
+                          background: "rgba(16, 185, 129, 0.15)",
+                          border: "1px solid rgba(16, 185, 129, 0.35)",
+                          color: "#6ee7b7",
+                        }}
+                      >
+                        <ShieldCheck className="w-3 h-3" /> Supabase Auth
                       </span>
                     </div>
 
-                    <p className="text-xs text-zinc-400 flex items-center gap-1.5 mt-1">
-                      <Mail className="w-3.5 h-3.5 text-zinc-500" />
+                    <p className="text-xs text-[#bcb4ae] flex items-center gap-1.5 mt-1">
+                      <Mail className="w-3.5 h-3.5 text-[#888]" />
                       {user.email}
                     </p>
 
-                    <div className="flex items-center gap-4 mt-3 text-[11px] text-zinc-500">
+                    <div className="flex items-center gap-4 mt-3 text-[11px] text-[#8e8781]">
                       <span className="flex items-center gap-1">
                         <Calendar className="w-3 h-3" />
                         Membro desde {user.createdAt ? new Date(user.createdAt).toLocaleDateString("pt-BR") : "2026"}
@@ -475,26 +562,41 @@ export default function ProfilePage() {
                   </div>
                 </div>
 
-                {/* Quick stats / summary */}
+                {/* Quick stats summary */}
                 <div className="flex items-center gap-3 w-full md:w-auto">
-                  <div className="flex-1 md:flex-none p-3.5 bg-zinc-800/60 border border-zinc-800 rounded-2xl text-center min-w-[120px]">
-                    <span className="text-xs text-zinc-400 block mb-0.5">Redes Vinculadas</span>
-                    <span className="text-lg font-black text-indigo-400">
+                  <div
+                    className="flex-1 md:flex-none p-3.5 rounded-2xl text-center min-w-[130px]"
+                    style={{
+                      background: "#171818",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                    }}
+                  >
+                    <span className="text-xs text-[#aaa19b] block mb-0.5 font-medium">Redes Vinculadas</span>
+                    <span className="text-xl font-black text-[#ff8879]">
                       {socialAccounts.length} de 3
                     </span>
                   </div>
-                  <div className="flex-1 md:flex-none p-3.5 bg-zinc-800/60 border border-zinc-800 rounded-2xl text-center min-w-[120px]">
-                    <span className="text-xs text-zinc-400 block mb-0.5">Publicações</span>
-                    <span className="text-lg font-black text-emerald-400">Ativas</span>
+                  <div
+                    className="flex-1 md:flex-none p-3.5 rounded-2xl text-center min-w-[130px]"
+                    style={{
+                      background: "#171818",
+                      border: "1px solid rgba(255, 255, 255, 0.12)",
+                    }}
+                  >
+                    <span className="text-xs text-[#aaa19b] block mb-0.5 font-medium">Status</span>
+                    <span className="text-xl font-black text-[#6ee7b7]">Online</span>
                   </div>
                 </div>
               </div>
 
               {/* Avatar URL Edit Drawer */}
               {showAvatarEdit && (
-                <div className="mt-6 pt-6 border-t border-zinc-800 flex flex-col sm:flex-row items-center gap-3">
+                <div
+                  className="mt-6 pt-6 flex flex-col sm:flex-row items-center gap-3"
+                  style={{ borderTop: "1px solid rgba(255, 255, 255, 0.12)" }}
+                >
                   <div className="flex-1 w-full">
-                    <label className="block text-xs font-medium text-zinc-400 mb-1">
+                    <label className="block text-xs font-bold text-[#cfc7c1] mb-1">
                       URL da Foto de Perfil (Avatar)
                     </label>
                     <input
@@ -502,20 +604,32 @@ export default function ProfilePage() {
                       value={avatarInput}
                       onChange={(e) => setAvatarInput(e.target.value)}
                       placeholder="https://exemplo.com/sua-foto.jpg"
-                      className="w-full px-3 py-2 bg-zinc-800/80 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                      className="w-full px-3 py-2 rounded-xl text-xs text-white placeholder-[#6e6863] focus:outline-none"
+                      style={{
+                        background: "#0f1010",
+                        border: "1px solid #ff7160",
+                      }}
                     />
                   </div>
                   <div className="flex items-center gap-2 self-end sm:self-auto mt-2 sm:mt-5">
                     <button
                       onClick={handleSaveProfile}
                       disabled={savingProfile}
-                      className="px-4 py-2 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-semibold transition cursor-pointer"
+                      className="px-4 py-2 rounded-xl text-xs font-bold transition cursor-pointer"
+                      style={{
+                        background: "linear-gradient(135deg, #ff7564, #d84f41)",
+                        color: "#25100e",
+                      }}
                     >
                       {savingProfile ? "Salvando..." : "Salvar Foto"}
                     </button>
                     <button
                       onClick={() => setShowAvatarEdit(false)}
-                      className="px-3 py-2 bg-zinc-800 hover:bg-zinc-700 text-zinc-400 rounded-xl text-xs transition"
+                      className="px-3 py-2 rounded-xl text-xs text-[#aaa19b] transition cursor-pointer"
+                      style={{
+                        background: "#1c1b1b",
+                        border: "1px solid rgba(255, 255, 255, 0.14)",
+                      }}
                     >
                       Cancelar
                     </button>
@@ -524,16 +638,16 @@ export default function ProfilePage() {
               )}
             </div>
 
-            {/* Social Integrations Section */}
+            {/* Social Accounts Section */}
             <div>
               <div className="flex items-center justify-between mb-4">
                 <div>
-                  <h2 className="text-lg font-bold text-white flex items-center gap-2">
-                    <Link2 className="w-5 h-5 text-indigo-400" />
+                  <h2 className="text-xl font-extrabold text-[#fff8f5] flex items-center gap-2 tracking-tight">
+                    <Link2 className="w-5 h-5 text-[#ff7160]" />
                     Contas e Redes Sociais Vinculadas
                   </h2>
-                  <p className="text-xs text-zinc-400 mt-0.5">
-                    Gerencie a integração com as APIs do YouTube, TikTok e Instagram para publicação em massa
+                  <p className="text-xs text-[#bcb4ae] mt-0.5">
+                    Conexão oficial com as APIs do YouTube, TikTok e Instagram para publicação em tempo real
                   </p>
                 </div>
               </div>
@@ -547,35 +661,59 @@ export default function ProfilePage() {
                   return (
                     <div
                       key={p.id}
-                      className={`p-6 rounded-3xl border transition flex flex-col justify-between ${
-                        isConnected
-                          ? "bg-zinc-900/90 border-zinc-700/80 shadow-lg shadow-black/40"
-                          : "bg-zinc-900/40 border-zinc-800/80 hover:border-zinc-700"
-                      }`}
+                      className="p-6 rounded-3xl flex flex-col justify-between transition shadow-xl"
+                      style={{
+                        background: isConnected
+                          ? "linear-gradient(155deg, #241b1d, #141716 75%)"
+                          : "linear-gradient(155deg, #1e1718, #111313 75%)",
+                        border: isConnected
+                          ? "1px solid rgba(255, 113, 96, 0.35)"
+                          : "1px solid rgba(255, 255, 255, 0.12)",
+                      }}
                     >
                       <div>
                         {/* Header card */}
                         <div className="flex items-start justify-between gap-3 mb-4">
                           {p.icon}
                           {isConnected ? (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-bold bg-emerald-500/10 text-emerald-400 px-2.5 py-1 rounded-full border border-emerald-500/30">
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full"
+                              style={{
+                                background: "rgba(16, 185, 129, 0.15)",
+                                border: "1px solid rgba(16, 185, 129, 0.4)",
+                                color: "#6ee7b7",
+                              }}
+                            >
                               <CheckCircle2 className="w-3.5 h-3.5" /> Vinculado
                             </span>
                           ) : (
-                            <span className="inline-flex items-center gap-1 text-[11px] font-medium bg-zinc-800 text-zinc-400 px-2.5 py-1 rounded-full border border-zinc-700/50">
+                            <span
+                              className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 rounded-full"
+                              style={{
+                                background: "rgba(255, 255, 255, 0.06)",
+                                border: "1px solid rgba(255, 255, 255, 0.14)",
+                                color: "#99908a",
+                              }}
+                            >
                               <AlertCircle className="w-3.5 h-3.5" /> Não vinculado
                             </span>
                           )}
                         </div>
 
-                        <h3 className="text-base font-bold text-white">{p.name}</h3>
-                        <span className="text-[10px] text-zinc-500 font-mono block mb-2">{p.apiName}</span>
-                        <p className="text-xs text-zinc-400 leading-relaxed mb-4">{p.desc}</p>
+                        <h3 className="text-base font-bold text-[#fff8f5]">{p.name}</h3>
+                        <span className="text-[10px] text-[#ff9789] font-mono block mb-2 font-bold">{p.apiName}</span>
+                        <p className="text-xs text-[#bcb4ae] leading-relaxed mb-4">{p.desc}</p>
 
-                        {/* Connected Account Info Details */}
+                        {/* Connected Account Details */}
                         {isConnected && connected && (
-                          <div className="p-3 bg-zinc-800/70 border border-zinc-700/60 rounded-2xl mb-4 flex items-center gap-3">
-                            <div className="w-9 h-9 rounded-xl overflow-hidden bg-zinc-700 shrink-0 border border-zinc-600 flex items-center justify-center">
+                          <div
+                            className="p-3 rounded-2xl mb-4 flex items-center gap-3"
+                            style={{
+                              background: "#121414",
+                              border: "1px solid rgba(255, 255, 255, 0.14)",
+                            }}
+                          >
+                            <div className="w-9 h-9 rounded-xl overflow-hidden bg-zinc-800 shrink-0 border border-zinc-700 flex items-center justify-center">
                               {connected.avatarUrl ? (
                                 <img
                                   src={connected.avatarUrl}
@@ -587,10 +725,10 @@ export default function ProfilePage() {
                               )}
                             </div>
                             <div className="overflow-hidden">
-                              <div className="text-xs font-bold text-white truncate">
+                              <div className="text-xs font-bold text-[#fff8f5] truncate">
                                 {connected.accountName}
                               </div>
-                              <div className="text-[11px] text-indigo-300 font-mono truncate">
+                              <div className="text-[11px] text-[#ffb4aa] font-mono truncate">
                                 {connected.accountHandle || `@${connected.platform}`}
                               </div>
                             </div>
@@ -605,15 +743,24 @@ export default function ProfilePage() {
                             <button
                               onClick={() => handleDisconnect(p.id)}
                               disabled={isLoading}
-                              className="flex-1 py-2 px-3 bg-zinc-800 hover:bg-rose-950/40 hover:text-rose-400 hover:border-rose-800/50 border border-zinc-700 rounded-xl text-xs font-semibold text-zinc-300 transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              className="flex-1 py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+                              style={{
+                                background: "#281716",
+                                border: "1px solid rgba(255, 113, 96, 0.4)",
+                                color: "#ffaaa0",
+                              }}
                             >
                               <Unlink className="w-3.5 h-3.5" />
-                              {isLoading ? "Desconectando..." : "Desvincular Conta"}
+                              {isLoading ? "Desconectando..." : "Desvincular"}
                             </button>
                             <button
                               onClick={() => handleConnect(p.id)}
                               disabled={isLoading}
-                              className="p-2 bg-zinc-800 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-zinc-400 hover:text-white transition cursor-pointer"
+                              className="p-2 rounded-xl text-[#aaa19b] hover:text-white transition cursor-pointer"
+                              style={{
+                                background: "#1c1b1b",
+                                border: "1px solid rgba(255, 255, 255, 0.16)",
+                              }}
                               title="Reconectar / Atualizar Token"
                             >
                               <RefreshCw className={`w-3.5 h-3.5 ${isLoading ? "animate-spin" : ""}`} />
@@ -623,7 +770,13 @@ export default function ProfilePage() {
                           <button
                             onClick={() => handleConnect(p.id)}
                             disabled={isLoading}
-                            className={`w-full py-2.5 px-4 rounded-xl text-white text-xs font-bold transition shadow flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50 ${p.accentBg}`}
+                            className="w-full py-2.5 px-4 rounded-xl text-xs font-black shadow-lg transition flex items-center justify-center gap-2 cursor-pointer disabled:opacity-50"
+                            style={{
+                              background: "linear-gradient(135deg, #ff7564, #d84f41)",
+                              border: "1px solid #ff7160",
+                              color: "#25100e",
+                              boxShadow: "0 4px 14px rgba(255, 107, 92, 0.35)",
+                            }}
                           >
                             <Link2 className="w-4 h-4" />
                             {isLoading ? "Conectando API..." : `Vincular ${p.name}`}
@@ -636,15 +789,28 @@ export default function ProfilePage() {
               </div>
             </div>
 
-            {/* Platform Tools Shortcut Banner */}
-            <div className="bg-zinc-900/60 border border-zinc-800/80 rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4">
+            {/* Quick studio shortcuts */}
+            <div
+              className="rounded-3xl p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl"
+              style={{
+                background: "linear-gradient(145deg, #241b1be8, #141716f5)",
+                border: "1px solid rgba(255, 113, 96, 0.25)",
+              }}
+            >
               <div className="flex items-center gap-4">
-                <div className="w-12 h-12 rounded-2xl bg-indigo-500/10 border border-indigo-500/20 text-indigo-400 flex items-center justify-center shrink-0">
+                <div
+                  className="w-12 h-12 rounded-2xl flex items-center justify-center shrink-0"
+                  style={{
+                    background: "#ff716024",
+                    border: "1px solid #ff716045",
+                    color: "#ff8879",
+                  }}
+                >
                   <Video className="w-6 h-6" />
                 </div>
                 <div>
-                  <h4 className="text-sm font-bold text-white">Pronto para gravar e publicar?</h4>
-                  <p className="text-xs text-zinc-400">
+                  <h4 className="text-sm font-bold text-[#fff8f5]">Pronto para gravar e publicar?</h4>
+                  <p className="text-xs text-[#bcb4ae]">
                     Crie uma sala de chamada privada com gravação local em 1080p ou edite seus clipes já gravados.
                   </p>
                 </div>
@@ -652,13 +818,22 @@ export default function ProfilePage() {
               <div className="flex items-center gap-2 w-full sm:w-auto">
                 <Link
                   href="/"
-                  className="flex-1 sm:flex-none text-center px-4 py-2.5 bg-indigo-600 hover:bg-indigo-500 text-white rounded-xl text-xs font-bold transition shadow-lg shadow-indigo-600/20"
+                  className="nav-action-btn primary flex-1 sm:flex-none text-center justify-center"
+                  style={{ textDecoration: "none" }}
                 >
                   Abrir Sala de Gravação
                 </Link>
                 <Link
                   href="/?editor=1"
-                  className="flex-1 sm:flex-none text-center px-4 py-2.5 bg-zinc-800 hover:bg-zinc-700 text-zinc-200 rounded-xl text-xs font-semibold transition"
+                  className="open-editor flex-1 sm:flex-none text-center justify-center"
+                  style={{
+                    minHeight: "38px",
+                    padding: "8px 14px",
+                    borderRadius: "10px",
+                    fontSize: "13px",
+                    fontWeight: 700,
+                    textDecoration: "none",
+                  }}
                 >
                   Editor de Clipes
                 </Link>
@@ -669,7 +844,10 @@ export default function ProfilePage() {
       </main>
 
       {/* Footer */}
-      <footer className="border-t border-zinc-800/80 py-6 text-center text-xs text-zinc-500">
+      <footer
+        className="py-6 text-center text-xs text-[#807a75]"
+        style={{ borderTop: "1px solid rgba(255, 255, 255, 0.1)" }}
+      >
         <p>Klip Studio · Autenticação Supabase & Publicação Multiplataforma (YouTube, TikTok, Instagram)</p>
       </footer>
 

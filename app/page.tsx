@@ -2587,7 +2587,7 @@ export default function Home() {
             <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}>◈ Criador de GIF</button>
             <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}>◉ Estúdio offline</button>
             <Link href="/perfil" className="nav-action-btn" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "5px" }}>
-              <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} /> Meu Perfil
+              <User style={{ width: "13px", height: "13px", color: "#ff8879" }} /> Meu Perfil
             </Link>
             {currentUser ? (
               <>
@@ -2597,10 +2597,10 @@ export default function Home() {
                 <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
                   <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
                 </button>
-                <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.12)" }}>
                   <Link href="/perfil" style={{ textDecoration: "none", display: "flex", alignItems: "center", gap: "5px" }}>
-                    <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} />
-                    <span style={{ fontSize: "12px", fontWeight: 600, color: "#f4f4f5" }}>{currentUser.name || currentUser.email}</span>
+                    <User style={{ width: "13px", height: "13px", color: "#ff8879" }} />
+                    <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff8f5" }}>{currentUser.name || currentUser.email}</span>
                   </Link>
                   <button
                     type="button"
@@ -2614,7 +2614,7 @@ export default function Home() {
                       localStorage.removeItem("klip_user");
                       setCurrentUser(null);
                     }}
-                    style={{ background: "none", border: "none", color: "#71717a", fontSize: "11px", marginLeft: "4px", cursor: "pointer" }}
+                    style={{ background: "none", border: "none", color: "#9e9690", fontSize: "11px", marginLeft: "4px", cursor: "pointer" }}
                     title="Sair da conta"
                   >
                     (Sair)
@@ -2703,14 +2703,14 @@ export default function Home() {
             {notice && <p>{notice}</p>}
 
             {!currentUser ? (
-              <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <span style={{ fontSize: "11px", color: "#c7d2fe" }}>
+              <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(255, 113, 96, 0.08)", border: "1px solid rgba(255, 113, 96, 0.28)", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                <span style={{ fontSize: "11px", color: "#ffe0db" }}>
                   🔐 <b>Fazer Login:</b> Conecte suas contas do YouTube Shorts, TikTok e Instagram Reels.
                 </span>
                 <button
                   type="button"
                   onClick={() => setAuthModalOpen(true)}
-                  style={{ fontSize: "11px", fontWeight: 600, padding: "5px 10px", borderRadius: "8px", background: "#6366f1", color: "#fff", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+                  style={{ fontSize: "11px", fontWeight: 800, padding: "6px 12px", borderRadius: "9px", background: "linear-gradient(135deg, #ff7564, #d84f41)", color: "#24100e", border: "1px solid #ff7160", cursor: "pointer", whiteSpace: "nowrap" }}
                 >
                   Entrar / Cadastrar
                 </button>

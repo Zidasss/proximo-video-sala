@@ -60,7 +60,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
       const supabase = createClient();
 
       if (isSignUp) {
-        // 1. Criar conta no Supabase Auth
         const { data, error } = await supabase.auth.signUp({
           email: email.trim(),
           password,
@@ -76,7 +75,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         if (data.user) {
           const userName = name.trim() || data.user.user_metadata?.full_name || email.split("@")[0];
 
-          // 2. Salvar ou atualizar tabela profiles
           try {
             await supabase.from("profiles").upsert(
               {
@@ -93,8 +91,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           }
 
           if (!data.session) {
-            // E-mail confirmation required
-            setSuccessMsg("Conta criada com sucesso! Verifique seu e-mail para confirmar o acesso ou faça login.");
+            setSuccessMsg("Conta criada com sucesso! Verifique seu e-mail para confirmar seu cadastro.");
             const userObj = {
               id: data.user.id,
               email: data.user.email || email.trim(),
@@ -105,7 +102,7 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             onSuccess(userObj);
             setTimeout(onClose, 2000);
           } else {
-            setSuccessMsg("Conta criada e conectada com sucesso!");
+            setSuccessMsg("Conta criada e autenticada com sucesso!");
             const userObj = {
               id: data.user.id,
               email: data.user.email || email.trim(),
@@ -118,7 +115,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           }
         }
       } else {
-        // Login com E-mail e Senha
         const { data, error } = await supabase.auth.signInWithPassword({
           email: email.trim(),
           password,
@@ -127,7 +123,6 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         if (error) throw error;
 
         if (data.user) {
-          // Buscar nome do perfil se disponível
           let displayName = data.user.user_metadata?.full_name || data.user.email?.split("@")[0] || "Criador";
           let avatarUrl = data.user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(displayName)}`;
 
@@ -201,30 +196,56 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
-      <div className="relative w-full max-w-md bg-zinc-900 border border-zinc-800 rounded-2xl p-6 shadow-2xl text-zinc-100">
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center p-4"
+      style={{
+        background: "rgba(10, 11, 11, 0.85)",
+        backdropFilter: "blur(12px)",
+      }}
+    >
+      <div
+        className="relative w-full max-w-md p-6 rounded-3xl text-[#fff8f5] shadow-2xl"
+        style={{
+          background: "linear-gradient(145deg, #241b1be8, #151717f5)",
+          border: "1px solid rgba(255, 113, 96, 0.28)",
+          boxShadow: "0 28px 70px rgba(0, 0, 0, 0.7)",
+        }}
+      >
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 text-zinc-400 hover:text-white p-1 rounded-lg hover:bg-zinc-800 transition"
+          className="absolute top-4 right-4 p-1 rounded-lg text-[#9e9791] hover:text-white transition"
+          style={{ background: "rgba(255,255,255,0.06)" }}
           aria-label="Fechar"
         >
           <X className="w-5 h-5" />
         </button>
 
         <div className="text-center mb-5">
-          <div className="inline-flex items-center justify-center w-11 h-11 rounded-xl bg-gradient-to-tr from-indigo-500 via-purple-500 to-pink-500 mb-2.5 shadow-lg shadow-indigo-500/20">
-            <Sparkles className="w-5 h-5 text-white" />
+          <div
+            className="inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-2.5 shadow-lg"
+            style={{
+              background: "linear-gradient(135deg, #ff7564, #d84f41)",
+              boxShadow: "0 8px 24px rgba(255, 107, 92, 0.35)",
+            }}
+          >
+            <Sparkles className="w-6 h-6 text-[#24100e]" />
           </div>
-          <h2 className="text-lg font-bold">
+          <h2 className="text-xl font-extrabold tracking-tight text-[#fff8f5]">
             {isSignUp ? "Criar Conta no Klip" : "Acessar Conta Klip"}
           </h2>
-          <p className="text-xs text-zinc-400 mt-0.5">
+          <p className="text-xs text-[#bcb4ae] mt-1">
             Autenticação Supabase conectada ao YouTube, TikTok e Instagram
           </p>
         </div>
 
         {/* Tab Switcher */}
-        <div className="flex bg-zinc-800/80 p-1 rounded-xl mb-4 border border-zinc-700/50">
+        <div
+          className="flex p-1 rounded-xl mb-4"
+          style={{
+            background: "#101111",
+            border: "1px solid rgba(255,255,255,0.12)",
+          }}
+        >
           <button
             type="button"
             onClick={() => {
@@ -232,11 +253,11 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               setErrorMsg("");
               setSuccessMsg("");
             }}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-              !isSignUp
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
+            className="flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer"
+            style={{
+              background: !isSignUp ? "#ff6b5c" : "transparent",
+              color: !isSignUp ? "#25100e" : "#a8a09a",
+            }}
           >
             Entrar (Login)
           </button>
@@ -247,26 +268,40 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
               setErrorMsg("");
               setSuccessMsg("");
             }}
-            className={`flex-1 py-1.5 text-xs font-semibold rounded-lg transition ${
-              isSignUp
-                ? "bg-indigo-600 text-white shadow-sm"
-                : "text-zinc-400 hover:text-zinc-200"
-            }`}
+            className="flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer"
+            style={{
+              background: isSignUp ? "#ff6b5c" : "transparent",
+              color: isSignUp ? "#25100e" : "#a8a09a",
+            }}
           >
             Criar Conta
           </button>
         </div>
 
         {errorMsg && (
-          <div className="mb-3.5 p-2.5 bg-rose-500/10 border border-rose-500/30 rounded-xl text-rose-400 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 shrink-0" />
+          <div
+            className="mb-3.5 p-3 rounded-xl text-xs flex items-center gap-2"
+            style={{
+              background: "rgba(220, 38, 38, 0.12)",
+              border: "1px solid rgba(220, 38, 38, 0.35)",
+              color: "#ff9990",
+            }}
+          >
+            <AlertCircle className="w-4 h-4 shrink-0 text-[#ff7160]" />
             <span>{errorMsg}</span>
           </div>
         )}
 
         {successMsg && (
-          <div className="mb-3.5 p-2.5 bg-emerald-500/10 border border-emerald-500/30 rounded-xl text-emerald-400 text-xs flex items-center gap-2">
-            <CheckCircle2 className="w-4 h-4 shrink-0" />
+          <div
+            className="mb-3.5 p-3 rounded-xl text-xs flex items-center gap-2"
+            style={{
+              background: "rgba(16, 185, 129, 0.12)",
+              border: "1px solid rgba(16, 185, 129, 0.35)",
+              color: "#6ee7b7",
+            }}
+          >
+            <CheckCircle2 className="w-4 h-4 shrink-0 text-[#10b981]" />
             <span>{successMsg}</span>
           </div>
         )}
@@ -274,46 +309,54 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
         <form onSubmit={handleSubmit} className="space-y-3">
           {isSignUp && (
             <div>
-              <label className="block text-xs font-medium text-zinc-300 mb-1">
+              <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
                 Nome completo ou Canal
               </label>
               <div className="relative">
-                <User className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+                <User className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
                 <input
                   type="text"
                   required={isSignUp}
                   value={name}
                   onChange={(e) => setName(e.target.value)}
                   placeholder="Ex.: Rafael Santos"
-                  className="w-full pl-9 pr-3 py-2 bg-zinc-800/90 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs text-[#fff8f5] placeholder-[#6e6863] focus:outline-none transition"
+                  style={{
+                    background: "#0f1010",
+                    border: "1px solid rgba(255, 255, 255, 0.16)",
+                  }}
                 />
               </div>
             </div>
           )}
 
           <div>
-            <label className="block text-xs font-medium text-zinc-300 mb-1">
+            <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
               E-mail
             </label>
             <div className="relative">
-              <Mail className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+              <Mail className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
               <input
                 type="email"
                 required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
                 placeholder="seu.email@exemplo.com"
-                className="w-full pl-9 pr-3 py-2 bg-zinc-800/90 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs text-[#fff8f5] placeholder-[#6e6863] focus:outline-none transition"
+                style={{
+                  background: "#0f1010",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                }}
               />
             </div>
           </div>
 
           <div>
-            <label className="block text-xs font-medium text-zinc-300 mb-1">
+            <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
               Senha
             </label>
             <div className="relative">
-              <Lock className="absolute left-3 top-2.5 w-4 h-4 text-zinc-500" />
+              <Lock className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
               <input
                 type="password"
                 required
@@ -321,7 +364,11 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
                 value={password}
                 onChange={(e) => setPassword(e.target.value)}
                 placeholder="Mínimo 6 caracteres"
-                className="w-full pl-9 pr-3 py-2 bg-zinc-800/90 border border-zinc-700 rounded-xl text-xs text-white placeholder-zinc-500 focus:outline-none focus:border-indigo-500"
+                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs text-[#fff8f5] placeholder-[#6e6863] focus:outline-none transition"
+                style={{
+                  background: "#0f1010",
+                  border: "1px solid rgba(255, 255, 255, 0.16)",
+                }}
               />
             </div>
           </div>
@@ -329,7 +376,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           <button
             type="submit"
             disabled={loading}
-            className="w-full py-2.5 px-4 bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500 hover:opacity-95 text-white font-semibold rounded-xl text-xs shadow-md transition disabled:opacity-50 flex items-center justify-center gap-2 mt-2 cursor-pointer"
+            className="w-full py-3 px-4 rounded-xl text-xs font-black shadow-lg transition flex items-center justify-center gap-2 mt-3 cursor-pointer disabled:opacity-50"
+            style={{
+              background: "linear-gradient(135deg, #ff7564, #d84f41)",
+              border: "1px solid #ff7160",
+              color: "#25100e",
+              boxShadow: "0 6px 18px rgba(255, 107, 92, 0.35)",
+            }}
           >
             <LogIn className="w-4 h-4" />
             {loading ? "Processando..." : isSignUp ? "Cadastrar e Entrar" : "Entrar com E-mail"}
@@ -338,10 +391,12 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
         <div className="relative my-4">
           <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-zinc-800"></div>
+            <div className="w-full border-t border-[#ffffff18]"></div>
           </div>
           <div className="relative flex justify-center text-[11px]">
-            <span className="bg-zinc-900 px-2 text-zinc-500">ou acesse com</span>
+            <span className="px-2 text-[#857e79]" style={{ background: "#1c1718" }}>
+              ou acesse com
+            </span>
           </div>
         </div>
 
@@ -349,9 +404,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           <button
             onClick={handleGoogleSignIn}
             type="button"
-            className="py-2 px-3 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-medium text-zinc-200 hover:text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
+            className="py-2.5 px-3 rounded-xl text-xs font-bold text-[#f3ece7] hover:text-white transition flex items-center justify-center gap-2 cursor-pointer"
+            style={{
+              background: "#1c1b1b",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+            }}
           >
-            <svg className="w-3.5 h-3.5 shrink-0" viewBox="0 0 24 24">
+            <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24">
               <path
                 fill="#EA4335"
                 d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.4 9 5 12 5z"
@@ -375,9 +434,13 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           <button
             onClick={handleDemoLogin}
             type="button"
-            className="py-2 px-3 bg-zinc-800/90 hover:bg-zinc-700 border border-zinc-700 rounded-xl text-xs font-medium text-zinc-200 hover:text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
+            className="py-2.5 px-3 rounded-xl text-xs font-bold text-[#f3ece7] hover:text-white transition flex items-center justify-center gap-1.5 cursor-pointer"
+            style={{
+              background: "#1c1b1b",
+              border: "1px solid rgba(255, 255, 255, 0.2)",
+            }}
           >
-            <Zap className="w-3.5 h-3.5 text-amber-400" />
+            <Zap className="w-4 h-4 text-[#ffc168]" />
             1-Clique (Demo)
           </button>
         </div>

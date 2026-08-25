@@ -2910,6 +2910,7 @@ function ClipEditor({
   const video = useRef<HTMLVideoElement>(null);
   const [clip, setClip] = useState<EditorClip | null>(initialClip),
     [duration, setDuration] = useState(0),
+    [sourceDuration, setSourceDuration] = useState(0),
     [current, setCurrent] = useState(0),
     [isPlaying, setIsPlaying] = useState(false),
     [start, setStart] = useState(0),
@@ -2956,8 +2957,9 @@ function ClipEditor({
   function setVideoDuration(element: HTMLVideoElement) {
     const value = element.duration;
     if (Number.isFinite(value) && value > 0) {
-      setDuration(value);
-      setEnd(value);
+      setSourceDuration(value);
+      setDuration((projectLength) => Math.max(projectLength, value));
+      setEnd((projectEnd) => Math.max(projectEnd, value));
       return;
     }
     // Gravações WebM frequentemente chegam sem duração no metadata. Este seek
@@ -3123,6 +3125,7 @@ function ClipEditorV2({
   });
   const [clip, setClip] = useState<EditorClip | null>(initialClip),
     [duration, setDuration] = useState(0),
+    [sourceDuration, setSourceDuration] = useState(0),
     [current, setCurrent] = useState(0),
     [isPlaying, setIsPlaying] = useState(false),
     [start, setStart] = useState(0),
@@ -3338,6 +3341,7 @@ function ClipEditorV2({
     if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
     setClip(nextClip);
     setDuration(0);
+    setSourceDuration(0);
     setCurrent(0);
     setStart(0);
     setEnd(0);
@@ -3428,16 +3432,17 @@ function ClipEditorV2({
       name: file.name.replace(/\.[^.]+$/, ""),
     }, "Vídeo carregado. Agora monte as camadas na linha do tempo.");
   }
-  function insertScene(url: string, name: string, sourceDuration: number, withAudio: boolean) {
-    const from = Math.max(start, Math.min(current, Math.max(start, end - .4)));
-    const available = Math.max(.4, end - from);
-    const clipLength = Math.min(Math.max(.4, sourceDuration || 6), available);
+  function insertScene(url: string, name: string, mediaDuration: number, withAudio: boolean) {
+    const from = Math.max(end, duration);
+    const clipLength = Math.max(.4, mediaDuration || 6);
     const scene: IllustrationLayer = { id: crypto.randomUUID(), kind: "video", url, name, x: 50, y: 50, size: 140, start: from, end: from + clipLength, fadeIn: .35, fadeOut: .35, fit: "cover", role: "scene" };
     remember();
     setIllustrations((items) => [...items, scene]);
+    setDuration((projectLength) => Math.max(projectLength, scene.end));
+    setEnd((projectEnd) => Math.max(projectEnd, scene.end));
     if (withAudio) setAudioTracks((items) => [...items, { id: crypto.randomUUID(), url, name: `Áudio · ${scene.name}`, start: scene.start, end: scene.end, volume: 100, fadeIn: scene.fadeIn, fadeOut: scene.fadeOut }]);
     setSelectedIllustrationId(scene.id); setSelectedId(""); setSelectedAudioId("");
-    setNotice("Cena adicionada. Arraste o clip na timeline e ajuste os fades nas duas pontas para criar a transição.");
+    setNotice("Novo clip adicionado à faixa VÍDEO. Arraste-o na mesma linha do vídeo principal e ajuste as pontas ou fades.");
   }
   async function addSceneMedia(file?: File) {
     if (!file) return;
@@ -3604,8 +3609,9 @@ function ClipEditorV2({
     if (element.videoWidth && element.videoHeight)
       setSourceAspect(element.videoWidth / element.videoHeight);
     if (Number.isFinite(value) && value > 0) {
-      setDuration(value);
-      setEnd(value);
+      setSourceDuration(value);
+      setDuration((projectLength) => Math.max(projectLength, value));
+      setEnd((projectEnd) => Math.max(projectEnd, value));
       setLayers((items) =>
         items.map((layer, index) =>
           index === 0 && layer.end === 6 ? { ...layer, end: value } : layer,
@@ -3617,7 +3623,16 @@ function ClipEditorV2({
   }
   function seek(value: number) {
     if (!video.current) return;
-    video.current.currentTime = value;
+    if (sourceDuration && value > sourceDuration) {
+      video.current.pause();
+      const activeScene = sceneItems.find((item) => item.start <= value && value < item.end);
+      const sceneElement = activeScene ? illustrationElements.current.get(activeScene.id) : null;
+      if (sceneElement instanceof HTMLVideoElement && sceneElement.duration)
+        sceneElement.currentTime = Math.max(0, Math.min(sceneElement.duration - .04, value - activeScene!.start));
+      setCurrent(value);
+      return;
+    }
+    video.current.currentTime = Math.min(value, sourceDuration || value);
     setCurrent(value);
   }
   function snapTime(value: number) {
@@ -4366,10 +4381,10 @@ function ClipEditorV2({
             <div className="media-destination-title"><b>Adicionar mídia</b><small>Escolha o destino antes de importar. Nada será trocado por acidente.</small></div>
             <div className="media-destinations">
               <label className="editor-upload editor-replace-upload">↻ Trocar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
-              <label className="editor-upload editor-scene-upload">＋ Inserir como cena<input type="file" accept="video/*,image/*" onChange={(event) => void addSceneMedia(event.target.files?.[0])} /></label>
+              <label className="editor-upload editor-scene-upload">＋ Inserir na sequência<input type="file" accept="video/*,image/*" onChange={(event) => void addSceneMedia(event.target.files?.[0])} /></label>
               <label className="editor-upload editor-illustration-upload">▧ Inserir como camada<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
             </div>
-            <small className="media-import-help"><b>Cena</b> entra na faixa de vídeo. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
+            <small className="media-import-help"><b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado do principal. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
           </>}
           {clip && <p className="editor-file">● {clip.name}</p>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>

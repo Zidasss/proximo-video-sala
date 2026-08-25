@@ -50,6 +50,17 @@ type IllustrationLayer = {
   fadeOut: number;
   fit: "cover" | "contain";
 };
+type AudioTrack = {
+  id: string;
+  url: string;
+  name: string;
+  start: number;
+  end: number;
+  volume: number;
+  fadeIn: number;
+  fadeOut: number;
+};
+type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type TimedLayer = Pick<IllustrationLayer, "start" | "end" | "fadeIn" | "fadeOut">;
 type ConnectionStats = {
   fps: number;
@@ -3117,6 +3128,7 @@ function ClipEditorV2({
     [videoFadeIn, setVideoFadeIn] = useState(0),
     [videoFadeOut, setVideoFadeOut] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
+    [visualPreset, setVisualPreset] = useState<VisualPreset>("clean"),
     [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scale: 1 }),
     [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
     [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
@@ -3124,6 +3136,7 @@ function ClipEditorV2({
     [exportBitrate, setExportBitrate] = useState<"standard" | "high" | "ultra">("high"),
     [audioGain, setAudioGain] = useState(100),
     [audioEnhance, setAudioEnhance] = useState(true),
+    [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]),
     [waveform, setWaveform] = useState<number[]>([]),
     [snapEnabled, setSnapEnabled] = useState(true),
     [markers, setMarkers] = useState<number[]>([]),
@@ -3135,6 +3148,7 @@ function ClipEditorV2({
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
     [selectedId, setSelectedId] = useState(""),
     [selectedIllustrationId, setSelectedIllustrationId] = useState(""),
+    [selectedAudioId, setSelectedAudioId] = useState(""),
     [exportFormat, setExportFormat] = useState<ExportFormat>("mp4"),
     [exporting, setExporting] = useState(false),
     [exportProgress, setExportProgress] = useState(0),
@@ -3144,7 +3158,9 @@ function ClipEditorV2({
   const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
   const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
+  const selectedAudio = audioTracks.find((track) => track.id === selectedAudioId);
   const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
+  const audioElements = useRef<Map<string, HTMLAudioElement>>(new Map());
   const layerDrag = useRef<{
     id: string;
     x: number;
@@ -3175,6 +3191,21 @@ function ClipEditorV2({
     const timer = window.setInterval(syncPlayback, 180);
     return () => window.clearInterval(timer);
   }, [clip]);
+
+  useEffect(() => {
+    audioTracks.forEach((track) => {
+      const element = audioElements.current.get(track.id);
+      if (!element) return;
+      const active = current >= track.start && current < track.end;
+      const desired = Math.max(0, current - track.start);
+      if (Math.abs(element.currentTime - desired) > .38) element.currentTime = desired;
+      const edge = track.fadeIn > 0 ? Math.min(1, Math.max(0, desired / track.fadeIn)) : 1;
+      const remaining = Math.max(0, track.end - current);
+      element.volume = Math.max(0, Math.min(1, (track.volume / 100) * edge * (track.fadeOut > 0 ? Math.min(1, remaining / track.fadeOut) : 1)));
+      if (isPlaying && active && element.paused) void element.play().catch(() => undefined);
+      if ((!isPlaying || !active) && !element.paused) element.pause();
+    });
+  }, [audioTracks, current, isPlaying]);
 
   useEffect(() => {
     if (!clip) { setWaveform([]); return; }
@@ -3268,6 +3299,7 @@ function ClipEditorV2({
     const progress = Math.max(0, Math.min(1, (at - layer.start) / 1.6));
     return layer.text.slice(0, Math.ceil(layer.text.length * progress));
   };
+  const visualFilter = visualPreset === "cinematic" ? "contrast(1.12) saturate(.84) brightness(.92)" : visualPreset === "vivid" ? "contrast(1.08) saturate(1.35)" : visualPreset === "mono" ? "grayscale(1) contrast(1.18)" : visualPreset === "warm" ? "sepia(.22) saturate(1.16) contrast(1.04)" : "none";
   function selectFile(file?: File) {
     if (!file) return;
     if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
@@ -3288,6 +3320,40 @@ function ClipEditorV2({
     setSelectedId("");
     setSelectedIllustrationId("");
     setNotice("Vídeo carregado. Agora monte as camadas na linha do tempo.");
+  }
+  function addAudioTrack(file?: File) {
+    if (!file) return;
+    const url = URL.createObjectURL(file);
+    const probe = document.createElement("audio");
+    probe.src = url;
+    probe.onloadedmetadata = () => {
+      const from = Math.max(start, current);
+      const track: AudioTrack = { id: crypto.randomUUID(), url, name: file.name.replace(/\.[^.]+$/, ""), start: from, end: Math.min(end || duration || from + probe.duration, from + (Number.isFinite(probe.duration) ? probe.duration : 8)), volume: 85, fadeIn: .08, fadeOut: .12 };
+      setAudioTracks((items) => [...items, track]); setSelectedAudioId(track.id); setNotice("Faixa de áudio adicionada. Arraste e ajuste na timeline.");
+    };
+    probe.onerror = () => { URL.revokeObjectURL(url); setNotice("Não foi possível abrir este áudio."); };
+  }
+  function addBuiltInSound(kind: "pop" | "whoosh" | "ding") {
+    const rate = 44100, seconds = kind === "whoosh" ? .52 : .24, samples = Math.floor(rate * seconds);
+    const buffer = new ArrayBuffer(44 + samples * 2), view = new DataView(buffer);
+    const write = (offset: number, text: string) => [...text].forEach((char, index) => view.setUint8(offset + index, char.charCodeAt(0)));
+    write(0, "RIFF"); view.setUint32(4, 36 + samples * 2, true); write(8, "WAVEfmt "); view.setUint32(16, 16, true); view.setUint16(20, 1, true); view.setUint16(22, 1, true); view.setUint32(24, rate, true); view.setUint32(28, rate * 2, true); view.setUint16(32, 2, true); view.setUint16(34, 16, true); write(36, "data"); view.setUint32(40, samples * 2, true);
+    for (let index = 0; index < samples; index++) {
+      const t = index / rate, envelope = Math.pow(1 - index / samples, kind === "whoosh" ? 1.2 : 2.8);
+      const frequency = kind === "pop" ? 170 - t * 300 : kind === "ding" ? 880 + t * 170 : 260 + t * 1650;
+      const wave = kind === "whoosh" ? (Math.random() * 2 - 1) : Math.sin(Math.PI * 2 * frequency * t);
+      view.setInt16(44 + index * 2, Math.max(-1, Math.min(1, wave * envelope * .52)) * 32767, true);
+    }
+    addAudioTrack(new File([buffer], `klip-${kind}.wav`, { type: "audio/wav" }));
+  }
+  function updateAudioTrack(id: string, patch: Partial<AudioTrack>) {
+    setAudioTracks((items) => items.map((track) => track.id === id ? { ...track, ...patch } : track));
+  }
+  function removeAudioTrack() {
+    const track = audioTracks.find((item) => item.id === selectedAudioId);
+    if (track?.url.startsWith("blob:")) URL.revokeObjectURL(track.url);
+    setAudioTracks((items) => items.filter((item) => item.id !== selectedAudioId));
+    setSelectedAudioId("");
   }
   function applyTemplate(template: "podcast" | "react" | "gameplay" | "interview") {
     const length = Math.max(4, end || duration || 12);
@@ -3704,13 +3770,28 @@ function ClipEditorV2({
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
     ).captureStream?.();
     const exportAudio = new AudioContext(), audioDestination = exportAudio.createMediaStreamDestination();
+    await exportAudio.resume();
     if (captured?.getAudioTracks().length) {
       const audioSource = exportAudio.createMediaStreamSource(new MediaStream(captured.getAudioTracks()));
       const gain = exportAudio.createGain(); gain.gain.value = audioGain / 100;
       if (audioEnhance) { const highPass = exportAudio.createBiquadFilter(); highPass.type = "highpass"; highPass.frequency.value = 80; const compressor = exportAudio.createDynamicsCompressor(); compressor.threshold.value = -22; compressor.ratio.value = 3; audioSource.connect(highPass).connect(compressor).connect(gain).connect(audioDestination); }
       else audioSource.connect(gain).connect(audioDestination);
-      audioDestination.stream.getAudioTracks().forEach((track) => output.addTrack(track));
     }
+    const exportTrackElements: HTMLAudioElement[] = [];
+    audioTracks.filter((track) => track.end > start && track.start < end).forEach((track) => {
+      const element = new Audio(track.url);
+      element.preload = "auto";
+      element.volume = 0;
+      const trackSource = exportAudio.createMediaElementSource(element);
+      const trackGain = exportAudio.createGain();
+      trackGain.gain.value = Math.max(0, Math.min(1.2, track.volume / 100));
+      trackSource.connect(trackGain).connect(audioDestination);
+      const delay = Math.max(0, track.start - start);
+      window.setTimeout(() => { element.currentTime = Math.max(0, start - track.start); void element.play().catch(() => undefined); }, delay * 1000);
+      window.setTimeout(() => element.pause(), Math.max(0, Math.min(end, track.end) - start) * 1000);
+      exportTrackElements.push(element);
+    });
+    audioDestination.stream.getAudioTracks().forEach((track) => output.addTrack(track));
     const mime = mimeForExport(exportFormat) || mimeForExport("webm")!;
     if (exportFormat === "mp4" && !mime.startsWith("video/mp4"))
       setNotice("MP4 não é suportado neste navegador; exportando WebM verdadeiro.");
@@ -3733,6 +3814,7 @@ function ClipEditorV2({
         height = source.videoHeight * scale;
       context.fillStyle = "#090909";
       context.fillRect(0, 0, canvas.width, canvas.height);
+      context.filter = visualFilter;
       context.drawImage(
         source,
         (canvas.width - width) / 2 + (videoTransform.x / 100) * canvas.width,
@@ -3740,6 +3822,7 @@ function ClipEditorV2({
         width,
         height,
       );
+      context.filter = "none";
       const videoTransition = videoTransitionOpacity(source.currentTime);
       if (videoTransition > 0) {
         context.fillStyle = transitionColor === "black" ? "#000000" : "#ffffff";
@@ -3829,6 +3912,7 @@ function ClipEditorV2({
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
     recorder.onstop = () => {
       cancelAnimationFrame(frame);
+      exportTrackElements.forEach((element) => element.pause());
       if (cancelExport.current) { void exportAudio.close(); editorRecorder.current = null; setExportProgress(0); setExporting(false); setNotice("Renderização cancelada."); return; }
       const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
       const link = document.createElement("a");
@@ -3895,7 +3979,9 @@ function ClipEditorV2({
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           <div className="tool-heading layer-heading"><span>00</span><div><b>Templates</b><small>Comece com um layout pronto</small></div></div>
           <div className="template-grid"><button onClick={() => applyTemplate("podcast")}>🎙️ Podcast</button><button onClick={() => applyTemplate("react")}>👀 React</button><button onClick={() => applyTemplate("gameplay")}>🎮 Gameplay</button><button onClick={() => applyTemplate("interview")}>💬 Entrevista</button></div>
+          {clip && <div className="visual-presets"><b>Filtros e cor</b><div>{([['clean','Limpo'],['cinematic','Cinema'],['vivid','Vibrante'],['mono','P&B'],['warm','Quente']] as const).map(([key, label]) => <button key={key} className={visualPreset === key ? "selected" : ""} onClick={() => setVisualPreset(key)}>{label}</button>)}</div></div>}
           {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div>}
+          {clip && <div className="audio-editor-controls audio-library"><b>Áudio, música e efeitos</b><small>Suba uma faixa sua. Os três efeitos abaixo são gerados pelo próprio Klip e livres para usar.</small><label className="audio-import">＋ Adicionar áudio<input type="file" accept="audio/*" onChange={(event) => addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}>● Pop</button><button onClick={() => addBuiltInSound("whoosh")}>〰 Whoosh</button><button onClick={() => addBuiltInSound("ding")}>✦ Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => setSelectedAudioId(track.id)}>♫ {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Canal selecionado</b><button onClick={removeAudioTrack}>Excluir</button></div><label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div>}
           {clip && <div className="video-transition-controls">
             <b>Transições do vídeo</b>
             <small>Arraste um cartão para Entrada ou Saída. A prévia e o arquivo exportado usam a mesma transição.</small>
@@ -3973,12 +4059,13 @@ function ClipEditorV2({
 
         <section className="editor-stage-wrap">
           <div className="stage-meta" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)` }}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><div><button onClick={() => setPreviewScale((value) => Math.max(.7, Number((value - .1).toFixed(1))))}>−</button><b>{Math.round(previewScale * 100)}%</b><button onClick={() => setPreviewScale((value) => Math.min(2, Number((value + .1).toFixed(1))))}>＋</button></div><b>{time(current)}</b></div>
-          <div className="editor-stage" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
+          <div className={`editor-stage preset-${visualPreset}`} style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
               <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${Math.max(1, videoTransform.scale)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o vídeo para enquadrar</div><div className="video-frame-resize vertical top" onPointerDown={(event) => beginVideoFrameResize(event, "vertical")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para ajustar a altura do enquadramento">↕</div><div className="video-frame-resize vertical bottom" onPointerDown={(event) => beginVideoFrameResize(event, "vertical")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para ajustar a altura do enquadramento">↕</div><div className="video-frame-resize" onPointerDown={beginVideoFrameResize} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar o zoom">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scale: 1 })}>↺ Enquadrar</button></>
             ) : (
               <div className="editor-empty"><b>Monte seu próximo reel.</b><span>Importe um vídeo para editar corte, textos e efeitos.</span></div>
             )}
+            {audioTracks.map((track) => <audio key={track.id} ref={(element) => { if (element) audioElements.current.set(track.id, element); else audioElements.current.delete(track.id); }} src={track.url} preload="auto" />)}
             {clip && videoTransitionOpacity(current) > 0 && <div className="video-transition-overlay" style={{ opacity: videoTransitionOpacity(current), backgroundColor: transitionColor === "black" ? "#000" : "#fff" }} />}
             {clip && illustrations.map((item) => {
               if (layerOpacity(item, current) <= 0) return null;
@@ -4025,6 +4112,7 @@ function ClipEditorV2({
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionResize(event, "in")} onPointerMove={moveTransitionResize} onPointerUp={endTransitionResize} onPointerCancel={endTransitionResize} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste para ajustar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}</button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${((end - videoFadeOut) / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionResize(event, "out")} onPointerMove={moveTransitionResize} onPointerUp={endTransitionResize} onPointerCancel={endTransitionResize} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste para ajustar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"} ↗</button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
+          {audioTracks.map((track, index) => <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); seek(Math.max(start, track.start)); }}><b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }}><span>{track.name}</span><i>{track.volume}% · canal</i></button></div></div>)}
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>
               <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }}><span>{item.name || "Ilustração"}</span><i>{item.kind === "image" ? "imagem" : "vídeo"}</i></button></div>

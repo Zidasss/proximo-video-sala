@@ -1670,7 +1670,18 @@ export default function Home() {
       if (!recorder.current || recorder.current.state === "inactive") return;
       context.fillStyle = "#101210";
       context.fillRect(0, 0, canvas.width, canvas.height);
-      if (vertical && resenhaMode) {
+      const hasFriendVideo = Boolean(remote.current?.getVideoTracks().some((track) => track.readyState === "live"));
+      const screenVideo = sharing ? screen.current : remoteSharing ? remoteScreen.current : null;
+      if (!hasFriendVideo && vertical && !screenVideo) {
+        // A recording in a solo room is a proper one-person composition, not a two-up layout with a black half.
+        cover(mine.current, 0, 0, canvas.width, canvas.height);
+        bezel(0, 0, canvas.width, canvas.height, speakingRef.current.mine);
+      } else if (!hasFriendVideo && vertical && screenVideo) {
+        const cameraHeight = canvas.height * Math.min(.42, Math.max(.2, tiktokTop));
+        cover(mine.current, 0, 0, canvas.width, cameraHeight);
+        cover(screenVideo, 0, cameraHeight + 12, canvas.width, canvas.height - cameraHeight - 12);
+        bezel(0, 0, canvas.width, cameraHeight, speakingRef.current.mine);
+      } else if (vertical && resenhaMode) {
         const gap = 12,
           cameraHeight = (canvas.height - gap) / 2,
           first = topOrder === "mine-first" ? mine.current : theirs.current,
@@ -1705,45 +1716,18 @@ export default function Home() {
         bezel(half + gap, cameraY, half, cameraHeight, secondTalking);
         cover(screenVideo, 0, screenY, canvas.width, screenHeight);
       } else {
-        cover(
-          sharing
-            ? screen.current
-            : remoteSharing
-              ? remoteScreen.current
-              : mine.current,
-          0,
-          0,
-          canvas.width,
-          canvas.height,
-        );
-        cover(
-          mine.current,
-          canvas.width * 0.72,
-          canvas.height * 0.68,
-          canvas.width * 0.25,
-          canvas.height * 0.28,
-        );
-        cover(
-          theirs.current,
-          24,
-          canvas.height * 0.72,
-          canvas.width * 0.2,
-          canvas.height * 0.23,
-        );
-        bezel(
-          canvas.width * 0.72,
-          canvas.height * 0.68,
-          canvas.width * 0.25,
-          canvas.height * 0.28,
-          speakingRef.current.mine,
-        );
-        bezel(
-          24,
-          canvas.height * 0.72,
-          canvas.width * 0.2,
-          canvas.height * 0.23,
-          speakingRef.current.friend,
-        );
+        if (!hasFriendVideo && !screenVideo) {
+          cover(mine.current, 0, 0, canvas.width, canvas.height);
+          bezel(0, 0, canvas.width, canvas.height, speakingRef.current.mine);
+        } else {
+          cover(screenVideo || mine.current, 0, 0, canvas.width, canvas.height);
+          cover(mine.current, canvas.width * 0.72, canvas.height * 0.68, canvas.width * 0.25, canvas.height * 0.28);
+          bezel(canvas.width * 0.72, canvas.height * 0.68, canvas.width * 0.25, canvas.height * 0.28, speakingRef.current.mine);
+          if (hasFriendVideo) {
+            cover(theirs.current, 24, canvas.height * 0.72, canvas.width * 0.2, canvas.height * 0.23);
+            bezel(24, canvas.height * 0.72, canvas.width * 0.2, canvas.height * 0.23, speakingRef.current.friend);
+          }
+        }
       }
       requestAnimationFrame(draw);
     };

@@ -31,6 +31,8 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function playTimelineAt/);
   assert.match(page, /const baseLoopOffset/);
   assert.match(page, /onEnded=\{\(event\) => void playTimelineAt/);
+  assert.match(page, /const hasFriendVideo/);
+  assert.match(page, /A recording in a solo room is a proper one-person composition/);
   assert.match(page, /event\.key === "Delete"/);
   assert.match(page, /event\.code === "Space"/);
 });

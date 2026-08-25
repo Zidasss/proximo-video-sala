@@ -40,6 +40,8 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /Nunca faça composição em 4K implícita/);
   assert.match(page, /Usando IA Premium compatível com este navegador/);
   assert.match(page, /const usePremiumMatting = mattingQuality === "premium" \|\| isMacOS/);
+  assert.match(page, /"Identity:0", "Identity_1:0", "Identity_2:0"/);
+  assert.match(page, /frameRate: \{ ideal: 30, max: 30 \}/);
   assert.match(page, /firstMaskTimer = window\.setTimeout/);
   assert.match(page, /Carregando e preparando o GIF/);
   assert.match(page, /inferenceDuration > 95 \? 384/);

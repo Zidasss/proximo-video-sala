@@ -93,9 +93,18 @@ const constraints = (
   audioInputId?: string,
 ): MediaStreamConstraints => ({
   video: {
-    width: { ideal: quality === "1080" ? 1920 : 1280 },
-    height: { ideal: quality === "1080" ? 1080 : 720 },
-    frameRate: { ideal: 30 },
+    // `ideal` sozinho ainda permite que algumas webcams 4K/60 entreguem o
+    // modo nativo. O teto mantém captura, IA, canvas e encoder na qualidade
+    // escolhida sem processar quatro vezes mais pixels inutilmente.
+    width: {
+      ideal: quality === "1080" ? 1920 : 1280,
+      max: quality === "1080" ? 1920 : 1280,
+    },
+    height: {
+      ideal: quality === "1080" ? 1080 : 720,
+      max: quality === "1080" ? 1080 : 720,
+    },
+    frameRate: { ideal: 30, max: 30 },
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   },
   audio: {
@@ -626,6 +635,8 @@ export default function Home() {
             if (!active || inferenceBusy) return;
             inferenceBusy = true;
             const started = performance.now();
+            let inferenceFailed = false;
+            let src: any = null;
             try {
               inferenceContext.drawImage(
                 source,
@@ -635,11 +646,14 @@ export default function Home() {
                 inferenceCanvas.height,
               );
               const pixels = tf.browser.fromPixels(inferenceCanvas);
-              const src = tf.tidy(() => pixels.toFloat().div(255).expandDims(0));
+              src = tf.tidy(() => pixels.toFloat().div(255).expandDims(0));
               pixels.dispose();
               const outputs = (await model.executeAsync(
                 { src, r1i, r2i, r3i, r4i, downsample_ratio: downsampleRatio },
-                ["fgr", "pha", "r1o", "r2o", "r3o", "r4o"],
+                // O JSON publica aliases `fgr`/`pha`, mas o GraphExecutor do
+                // TensorFlow.js resolve pelos nomes reais dos nós. Usar os
+                // aliases fazia o RVM falhar em todos os Macs no fallback.
+                ["Identity:0", "Identity_1:0", "Identity_2:0", "Identity_3:0", "Identity_4:0", "Identity_5:0"],
               )) as unknown as any[];
               const [fgr, pha, r1o, r2o, r3o, r4o] = outputs;
               const alpha = (await pha.data()) as Float32Array;
@@ -664,6 +678,7 @@ export default function Home() {
               setVirtualEffectLoading("");
               attachOutput();
               src.dispose();
+              src = null;
               fgr.dispose();
               pha.dispose();
               r1i.dispose(); r2i.dispose(); r3i.dispose(); r4i.dispose();
@@ -671,12 +686,17 @@ export default function Home() {
               inferenceDuration = performance.now() - started;
               if (inferenceDuration < 100)
                 setNotice("IA Premium ativa · vídeo fluido e recorte temporal na GPU");
-            } catch {
-              setNotice("A IA Premium não iniciou. Voltamos para o recorte leve.");
-              setMattingQuality("standard");
+            } catch (error) {
+              inferenceFailed = true;
+              src?.dispose();
+              src = null;
+              setVirtualEffectLoading("");
+              const detail = error instanceof Error ? error.message : "erro desconhecido";
+              console.error("Falha no RVM do fundo virtual:", error);
+              setNotice(`O fundo virtual não iniciou na GPU (${detail}). A câmera continua conectada.`);
             } finally {
               inferenceBusy = false;
-              if (active) {
+              if (active && !inferenceFailed) {
                 // A máscara não precisa competir com o vídeo em 30 fps. Um teto
                 // de 13 fps mantém o RVM temporal estável, evita uso contínuo de
                 // GPU e deixa espaço para codificar/enviar a chamada. Se a máquina

@@ -78,6 +78,20 @@ const mimeForExport = (format: ExportFormat) => {
   const vp9 = "video/webm;codecs=vp9,opus";
   return MediaRecorder.isTypeSupported(vp9) ? vp9 : "video/webm";
 };
+const PEER_CONFIG = {
+  config: {
+    iceServers: [
+      { urls: "stun:stun.l.google.com:19302" },
+      { urls: "stun:stun1.l.google.com:19302" },
+      { urls: "stun:stun2.l.google.com:19302" },
+      { urls: "stun:stun3.l.google.com:19302" },
+      { urls: "stun:stun4.l.google.com:19302" },
+      { urls: "stun:global.stun.twilio.com:3478" },
+    ],
+    iceCandidatePoolSize: 10,
+  },
+};
+
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -87,10 +101,10 @@ const constraints = (
     width: { ideal: quality === "1080" ? 1920 : 1280 },
     height: { ideal: quality === "1080" ? 1080 : 720 },
     frameRate: { ideal: 30 },
-    ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
+    ...(deviceId ? { deviceId: { ideal: deviceId } } : {}),
   },
   audio: {
-    ...(audioInputId ? { deviceId: { exact: audioInputId } } : {}),
+    ...(audioInputId ? { deviceId: { ideal: audioInputId } } : {}),
     echoCancellation: true,
     noiseSuppression: true,
     autoGainControl: true,
@@ -1162,7 +1176,7 @@ export default function Home() {
   }
   function useData(conn: DataConnection) {
     connection.current = conn;
-    conn.on("open", () => {
+    const handleOpen = () => {
       if (connection.current !== conn) return;
       peerConnected.current = true;
       peerRetry.current = 0;
@@ -1171,7 +1185,12 @@ export default function Home() {
       conn.send({ kind: "name", name });
       if (mode === "host")
         conn.send({ kind: "layout", topOrder, screenPosition, tiktokTop, resenhaMode });
-    });
+    };
+    if (conn.open) {
+      handleOpen();
+    } else {
+      conn.on("open", handleOpen);
+    }
     conn.on("data", (item) => {
       const data = item as {
         kind?: string;
@@ -1218,7 +1237,9 @@ export default function Home() {
     peer.current = null;
     previousPeer?.destroy();
     const isHost = mode === "host";
-    const client = isHost ? new Peer(hostId(room, pin)) : new Peer();
+    const client = isHost
+      ? new Peer(hostId(room, pin), PEER_CONFIG)
+      : new Peer(PEER_CONFIG);
     let retryScheduled = false;
     peerConnected.current = false;
     peer.current = client;
@@ -1289,11 +1310,11 @@ export default function Home() {
         metadata: { name, kind: "camera" },
       });
       useCall(call, owner || "Anfitrião");
-      useData(client.connect(hostId(room, pin)));
+      useData(client.connect(hostId(room, pin), { reliable: true }));
       setNotice("Conectando à sala…");
       peerConnectTimer.current = window.setTimeout(retryConnection, 7_000);
     });
-    client.on("error", (error) => {
+    client.on("error", (error: any) => {
       if (
         (error.type === "peer-unavailable" ||
           error.type === "unavailable-id")
@@ -1322,9 +1343,25 @@ export default function Home() {
       window.clearTimeout(peerConnectTimer.current);
       window.clearTimeout(peerRetryTimer.current);
       local.current?.getTracks().forEach((track) => track.stop());
-      const stream = await navigator.mediaDevices.getUserMedia(
-        constraints(quality, chosen || undefined, chosenAudio || undefined),
-      );
+      let stream: MediaStream;
+      try {
+        stream = await navigator.mediaDevices.getUserMedia(
+          constraints(quality, chosen || undefined, chosenAudio || undefined),
+        );
+      } catch {
+        stream = await navigator.mediaDevices.getUserMedia({
+          video: {
+            width: { ideal: quality === "1080" ? 1920 : 1280 },
+            height: { ideal: quality === "1080" ? 1080 : 720 },
+            frameRate: { ideal: 30 },
+          },
+          audio: {
+            echoCancellation: true,
+            noiseSuppression: true,
+            autoGainControl: true,
+          },
+        });
+      }
       local.current = stream;
       setupMicrophoneProcessing(stream, micSensitivity);
       setCameraEpoch((value) => value + 1);

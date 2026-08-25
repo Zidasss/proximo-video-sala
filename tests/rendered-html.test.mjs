@@ -105,6 +105,10 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /function runRadarAnalysis/);
   assert.match(page, /function applyRadarSuggestions/);
   assert.match(page, /function previewRadarSuggestion/);
+  assert.match(page, /const montageRanges/);
+  assert.match(page, /function advanceMontageRange/);
+  assert.match(page, /fades automáticos/);
+  assert.match(page, /Exportar montagem/);
   assert.match(page, /setEditorOpen\(true\)/);
   assert.match(page, /KLIP RADAR/);
   assert.match(page, /O original foi preservado/);
@@ -115,6 +119,7 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(css, /\.radar-panel/);
   assert.match(css, /\.radar-cut/);
   assert.match(css, /\.radar-trigger/);
+  assert.match(css, /Studio readability pass/);
 });
 
 test("Klip Radar finds separate speech blocks and keeps them inside the source", async () => {

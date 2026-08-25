@@ -2899,6 +2899,7 @@ function ClipEditor({
   const [clip, setClip] = useState<EditorClip | null>(initialClip),
     [duration, setDuration] = useState(0),
     [current, setCurrent] = useState(0),
+    [isPlaying, setIsPlaying] = useState(false),
     [start, setStart] = useState(0),
     [end, setEnd] = useState(0),
     [caption, setCaption] = useState("Seu melhor momento começa aqui ✦"),
@@ -3160,12 +3161,20 @@ function ClipEditorV2({
   } | null>(null);
   const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
+  const transitionResize = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const videoFrameResize = useRef<{ scale: number; startX: number; startY: number; axis: "horizontal" | "vertical" } | null>(null);
 
   useEffect(() => {
     if (!selectedId && layers[0]) setSelectedId(layers[0].id);
   }, [layers, selectedId]);
+
+  useEffect(() => {
+    const syncPlayback = () => setIsPlaying(Boolean(video.current && !video.current.paused && !video.current.ended));
+    syncPlayback();
+    const timer = window.setInterval(syncPlayback, 180);
+    return () => window.clearInterval(timer);
+  }, [clip]);
 
   useEffect(() => {
     if (!clip) { setWaveform([]); return; }
@@ -3443,6 +3452,33 @@ function ClipEditorV2({
   function endTimelineTrim() {
     if (timelineTrim.current) setNotice("Corte atualizado na linha do tempo.");
     timelineTrim.current = null;
+  }
+  function beginTransitionResize(event: React.PointerEvent<HTMLButtonElement>, edge: "in" | "out") {
+    if (!duration) return;
+    event.preventDefault();
+    event.stopPropagation();
+    transitionResize.current = { edge, initial: edge === "in" ? videoFadeIn : videoFadeOut, startX: event.clientX };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveTransitionResize(event: React.PointerEvent<HTMLButtonElement>) {
+    const resize = transitionResize.current;
+    const track = event.currentTarget.parentElement;
+    if (!resize || !track || !duration) return;
+    const bounds = track.getBoundingClientRect();
+    const delta = ((event.clientX - resize.startX) / bounds.width) * duration;
+    const max = Math.max(.1, end - start - .05);
+    const next = Math.max(.1, Math.min(max, resize.initial + (resize.edge === "in" ? delta : -delta)));
+    if (resize.edge === "in") setVideoFadeIn(next); else setVideoFadeOut(next);
+  }
+  function endTransitionResize() {
+    if (transitionResize.current) setNotice("Duração do fade ajustada na timeline.");
+    transitionResize.current = null;
+  }
+  async function togglePreviewPlayback() {
+    if (!video.current) return;
+    if (video.current.paused) {
+      try { await video.current.play(); } catch { setNotice("Clique na prévia para liberar a reprodução."); }
+    } else video.current.pause();
   }
   function trimAtPlayhead() {
     if (!duration) return;
@@ -3977,7 +4013,7 @@ function ClipEditorV2({
           <button disabled={!future.current.length} onClick={redo} title="Refazer">↷ Refazer</button>
           <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>
           <button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button>
-          <button disabled={!clip} onClick={() => video.current?.paused ? void video.current?.play() : video.current?.pause()}>{video.current?.paused === false ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
+          <button className="timeline-play-toggle" disabled={!clip} onClick={() => void togglePreviewPlayback()}>{isPlaying ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
           <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores">⌁ Ímã</button>
           <button disabled={!clip} onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button>
           <button disabled={!clip} onClick={trimAtPlayhead} title="Move a ponta mais próxima do corte para o cursor atual">✂ Cortar no cursor</button>
@@ -3987,7 +4023,7 @@ function ClipEditorV2({
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
-          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Clique para remover a transição de entrada">↘ {transitionColor === "white" ? "Branco" : "Preto"}</button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${((end - videoFadeOut) / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Clique para remover a transição de saída">{transitionColor === "white" ? "Branco" : "Preto"} ↗</button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionResize(event, "in")} onPointerMove={moveTransitionResize} onPointerUp={endTransitionResize} onPointerCancel={endTransitionResize} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste para ajustar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}</button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${((end - videoFadeOut) / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionResize(event, "out")} onPointerMove={moveTransitionResize} onPointerUp={endTransitionResize} onPointerCancel={endTransitionResize} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste para ajustar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"} ↗</button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>

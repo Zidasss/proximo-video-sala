@@ -33,6 +33,9 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /onEnded=\{\(event\) => void playTimelineAt/);
   assert.match(page, /const hasFriendVideo/);
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
+  assert.match(page, /Vídeo e enquadramento/);
+  assert.match(page, /Arraste diretamente na prévia ou faça o ajuste preciso aqui/);
+  assert.match(page, /Horizontal · \{Math\.round\(selectedIllustration\.x\)\}%/);
   assert.match(page, /event\.key === "Delete"/);
   assert.match(page, /event\.code === "Space"/);
 });
@@ -55,5 +58,7 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.scene-track-heading/);
   assert.match(css, /\.primary-video-clip/);
   assert.match(css, /\.timeline-more/);
+  assert.match(css, /\.video-properties-grid/);
+  assert.match(css, /\.position-grid/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });

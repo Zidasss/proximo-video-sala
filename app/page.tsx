@@ -2,6 +2,10 @@
 
 import { useEffect, useRef, useState } from "react";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
+import { AuthModal } from "../components/AuthModal";
+import { SocialAccountsModal } from "../components/SocialAccountsModal";
+import { PublishModal } from "../components/PublishModal";
+import { Share2, Link2, User, Sparkles } from "lucide-react";
 
 type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
@@ -112,6 +116,10 @@ export default function Home() {
   const [editorOpen, setEditorOpen] = useState(false),
     [editorReturnToCall, setEditorReturnToCall] = useState(false),
     [editorClip, setEditorClip] = useState<EditorClip | null>(null);
+  const [authModalOpen, setAuthModalOpen] = useState(false),
+    [socialModalOpen, setSocialModalOpen] = useState(false),
+    [publishModalOpen, setPublishModalOpen] = useState(false),
+    [currentUser, setCurrentUser] = useState<{ id: string; email: string; name?: string } | null>(null);
   const [booting, setBooting] = useState(true);
   const [room, setRoom] = useState("------"),
     [pin, setPin] = useState("----");
@@ -247,6 +255,10 @@ export default function Home() {
     previewScreen = useRef<HTMLVideoElement>(null);
 
   useEffect(() => {
+    try {
+      const savedUser = localStorage.getItem("klip_user");
+      if (savedUser) setCurrentUser(JSON.parse(savedUser));
+    } catch {}
     const query = new URLSearchParams(location.search);
     if (query.get("editor") === "1") {
       setEditorOpen(true);
@@ -2035,7 +2047,7 @@ export default function Home() {
   if (!inRoom)
     return (
       <main className="landing">
-        <nav>
+        <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
           <div className="brand">
             <span className="brand-mark" aria-hidden="true">
               <i />
@@ -2043,9 +2055,40 @@ export default function Home() {
             </span>
             Klip
           </div>
-          <button className="open-editor" onClick={openEditor}>
-            ✦ Editor de clipes
-          </button>
+          <div style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
+            <button className="open-editor" onClick={openEditor}>
+              ✦ Editor de clipes
+            </button>
+            {currentUser ? (
+              <>
+                <button className="nav-action-btn" type="button" onClick={() => setSocialModalOpen(true)}>
+                  <Link2 style={{ width: "14px", height: "14px" }} /> Redes Sociais
+                </button>
+                <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
+                  <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
+                </button>
+                <div style={{ display: "flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.1)" }}>
+                  <User style={{ width: "13px", height: "13px", color: "#a5b4fc" }} />
+                  <span style={{ fontSize: "12px", fontWeight: 600, color: "#f4f4f5" }}>{currentUser.name || currentUser.email}</span>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      localStorage.removeItem("klip_user");
+                      setCurrentUser(null);
+                    }}
+                    style={{ background: "none", border: "none", color: "#71717a", fontSize: "11px", marginLeft: "4px", cursor: "pointer" }}
+                    title="Sair da conta"
+                  >
+                    (Sair)
+                  </button>
+                </div>
+              </>
+            ) : (
+              <button className="nav-action-btn primary" type="button" onClick={() => setAuthModalOpen(true)}>
+                <User style={{ width: "14px", height: "14px" }} /> Entrar com Login e Senha
+              </button>
+            )}
+          </div>
         </nav>
         <section className="hero">
           <div className="eyebrow">vídeo privado em tempo real</div>
@@ -2088,7 +2131,7 @@ export default function Home() {
               SEU NOME
               <input
                 value={name}
-                placeholder="Digite seu nome"
+                placeholder={currentUser?.name || "Digite seu nome"}
                 onChange={(event) => setName(event.target.value)}
               />
             </label>
@@ -2140,10 +2183,58 @@ export default function Home() {
               <b>→</b>
             </button>
             {notice && <p>{notice}</p>}
+
+            {!currentUser ? (
+              <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(99,102,241,0.08)", border: "1px solid rgba(99,102,241,0.2)", borderRadius: "12px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
+                <span style={{ fontSize: "11px", color: "#c7d2fe" }}>
+                  🔐 <b>Fazer Login:</b> Conecte suas contas do YouTube Shorts, TikTok e Instagram Reels.
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setAuthModalOpen(true)}
+                  style={{ fontSize: "11px", fontWeight: 600, padding: "5px 10px", borderRadius: "8px", background: "#6366f1", color: "#fff", border: "none", cursor: "pointer", whiteSpace: "nowrap" }}
+                >
+                  Entrar
+                </button>
+              </div>
+            ) : (
+              <div style={{ marginTop: "10px", padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
+                <span style={{ fontSize: "11px", color: "#6ee7b7" }}>
+                  ✓ Conectado como <b>{currentUser.name || currentUser.email}</b>
+                </span>
+                <button
+                  type="button"
+                  onClick={() => setSocialModalOpen(true)}
+                  style={{ fontSize: "11px", color: "#a7f3d0", textDecoration: "underline", background: "none", border: "none", cursor: "pointer" }}
+                >
+                  Configurar Redes Sociais
+                </button>
+              </div>
+            )}
           </div>
         </section>
         <div className="orb one" />
         <div className="orb two" />
+
+        <AuthModal
+          isOpen={authModalOpen}
+          onClose={() => setAuthModalOpen(false)}
+          onSuccess={(u) => {
+            setCurrentUser(u);
+            localStorage.setItem("klip_user", JSON.stringify(u));
+          }}
+        />
+
+        <SocialAccountsModal
+          isOpen={socialModalOpen}
+          onClose={() => setSocialModalOpen(false)}
+        />
+
+        <PublishModal
+          isOpen={publishModalOpen}
+          onClose={() => setPublishModalOpen(false)}
+          defaultTitle="Novo Vídeo Klip"
+        />
       </main>
     );
   const screenActive = sharing || remoteSharing;
@@ -2885,6 +2976,26 @@ export default function Home() {
           <small>Sair</small>
         </button>
       </footer>
+
+      <AuthModal
+        isOpen={authModalOpen}
+        onClose={() => setAuthModalOpen(false)}
+        onSuccess={(u) => {
+          setCurrentUser(u);
+          localStorage.setItem("klip_user", JSON.stringify(u));
+        }}
+      />
+
+      <SocialAccountsModal
+        isOpen={socialModalOpen}
+        onClose={() => setSocialModalOpen(false)}
+      />
+
+      <PublishModal
+        isOpen={publishModalOpen}
+        onClose={() => setPublishModalOpen(false)}
+        defaultTitle="Gravação Klip"
+      />
     </main>
   );
 }
@@ -3120,6 +3231,8 @@ function ClipEditorV2({
     [selectedIllustrationId, setSelectedIllustrationId] = useState(""),
     [exportFormat, setExportFormat] = useState<ExportFormat>("mp4"),
     [exporting, setExporting] = useState(false),
+    [publishModalOpen, setPublishModalOpen] = useState(false),
+    [publishBlob, setPublishBlob] = useState<Blob | null>(null),
     [notice, setNotice] = useState("");
   const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
@@ -3350,11 +3463,11 @@ function ClipEditorV2({
     });
     return lines;
   }
-  async function exportReel() {
+  async function exportReel(andPublish: boolean = false) {
     const source = video.current;
     if (!source || !clip || end <= start) return;
     setExporting(true);
-    setNotice("Renderizando o reel com todas as camadas e efeitos…");
+    setNotice(andPublish ? "Preparando vídeo para publicação..." : "Renderizando o reel com todas as camadas e efeitos…");
     const canvas = document.createElement("canvas"),
       context = canvas.getContext("2d");
     if (!context) {
@@ -3368,9 +3481,11 @@ function ClipEditorV2({
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
     ).captureStream?.();
     captured?.getAudioTracks().forEach((track) => output.addTrack(track));
-    const mime = mimeForExport(exportFormat) || mimeForExport("webm")!;
-    if (exportFormat === "mp4" && !mime.startsWith("video/mp4"))
-      setNotice("MP4 não é suportado neste navegador; exportando WebM verdadeiro.");
+    const mime =
+      mimeForExport(exportFormat) ||
+      (MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
+        ? "video/webm;codecs=vp9,opus"
+        : "video/webm");
     const chunks: Blob[] = [];
     const recorder = new MediaRecorder(output, {
       mimeType: mime,
@@ -3419,9 +3534,13 @@ function ClipEditorV2({
         context.beginPath();
         context.roundRect(x, y, boxWidth, boxHeight, 22);
         context.clip();
-        context.fillStyle = "#0b0b0b";
-        context.fill();
-        context.drawImage(media, x + (boxWidth - drawWidth) / 2, y + (boxHeight - drawHeight) / 2, drawWidth, drawHeight);
+        context.drawImage(
+          media,
+          x + (boxWidth - drawWidth) / 2,
+          y + (boxHeight - drawHeight) / 2,
+          drawWidth,
+          drawHeight,
+        );
         context.restore();
       });
       layers.forEach((layer) => {
@@ -3476,14 +3595,21 @@ function ClipEditorV2({
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
     recorder.onstop = () => {
       cancelAnimationFrame(frame);
-      const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `klip-reel-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+      const blob = new Blob(chunks, { type: mime });
+      if (andPublish) {
+        setPublishBlob(blob);
+        setPublishModalOpen(true);
+        setNotice("Vídeo processado! Pronto para publicação.");
+      } else {
+        const url = URL.createObjectURL(blob);
+        const link = document.createElement("a");
+        link.href = url;
+        link.download = `klip-reel-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
+        link.click();
+        window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
+        setNotice("Reel exportado com corte, áudio, textos e efeitos.");
+      }
       setExporting(false);
-      setNotice("Reel exportado com corte, áudio, textos e efeitos.");
     };
     source.currentTime = start;
     await new Promise<void>((resolve) =>
@@ -3507,8 +3633,12 @@ function ClipEditorV2({
             <option value="mp4">MP4</option>
             <option value="webm">WebM</option>
           </select>
-          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
+          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel(false)}>
             {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
+          </button>
+          <button className="editor-export editor-publish-btn" disabled={!clip || exporting} onClick={() => void exportReel(true)}>
+            <Share2 style={{ width: "14px", height: "14px", display: "inline-block", verticalAlign: "middle", marginRight: "4px" }} />
+            {exporting ? "Processando..." : "🚀 Publicar nas Redes"}
           </button>
         </div>
       </header>
@@ -3638,6 +3768,13 @@ function ClipEditorV2({
           {selectedIllustration && <><label>Ilustração entra <span>{time(selectedIllustration.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selectedIllustration.end - 0.05); updateIllustration(selectedIllustration.id, { start: value }); seek(value); }} /></label><label>Ilustração sai <span>{time(selectedIllustration.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selectedIllustration.start + 0.05); updateIllustration(selectedIllustration.id, { end: value }); seek(Math.max(selectedIllustration.start, value - 0.05)); }} /></label></>}
         </div>
       </section>
+
+      <PublishModal
+        isOpen={publishModalOpen}
+        onClose={() => setPublishModalOpen(false)}
+        videoBlob={publishBlob}
+        defaultTitle={clip?.name ? clip.name.replace(/\.[^/.]+$/, "") : "Reel Klip"}
+      />
     </main>
   );
 }

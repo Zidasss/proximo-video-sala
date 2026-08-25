@@ -3204,7 +3204,11 @@ function ClipEditorV2({
   }, [layers, selectedId, selectedIllustrationId, selectedAudioId]);
 
   useEffect(() => {
-    const syncPlayback = () => setIsPlaying(Boolean(video.current && !video.current.paused && !video.current.ended));
+    const syncPlayback = () => {
+      const basePlaying = Boolean(video.current && !video.current.paused && !video.current.ended);
+      const scenePlaying = Array.from(illustrationElements.current.values()).some((element) => element instanceof HTMLVideoElement && !element.paused && !element.ended);
+      setIsPlaying(basePlaying || scenePlaying);
+    };
     syncPlayback();
     const timer = window.setInterval(syncPlayback, 180);
     return () => window.clearInterval(timer);
@@ -3625,12 +3629,15 @@ function ClipEditorV2({
   }
   function seek(value: number) {
     if (!video.current) return;
-    if (sourceDuration && value > sourceDuration) {
+    const activeScene = sceneItems.find((item) => item.start <= value && value < item.end);
+    illustrationElements.current.forEach((element) => {
+      if (element instanceof HTMLVideoElement) element.pause();
+    });
+    if (activeScene) {
       video.current.pause();
-      const activeScene = sceneItems.find((item) => item.start <= value && value < item.end);
       const sceneElement = activeScene ? illustrationElements.current.get(activeScene.id) : null;
       if (sceneElement instanceof HTMLVideoElement && sceneElement.duration)
-        sceneElement.currentTime = Math.max(0, Math.min(sceneElement.duration - .04, value - activeScene!.start));
+        sceneElement.currentTime = Math.max(0, Math.min(sceneElement.duration - .04, value - activeScene.start));
       setCurrent(value);
       return;
     }
@@ -3805,9 +3812,36 @@ function ClipEditorV2({
   }
   async function togglePreviewPlayback() {
     if (!video.current) return;
-    if (video.current.paused) {
-      try { await video.current.play(); } catch { setNotice("Clique na prévia para liberar a reprodução."); }
-    } else video.current.pause();
+    if (isPlaying) {
+      video.current.pause();
+      illustrationElements.current.forEach((element) => { if (element instanceof HTMLVideoElement) element.pause(); });
+      setIsPlaying(false);
+      return;
+    }
+    await playTimelineAt(current);
+  }
+  async function playTimelineAt(at: number) {
+    if (!video.current) return;
+    const activeScene = sceneItems.find((item) => item.start <= at && at < item.end);
+    const nextScene = sceneItems.filter((item) => item.start >= at - .03).sort((a, b) => a.start - b.start)[0];
+    const target = activeScene || (at >= baseDuration ? nextScene : undefined);
+    if (target) {
+      video.current.pause();
+      illustrationElements.current.forEach((element, id) => { if (element instanceof HTMLVideoElement && id !== target.id) element.pause(); });
+      const sceneElement = illustrationElements.current.get(target.id);
+      if (!(sceneElement instanceof HTMLVideoElement)) { setNotice("Aguarde o próximo vídeo carregar e pressione Reproduzir novamente."); return; }
+      const timelineTime = activeScene ? at : target.start;
+      if (sceneElement.duration) sceneElement.currentTime = Math.max(0, Math.min(sceneElement.duration - .04, timelineTime - target.start));
+      try { await sceneElement.play(); setCurrent(timelineTime); setIsPlaying(true); } catch { setNotice("Clique na prévia para liberar a reprodução do próximo vídeo."); }
+      return;
+    }
+    if (at < baseDuration) {
+      video.current.currentTime = Math.max(0, Math.min(baseDuration - .04, at));
+      try { await video.current.play(); setIsPlaying(true); } catch { setNotice("Clique na prévia para liberar a reprodução."); }
+      return;
+    }
+    setCurrent(duration);
+    setIsPlaying(false);
   }
   function trimAtPlayhead() {
     if (!duration) return;
@@ -4477,22 +4511,22 @@ function ClipEditorV2({
           {clip && <div className={`stage-meta ${exportAspect === "vertical" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "stage-meta-tall" : ""}`}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>}
           <div className={`editor-stage preset-${visualPreset} ${exportAspect === "vertical" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "editor-stage-tall" : ""}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scaleX}, ${videoTransform.scaleY})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
+              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scaleX}, ${videoTransform.scaleY})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { const at = event.currentTarget.currentTime; const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={(event) => void playTimelineAt(event.currentTarget.duration)} /><div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
             ) : (
               <div className="editor-empty"><small>Klip Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload">＋ Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}
             {audioTracks.map((track) => <audio key={track.id} ref={(element) => { if (element) audioElements.current.set(track.id, element); else audioElements.current.delete(track.id); }} src={track.url} preload="auto" />)}
             {clip && videoTransitionOpacity(current) > 0 && <div className="video-transition-overlay" style={{ opacity: videoTransitionOpacity(current), backgroundColor: transitionColor === "black" ? "#000" : "#fff" }} />}
             {clip && illustrations.map((item) => {
-              if (layerOpacity(item, current) <= 0) return null;
+              if (item.role !== "scene" && layerOpacity(item, current) <= 0) return null;
               const common = {
                 ref: (element: HTMLImageElement | HTMLVideoElement | null) => {
                   if (element) illustrationElements.current.set(item.id, element);
                   else illustrationElements.current.delete(item.id);
                 },
               };
-              return <div key={item.id} className={`illustration-overlay ${item.role === "scene" ? "scene-video-overlay" : ""} ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current) }}>
-                {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay loop playsInline />}
+              return <div key={item.id} className={`illustration-overlay ${item.role === "scene" ? "scene-video-overlay" : ""} ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current), pointerEvents: item.role === "scene" && layerOpacity(item, current) <= 0 ? "none" : "auto" }}>
+                {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay={item.role !== "scene"} loop={item.role !== "scene"} playsInline preload="auto" onTimeUpdate={(event) => { if (item.role === "scene" && !event.currentTarget.paused) setCurrent(item.start + event.currentTarget.currentTime); }} onEnded={() => { if (item.role === "scene") void playTimelineAt(item.end); }} />}
                 <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · mover</small>
                 {selectedIllustration?.id === item.id && <div className="illustration-resize-handle" onPointerDown={(event) => beginIllustrationResize(event, item)} onPointerMove={moveIllustrationResize} onPointerUp={() => { illustrationResize.current = null; }} onPointerCancel={() => { illustrationResize.current = null; }} aria-label="Redimensionar camada">↘</div>}
               </div>;

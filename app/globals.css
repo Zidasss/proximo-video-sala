@@ -1650,6 +1650,30 @@ body {
   padding: 10px;
   font-size: 14px;
 }
+.audio-profile-warning {
+  padding: 11px;
+  border: 1px solid #d38b45;
+  border-radius: 9px;
+  background: #3a2818;
+  color: #ffe7c8;
+}
+.audio-profile-warning b { display: block; font-size: 13px; }
+.audio-profile-warning p {
+  margin: 5px 0 9px;
+  color: #e9c9a7;
+  font-size: 12px;
+  line-height: 1.4;
+}
+.audio-profile-warning button {
+  width: 100%;
+  padding: 9px;
+  border: 1px solid #ffb468;
+  border-radius: 7px;
+  background: #ffb468;
+  color: #28170d;
+  font-weight: 800;
+  cursor: pointer;
+}
 .menu-switch {
   display: flex;
   align-items: center;

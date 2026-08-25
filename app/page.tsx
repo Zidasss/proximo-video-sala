@@ -87,6 +87,22 @@ const mimeForExport = (format: ExportFormat) => {
   const vp9 = "video/webm;codecs=vp9,opus";
   return MediaRecorder.isTypeSupported(vp9) ? vp9 : "video/webm";
 };
+const isCommunicationAudioDevice = (label = "") =>
+  /hands[ -]?free|ag audio|comunica(?:ç|c)|communications|headset|fone de ouvido.*microfone/i.test(
+    label,
+  );
+const microphoneConstraints = (
+  audioInputId?: string,
+  suppressNoise = true,
+): MediaTrackConstraints => ({
+  ...(audioInputId ? { deviceId: { exact: audioInputId } } : {}),
+  echoCancellation: true,
+  noiseSuppression: suppressNoise,
+  autoGainControl: true,
+  channelCount: { ideal: 1 },
+  sampleRate: { ideal: 48_000 },
+  sampleSize: { ideal: 16 },
+});
 const constraints = (
   quality: Quality,
   deviceId?: string,
@@ -107,12 +123,7 @@ const constraints = (
     frameRate: { ideal: 30, max: 30 },
     ...(deviceId ? { deviceId: { exact: deviceId } } : {}),
   },
-  audio: {
-    ...(audioInputId ? { deviceId: { exact: audioInputId } } : {}),
-    echoCancellation: true,
-    noiseSuppression: true,
-    autoGainControl: true,
-  },
+  audio: microphoneConstraints(audioInputId),
 });
 
 export default function Home() {
@@ -1330,6 +1341,7 @@ export default function Home() {
   }
   function setupMicrophoneProcessing(stream: MediaStream, sensitivity: number) {
     void audioPipeline.current?.context.close();
+    processedAudio.current?.getTracks().forEach((track) => track.stop());
     audioPipeline.current = null;
     processedAudio.current = null;
     if (!stream.getAudioTracks().length) return;
@@ -1623,8 +1635,43 @@ export default function Home() {
     await join(id);
   }
   async function selectAudioInput(id: string) {
-    setAudioInputId(id);
-    await join(deviceId, id);
+    if (!inRoom || !local.current) {
+      setAudioInputId(id);
+      await join(deviceId, id);
+      return;
+    }
+    setNotice("Trocando somente o microfone…");
+    try {
+      const replacement = await navigator.mediaDevices.getUserMedia({
+          video: false,
+          audio: microphoneConstraints(id || undefined, noiseSuppression),
+        }),
+        nextTrack = replacement.getAudioTracks()[0];
+      if (!nextTrack) throw new Error("Microfone sem faixa de áudio");
+      nextTrack.enabled = mic;
+      const activeStream = local.current;
+      activeStream.getAudioTracks().forEach((track) => {
+        activeStream.removeTrack(track);
+        track.stop();
+      });
+      activeStream.addTrack(nextTrack);
+      setupMicrophoneProcessing(activeStream, micSensitivity);
+      replaceOutgoingAudio(processedAudio.current || activeStream);
+      setAudioInputId(id);
+      setCameraEpoch((value) => value + 1);
+      const saved = sessionStorage.getItem("klip-active-call");
+      if (saved) {
+        const call = JSON.parse(saved) as SavedCall;
+        sessionStorage.setItem(
+          "klip-active-call",
+          JSON.stringify({ ...call, audioInputId: id }),
+        );
+      }
+      await devicesList();
+      setNotice("Microfone atualizado sem reiniciar a sala.");
+    } catch {
+      setNotice("Não foi possível trocar o microfone. Verifique a permissão do navegador.");
+    }
   }
   async function selectAudioOutput(id: string) {
     setAudioOutputId(id);
@@ -1640,6 +1687,41 @@ export default function Home() {
     } catch {
       setNotice("Este navegador não permite escolher a saída de áudio.");
     }
+  }
+  async function preserveStereoListening() {
+    const safeInput = audioInputs.find(
+        (item) =>
+          item.deviceId !== "default" &&
+          !isCommunicationAudioDevice(item.label) &&
+          /webcam|camera|array|integrado|built[ -]?in|realtek|macbook|microfone/i.test(
+            item.label,
+          ),
+      ) ||
+      audioInputs.find(
+        (item) =>
+          item.deviceId !== "default" &&
+          !isCommunicationAudioDevice(item.label),
+      ),
+      stereoOutput =
+        audioOutputs.find(
+          (item) =>
+            item.deviceId !== "default" &&
+            !isCommunicationAudioDevice(item.label) &&
+            /stereo|headphones|fones|speaker|alto-falante/i.test(item.label),
+        ) ||
+        audioOutputs.find(
+          (item) =>
+            item.deviceId !== "default" &&
+            !isCommunicationAudioDevice(item.label),
+        );
+    if (!safeInput) {
+      setNotice(
+        "Não encontrei outro microfone. Conecte um microfone USB/webcam para manter o fone em estéreo.",
+      );
+      return;
+    }
+    if (stereoOutput) await selectAudioOutput(stereoOutput.deviceId);
+    await selectAudioInput(safeInput.deviceId);
   }
   function toggle(kind: "audio" | "video", value: boolean) {
     local.current
@@ -2391,7 +2473,15 @@ export default function Home() {
         <div className="orb two" />
       </main>
     );
-  const screenActive = sharing || remoteSharing;
+  const screenActive = sharing || remoteSharing,
+    selectedAudioInput =
+      audioInputs.find((item) => item.deviceId === audioInputId) ||
+      (!audioInputId
+        ? audioInputs.find((item) => item.deviceId === "default")
+        : undefined),
+    communicationAudioActive = isCommunicationAudioDevice(
+      selectedAudioInput?.label,
+    );
   return (
     <main className="call">
       <header>
@@ -2542,6 +2632,21 @@ export default function Home() {
                         ))}
                       </select>
                     </label>
+                    {communicationAudioActive && (
+                      <div className="audio-profile-warning" role="status">
+                        <b>Qualidade de chamada detectada</b>
+                        <p>
+                          O Windows pode colocar todo o som do computador em
+                          modo mono/comprimido enquanto este microfone estiver
+                          ativo. Use outro microfone e mantenha o fone apenas
+                          como saída para ouvir música, jogos e vídeos em
+                          estéreo.
+                        </p>
+                        <button onClick={() => void preserveStereoListening()}>
+                          Priorizar som estéreo
+                        </button>
+                      </div>
+                    )}
                     <div className="setting-actions">
                       <label className="background-upload">
                         ▧ Escolher imagem

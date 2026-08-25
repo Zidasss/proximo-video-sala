@@ -3156,10 +3156,10 @@ function ClipEditorV2({
     [exporting, setExporting] = useState(false),
     [exportProgress, setExportProgress] = useState(0),
     [notice, setNotice] = useState("");
-  const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; start: number; end: number }>>([]);
-  const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; start: number; end: number }>>([]);
+  const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
+  const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
   const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
-  const selected = layers.find((layer) => layer.id === selectedId) || layers[0];
+  const selected = layers.find((layer) => layer.id === selectedId);
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
   const selectedAudio = audioTracks.find((track) => track.id === selectedAudioId);
   const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
@@ -3180,14 +3180,15 @@ function ClipEditorV2({
   } | null>(null);
   const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
+  const timelineItemDrag = useRef<{ kind: "text" | "illustration" | "audio"; id: string; edge: "move" | "start" | "end"; start: number; end: number; startX: number } | null>(null);
   const transitionResize = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const transitionMove = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const videoFrameResize = useRef<{ scale: number; startX: number; startY: number; axis: "horizontal" | "vertical" } | null>(null);
 
   useEffect(() => {
-    if (!selectedId && layers[0]) setSelectedId(layers[0].id);
-  }, [layers, selectedId]);
+    if (!selectedId && !selectedIllustrationId && !selectedAudioId && layers[0]) setSelectedId(layers[0].id);
+  }, [layers, selectedId, selectedIllustrationId, selectedAudioId]);
 
   useEffect(() => {
     const syncPlayback = () => setIsPlaying(Boolean(video.current && !video.current.paused && !video.current.ended));
@@ -3254,6 +3255,22 @@ function ClipEditorV2({
     };
   }, [clip]);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      const target = event.target as HTMLElement | null;
+      const editingText = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
+      if (editingText) return;
+      const meta = event.ctrlKey || event.metaKey;
+      if (meta && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
+      if (meta && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
+      if (meta && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); return; }
+      if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); return; }
+      if (event.code === "Space") { event.preventDefault(); void togglePreviewPlayback(); }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [selectedId, selectedIllustrationId, selectedAudioId, clip, layers, illustrations, audioTracks, start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt]);
+
   const time = (value: number) => {
     const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
     const minutes = Math.floor(safe / 60);
@@ -3261,17 +3278,19 @@ function ClipEditorV2({
     const tenths = Math.floor((safe % 1) * 10);
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
   };
-  const remember = () => { history.current = [...history.current.slice(-24), { layers, illustrations, start, end }]; future.current = []; };
-  const undo = () => { const previous = history.current.pop(); if (!previous) return; future.current.push({ layers, illustrations, start, end }); setLayers(previous.layers); setIllustrations(previous.illustrations); setStart(previous.start); setEnd(previous.end); };
-  const redo = () => { const next = future.current.pop(); if (!next) return; history.current.push({ layers, illustrations, start, end }); setLayers(next.layers); setIllustrations(next.illustrations); setStart(next.start); setEnd(next.end); };
-  const updateLayer = (id: string, patch: Partial<TextLayer>) => {
-    remember();
+  const snapshot = () => ({ layers, illustrations, audioTracks, start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor });
+  const remember = () => { history.current = [...history.current.slice(-40), snapshot()]; future.current = []; };
+  const restoreSnapshot = (item: ReturnType<typeof snapshot>) => { setLayers(item.layers); setIllustrations(item.illustrations); setAudioTracks(item.audioTracks); setStart(item.start); setEnd(item.end); setVideoFadeIn(item.videoFadeIn); setVideoFadeOut(item.videoFadeOut); setVideoFadeInAt(item.videoFadeInAt); setVideoFadeOutAt(item.videoFadeOutAt); setTransitionColor(item.transitionColor); };
+  const undo = () => { const previous = history.current.pop(); if (!previous) return; future.current.push(snapshot()); restoreSnapshot(previous); setNotice("Ação desfeita."); };
+  const redo = () => { const next = future.current.pop(); if (!next) return; history.current.push(snapshot()); restoreSnapshot(next); setNotice("Ação refeita."); };
+  const updateLayer = (id: string, patch: Partial<TextLayer>, record = true) => {
+    if (record) remember();
     setLayers((items) =>
       items.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
     );
   };
-  const updateIllustration = (id: string, patch: Partial<IllustrationLayer>) => {
-    remember();
+  const updateIllustration = (id: string, patch: Partial<IllustrationLayer>, record = true) => {
+    if (record) remember();
     setIllustrations((items) =>
       items.map((item) => (item.id === id ? { ...item, ...patch } : item)),
     );
@@ -3412,7 +3431,7 @@ function ClipEditorV2({
     probe.onloadedmetadata = () => {
       const from = Math.max(start, current);
       const track: AudioTrack = { id: crypto.randomUUID(), url, name: file.name.replace(/\.[^.]+$/, ""), start: from, end: Math.min(end || duration || from + probe.duration, from + (Number.isFinite(probe.duration) ? probe.duration : 8)), volume: 85, fadeIn: .08, fadeOut: .12 };
-      setAudioTracks((items) => [...items, track]); setSelectedAudioId(track.id); setNotice("Faixa de áudio adicionada. Arraste e ajuste na timeline.");
+      remember(); setAudioTracks((items) => [...items, track]); setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); setNotice("Faixa de áudio adicionada. Arraste e ajuste na timeline.");
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setNotice("Não foi possível abrir este áudio."); };
   }
@@ -3429,12 +3448,14 @@ function ClipEditorV2({
     }
     addAudioTrack(new File([buffer], `klip-${kind}.wav`, { type: "audio/wav" }));
   }
-  function updateAudioTrack(id: string, patch: Partial<AudioTrack>) {
+  function updateAudioTrack(id: string, patch: Partial<AudioTrack>, record = true) {
+    if (record) remember();
     setAudioTracks((items) => items.map((track) => track.id === id ? { ...track, ...patch } : track));
   }
   function removeAudioTrack() {
     const track = audioTracks.find((item) => item.id === selectedAudioId);
-    if (track?.url.startsWith("blob:")) URL.revokeObjectURL(track.url);
+    if (!track) return;
+    remember();
     setAudioTracks((items) => items.filter((item) => item.id !== selectedAudioId));
     setSelectedAudioId("");
   }
@@ -3517,19 +3538,23 @@ function ClipEditorV2({
       fadeOut: 0.2,
       fit: "cover",
     };
+    remember();
     setIllustrations((items) => [...items, item]);
     setSelectedIllustrationId(item.id);
+    setSelectedId("");
+    setSelectedAudioId("");
     setNotice(`${kind === "image" ? "Imagem" : "Vídeo"} ilustrativo adicionado à linha do tempo.`);
   }
   function removeIllustration() {
     if (!selectedIllustration) return;
-    URL.revokeObjectURL(selectedIllustration.url);
+    remember();
     illustrationElements.current.delete(selectedIllustration.id);
     setIllustrations((items) => items.filter((item) => item.id !== selectedIllustration.id));
     setSelectedIllustrationId("");
   }
   function duplicateIllustration() {
     if (!selectedIllustration) return;
+    remember();
     const copy: IllustrationLayer = {
       ...selectedIllustration,
       id: crypto.randomUUID(),
@@ -3538,6 +3563,8 @@ function ClipEditorV2({
     };
     setIllustrations((items) => [...items, copy]);
     setSelectedIllustrationId(copy.id);
+    setSelectedId("");
+    setSelectedAudioId("");
     setNotice("Camada duplicada. Arraste, redimensione e escolha o período dela.");
   }
   function setVideoDuration(element: HTMLVideoElement) {
@@ -3564,7 +3591,7 @@ function ClipEditorV2({
   function snapTime(value: number) {
     const safe = Math.max(0, Math.min(duration, value));
     if (!snapEnabled || !duration) return safe;
-    const points = [0, duration, start, end, current, ...markers, ...layers.flatMap((layer) => [layer.start, layer.end]), ...illustrations.flatMap((item) => [item.start, item.end])];
+    const points = [0, duration, start, end, current, ...markers, ...layers.flatMap((layer) => [layer.start, layer.end]), ...illustrations.flatMap((item) => [item.start, item.end]), ...audioTracks.flatMap((track) => [track.start, track.end])];
     const threshold = Math.max(.08, duration / 280);
     const closest = points.reduce((best, point) => Math.abs(point - safe) < Math.abs(best - safe) ? point : best, safe);
     return Math.abs(closest - safe) <= threshold ? closest : safe;
@@ -3601,6 +3628,41 @@ function ClipEditorV2({
   function endTimelineTrim() {
     if (timelineTrim.current) setNotice("Corte atualizado na linha do tempo.");
     timelineTrim.current = null;
+  }
+  function beginTimelineItemDrag(event: React.PointerEvent<HTMLElement>, kind: "text" | "illustration" | "audio", id: string, edge: "move" | "start" | "end", itemStart: number, itemEnd: number) {
+    if (!duration) return;
+    event.preventDefault();
+    event.stopPropagation();
+    remember();
+    timelineItemDrag.current = { kind, id, edge, start: itemStart, end: itemEnd, startX: event.clientX };
+    if (kind === "text") { setSelectedId(id); setSelectedIllustrationId(""); setSelectedAudioId(""); }
+    if (kind === "illustration") { setSelectedIllustrationId(id); setSelectedId(""); setSelectedAudioId(""); }
+    if (kind === "audio") { setSelectedAudioId(id); setSelectedId(""); setSelectedIllustrationId(""); }
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveTimelineItemDrag(event: React.PointerEvent<HTMLElement>) {
+    const drag = timelineItemDrag.current;
+    const track = event.currentTarget.parentElement;
+    if (!drag || !track || !duration) return;
+    const bounds = track.getBoundingClientRect();
+    const delta = ((event.clientX - drag.startX) / bounds.width) * duration;
+    const length = drag.end - drag.start;
+    let patch: { start?: number; end?: number };
+    if (drag.edge === "move") {
+      const nextStart = snapTime(Math.max(start, Math.min(end - length, drag.start + delta)));
+      patch = { start: nextStart, end: nextStart + length };
+    } else if (drag.edge === "start") {
+      patch = { start: snapTime(Math.max(start, Math.min(drag.end - .08, drag.start + delta))) };
+    } else {
+      patch = { end: snapTime(Math.max(drag.start + .08, Math.min(end, drag.end + delta))) };
+    }
+    if (drag.kind === "text") updateLayer(drag.id, patch, false);
+    else if (drag.kind === "illustration") updateIllustration(drag.id, patch, false);
+    else updateAudioTrack(drag.id, patch, false);
+  }
+  function endTimelineItemDrag() {
+    if (timelineItemDrag.current) setNotice("Clip atualizado na timeline.");
+    timelineItemDrag.current = null;
   }
   function beginTransitionResize(event: React.PointerEvent<HTMLElement>, edge: "in" | "out") {
     if (!duration) return;
@@ -3683,6 +3745,7 @@ function ClipEditorV2({
     }
   }
   function addLayer() {
+    remember();
     const from = Math.max(start, Math.min(current, Math.max(start, end - 0.4)));
     const layer: TextLayer = {
       ...initialLayer(),
@@ -3695,10 +3758,13 @@ function ClipEditorV2({
     };
     setLayers((items) => [...items, layer]);
     setSelectedId(layer.id);
+    setSelectedIllustrationId("");
+    setSelectedAudioId("");
     setNotice("Nova camada adicionada. Arraste o texto diretamente na prévia.");
   }
   function duplicateLayer() {
     if (!selected) return;
+    remember();
     const layer = {
       ...selected,
       id: crypto.randomUUID(),
@@ -3711,11 +3777,24 @@ function ClipEditorV2({
   }
   function removeLayer() {
     if (!selected) return;
+    remember();
     setLayers((items) => items.filter((layer) => layer.id !== selected.id));
     setSelectedId("");
   }
+  function deleteSelected() {
+    if (selectedIllustrationId) { removeIllustration(); return; }
+    if (selectedAudioId) { removeAudioTrack(); return; }
+    if (selectedId) removeLayer();
+  }
+  function duplicateSelected() {
+    if (selectedIllustrationId) { duplicateIllustration(); return; }
+    if (selectedId) duplicateLayer();
+  }
   function beginLayerDrag(event: React.PointerEvent<HTMLDivElement>, layer: TextLayer) {
+    remember();
     setSelectedId(layer.id);
+    setSelectedIllustrationId("");
+    setSelectedAudioId("");
     layerDrag.current = {
       id: layer.id,
       x: layer.x,
@@ -3733,10 +3812,13 @@ function ClipEditorV2({
     updateLayer(drag.id, {
       x: Math.max(7, Math.min(93, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
       y: Math.max(5, Math.min(95, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
-    });
+    }, false);
   }
   function beginIllustrationDrag(event: React.PointerEvent<HTMLDivElement>, item: IllustrationLayer) {
+    remember();
     setSelectedIllustrationId(item.id);
+    setSelectedId("");
+    setSelectedAudioId("");
     illustrationDrag.current = { id: item.id, x: item.x, y: item.y, startX: event.clientX, startY: event.clientY };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -3749,10 +3831,11 @@ function ClipEditorV2({
     updateIllustration(drag.id, {
       x: Math.max(8, Math.min(92, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)),
       y: Math.max(8, Math.min(92, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
-    });
+    }, false);
   }
   function beginIllustrationResize(event: React.PointerEvent<HTMLDivElement>, item: IllustrationLayer) {
     event.stopPropagation();
+    remember();
     setSelectedIllustrationId(item.id);
     illustrationResize.current = { id: item.id, size: item.size, startX: event.clientX };
     event.currentTarget.setPointerCapture(event.pointerId);
@@ -3764,7 +3847,7 @@ function ClipEditorV2({
     const bounds = stage.getBoundingClientRect();
     updateIllustration(resize.id, {
       size: Math.max(18, Math.min(90, resize.size + ((event.clientX - resize.startX) / bounds.width) * 100)),
-    });
+    }, false);
   }
   function beginVideoFrameDrag(event: React.PointerEvent<HTMLVideoElement>) {
     if (!clip) return;
@@ -4211,36 +4294,30 @@ function ClipEditorV2({
           <button disabled={!history.current.length} onClick={undo} title="Desfazer">↶ Desfazer</button>
           <button disabled={!future.current.length} onClick={redo} title="Refazer">↷ Refazer</button>
           <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>
-          <button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button>
           <button className="timeline-play-toggle" disabled={!clip} onClick={() => void togglePreviewPlayback()}>{isPlaying ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
           <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores">⌁ Ímã</button>
-          <button disabled={!clip} onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button>
-          <button disabled={!clip} onClick={trimAtPlayhead} title="Move a ponta mais próxima do corte para o cursor atual">✂ Cortar no cursor</button>
-          <button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button>
-          <button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button>
-          <button disabled={!clip} onClick={() => seek(start)}>↶ Início</button>
+          <details className="timeline-more"><summary>••• Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button><button disabled={!clip} onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button><button disabled={!clip} onClick={trimAtPlayhead} title="Move a ponta mais próxima do corte para o cursor atual">✂ Cortar no cursor</button><button disabled={!clip} onClick={() => markCut("start")}>◀ Começar aqui</button><button disabled={!clip} onClick={() => markCut("end")}>Terminar aqui ▶</button><button disabled={!clip} onClick={() => seek(start)}>↶ Início</button></div></details>
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
-          {audioTracks.map((track, index) => <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); seek(Math.max(start, track.start)); }}><b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }}><span>{track.name}</span><i>{track.volume}% · canal</i></button></div></div>)}
+          {audioTracks.map((track, index) => <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }}><b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip timeline-item-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "move", track.start, track.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "start", track.start, track.end)} /><span>{track.name}</span><i className="timeline-clip-meta">{track.volume}% · canal</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "end", track.start, track.end)} /></button></div></div>)}
           {illustrations.map((item, index) => (
-            <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); seek(Math.max(start, item.start)); }}>
-              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }}><span>{item.name || "Ilustração"}</span><i>{item.kind === "image" ? "imagem" : "vídeo"}</i></button></div>
+            <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }}>
+              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
             </div>
           ))}
           {layers.map((layer, index) => (
-            <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => { setSelectedId(layer.id); seek(Math.max(start, layer.start)); }}>
-              <b>T{index + 1}</b><div className="lane-track"><button className="text-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }}><span>{layer.text || "Texto"}</span><i>{layer.effect !== "none" ? layer.effect : "texto"}</i></button></div>
+            <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => { setSelectedId(layer.id); setSelectedIllustrationId(""); setSelectedAudioId(""); seek(Math.max(start, layer.start)); }}>
+              <b>T{index + 1}</b><div className="lane-track"><button className="text-clip timeline-item-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "move", layer.start, layer.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "start", layer.start, layer.end)} /><span>{layer.text || "Texto"}</span><i className="timeline-clip-meta">{layer.effect !== "none" ? layer.effect : "texto"}</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "end", layer.start, layer.end)} /></button></div>
             </div>
           ))}
           <div className="global-playhead" style={{ left: duration ? `calc(74px + (100% - 74px) * ${current / duration})` : "74px" }} />
         </div>
         <div className="cut-controls editor-time-controls">
-          <p className="timeline-trim-help"><b>✂ Corte direto</b> Arraste as duas alças vermelhas na faixa de vídeo. A forma de onda ajuda a achar pausas e fala. Com o <em>Ímã</em> ativo, o cursor encaixa em marcadores e bordas de camadas.</p>
-          {selected && <><label>Texto entra <span>{time(selected.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selected.end - 0.05); updateLayer(selected.id, { start: value }); seek(value); }} /></label><label>Texto sai <span>{time(selected.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selected.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selected.start + 0.05); updateLayer(selected.id, { end: value }); seek(Math.max(selected.start, value - 0.05)); }} /></label></>}
-          {selectedIllustration && <><label>Ilustração entra <span>{time(selectedIllustration.start)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.start} onChange={(event) => { const value = Math.min(Number(event.target.value), selectedIllustration.end - 0.05); updateIllustration(selectedIllustration.id, { start: value }); seek(value); }} /></label><label>Ilustração sai <span>{time(selectedIllustration.end)}</span><input type="range" min={start} max={Math.max(start, end)} step="0.05" value={selectedIllustration.end} onChange={(event) => { const value = Math.max(Number(event.target.value), selectedIllustration.start + 0.05); updateIllustration(selectedIllustration.id, { end: value }); seek(Math.max(selectedIllustration.start, value - 0.05)); }} /></label></>}
+          <p className="timeline-trim-help"><b>{selected ? `T${layers.findIndex((layer) => layer.id === selected.id) + 1}` : selectedIllustration ? selectedIllustration.kind === "image" ? "Imagem" : "Vídeo" : selectedAudio ? "Áudio" : "Edição direta"}</b><span>{selected ? selected.text : selectedIllustration ? selectedIllustration.name : selectedAudio ? selectedAudio.name : "Selecione e arraste um clipe na linha do tempo."}</span></p>
+          {(selected || selectedIllustration || selectedAudio) && <p className="timeline-shortcuts">Arraste o bloco para mover · arraste as pontas para cortar · <kbd>Del</kbd> remover · <kbd>Ctrl D</kbd> duplicar · <kbd>Espaço</kbd> reproduzir</p>}
         </div>
       </section>
     </main>

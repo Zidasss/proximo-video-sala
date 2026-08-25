@@ -553,10 +553,8 @@ export default function Home() {
         // usamos diretamente o RVM/WebGL, que não depende de OffscreenCanvas
         // nem da transferência de ImageBitmap para entregar a primeira máscara.
         const isMacOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
-        const usePremiumMatting = mattingQuality === "premium" || isMacOS;
+        const usePremiumMatting = mattingQuality === "premium" && !isMacOS;
         if (usePremiumMatting) {
-          if (isMacOS && mattingQuality !== "premium")
-            setNotice("Desfoque compatível com macOS ativado na GPU.");
           setNotice("Preparando IA Premium na GPU…");
           const tf = await import("@tensorflow/tfjs");
           try {
@@ -725,39 +723,165 @@ export default function Home() {
             }
           };
         }
-        const worker = new Worker(
-          new URL("./workers/person-segmentation.worker.ts", import.meta.url),
-          { type: "module", name: "klip-person-segmentation" },
-        );
+        type SegmentMessage =
+          | { type: "init" }
+          | { type: "segment"; bitmap?: ImageBitmap; frame?: HTMLCanvasElement; timestamp: number }
+          | { type: "close" };
+        type SegmentResponse =
+          | { type: "ready" }
+          | { type: "mask"; alpha: ArrayBuffer; width: number; height: number; inferenceMs: number }
+          | { type: "error"; message: string };
+        type SegmentPort = {
+          onmessage: ((event: MessageEvent<SegmentResponse>) => void) | null;
+          onerror: ((event?: Event) => void) | null;
+          postMessage: (message: SegmentMessage, transfer?: Transferable[]) => void;
+          terminate: () => void;
+        };
+        // Safari/macOS pode criar o Worker e até responder "ready", mas falha
+        // ao obter o contexto WebGL/OffscreenCanvas no primeiro frame. Este
+        // adaptador mantém a mesma interface, porém executa o MediaPipe na
+        // thread principal, onde WebGL é oficialmente funcional no Safari.
+        let macSegmenter: import("@mediapipe/tasks-vision").ImageSegmenter | null = null;
+        let macClosed = false;
+        const macPort: SegmentPort = {
+          onmessage: null,
+          onerror: null,
+          postMessage(message) {
+            if (message.type === "init") {
+              void (async () => {
+                try {
+                  const { FilesetResolver, ImageSegmenter } = await import("@mediapipe/tasks-vision");
+                  const vision = await FilesetResolver.forVisionTasks(
+                    "https://cdn.jsdelivr.net/npm/@mediapipe/tasks-vision@1.0.1/wasm",
+                    false,
+                  );
+                  const options = {
+                    baseOptions: {
+                      modelAssetPath: "/models/selfie_multiclass_256x256.tflite",
+                      delegate: "GPU" as const,
+                    },
+                    runningMode: "VIDEO" as const,
+                    outputConfidenceMasks: true,
+                    outputCategoryMask: false,
+                  };
+                  try {
+                    macSegmenter = await ImageSegmenter.createFromOptions(vision, options);
+                  } catch {
+                    macSegmenter = await ImageSegmenter.createFromOptions(vision, {
+                      ...options,
+                      baseOptions: { ...options.baseOptions, delegate: "CPU" as const },
+                    });
+                  }
+                  if (macClosed) {
+                    macSegmenter.close();
+                    macSegmenter = null;
+                    return;
+                  }
+                  setNotice("Recorte compatível com macOS pronto.");
+                  macPort.onmessage?.({ data: { type: "ready" } } as MessageEvent<SegmentResponse>);
+                } catch (error) {
+                  const message = error instanceof Error ? error.message : "Falha ao preparar o MediaPipe no macOS.";
+                  macPort.onmessage?.({ data: { type: "error", message } } as MessageEvent<SegmentResponse>);
+                }
+              })();
+              return;
+            }
+            if (message.type === "close") {
+              macClosed = true;
+              macSegmenter?.close();
+              macSegmenter = null;
+              return;
+            }
+            const frame = message.frame || message.bitmap;
+            if (!macSegmenter || !frame) {
+              message.bitmap?.close();
+              return;
+            }
+            const started = performance.now();
+            try {
+              macSegmenter.segmentForVideo(frame, message.timestamp, (results) => {
+                const masks = results.confidenceMasks;
+                if (!masks?.length) throw new Error("A máscara da pessoa não foi gerada no macOS.");
+                const labels = macSegmenter?.getLabels().map((label) => label.toLowerCase()) || [];
+                const indexFor = (label: string, fallback: number) => {
+                  const found = labels.indexOf(label);
+                  return Math.max(0, Math.min(masks.length - 1, found >= 0 ? found : fallback));
+                };
+                const backgroundMask = masks[indexFor("background", 0)];
+                const hairMask = masks[indexFor("hair", 1)];
+                const bodyMask = masks[indexFor("body-skin", 2)];
+                const faceMask = masks[indexFor("face-skin", 3)];
+                const clothesMask = masks[indexFor("clothes", 4)];
+                const backgroundValues = backgroundMask.getAsFloat32Array();
+                const hairValues = hairMask.getAsFloat32Array();
+                const bodyValues = bodyMask.getAsFloat32Array();
+                const faceValues = faceMask.getAsFloat32Array();
+                const clothesValues = clothesMask.getAsFloat32Array();
+                const alpha = new Uint8ClampedArray(backgroundValues.length);
+                for (let index = 0; index < alpha.length; index += 1) {
+                  const person = Math.max(
+                    1 - backgroundValues[index],
+                    hairValues[index] * 1.18,
+                    bodyValues[index],
+                    faceValues[index] * 1.06,
+                    clothesValues[index],
+                  );
+                  const normalized = Math.max(0, Math.min(1, (person - 0.16) / 0.48));
+                  alpha[index] = Math.round(normalized * normalized * (3 - 2 * normalized) * 255);
+                }
+                const response: SegmentResponse = {
+                  type: "mask",
+                  alpha: alpha.buffer,
+                  width: backgroundMask.width,
+                  height: backgroundMask.height,
+                  inferenceMs: performance.now() - started,
+                };
+                macPort.onmessage?.({ data: response } as MessageEvent<SegmentResponse>);
+                results.close();
+              });
+            } catch (error) {
+              const detail = error instanceof Error ? error.message : "Falha ao recortar a pessoa no macOS.";
+              macPort.onmessage?.({ data: { type: "error", message: detail } } as MessageEvent<SegmentResponse>);
+            } finally {
+              message.bitmap?.close();
+            }
+          },
+          terminate() {
+            macClosed = true;
+            macSegmenter?.close();
+            macSegmenter = null;
+          },
+        };
+        const worker: SegmentPort = isMacOS
+          ? macPort
+          : (new Worker(
+              new URL("./workers/person-segmentation.worker.ts", import.meta.url),
+              { type: "module", name: "klip-person-segmentation" },
+            ) as unknown as SegmentPort);
         let workerReady = false,
           workerBusy = false,
           bitmapFailures = 0,
           fallbackTriggered = false,
           firstMaskTimer = 0,
           maskPixels: ImageData | null = null;
-        const fallbackToPremium = () => {
+        const fallbackToPremium = (reason = "") => {
           if (fallbackTriggered || !active) return;
           fallbackTriggered = true;
           window.clearTimeout(firstMaskTimer);
+          if (isMacOS) {
+            setVirtualEffectLoading("");
+            setNotice(
+              `O recorte compatível do macOS não respondeu${reason ? `: ${reason}` : "."}`,
+            );
+            return;
+          }
           // Safari/macOS pode não oferecer ImageBitmap/OffscreenCanvas de modo
           // compatível dentro do Worker. Em máquinas fortes, como Apple Silicon,
           // a IA Premium no WebGL principal é um fallback funcional.
           setMattingQuality("premium");
           setNotice("Usando IA Premium compatível com este navegador para o fundo virtual.");
         };
-        worker.onmessage = (
-          event: MessageEvent<
-            | { type: "ready" }
-            | {
-                type: "mask";
-                alpha: ArrayBuffer;
-                width: number;
-                height: number;
-                inferenceMs: number;
-              }
-            | { type: "error"; message: string }
-          >,
-        ) => {
+        worker.onmessage = (event: MessageEvent<SegmentResponse>) => {
           if (!active) return;
           if (event.data.type === "ready") {
             workerReady = true;
@@ -765,7 +889,7 @@ export default function Home() {
           }
           workerBusy = false;
           if (event.data.type === "error") {
-            fallbackToPremium();
+            fallbackToPremium(event.data.message);
             return;
           }
           inferenceDuration = event.data.inferenceMs;
@@ -897,8 +1021,18 @@ export default function Home() {
               Math.round(
                 (bitmapWidth * (source.videoHeight || canvas.height)) /
                   (source.videoWidth || canvas.width),
-              ),
+                ),
             );
+            if (isMacOS) {
+              // Não transfira HTMLVideoElement/ImageBitmap no Safari. O frame
+              // reduzido permanece na página e segue direto ao MediaPipe.
+              inferenceCanvas.width = bitmapWidth;
+              inferenceCanvas.height = bitmapHeight;
+              inferenceContext.drawImage(source, 0, 0, bitmapWidth, bitmapHeight);
+              worker.postMessage({ type: "segment", frame: inferenceCanvas, timestamp: now });
+              segmentationFrame = requestAnimationFrame(next);
+              return;
+            }
             void createImageBitmap(source, {
               resizeWidth: bitmapWidth,
               resizeHeight: bitmapHeight,

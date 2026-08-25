@@ -39,10 +39,14 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /if \(background\) image\.src = background/);
   assert.match(page, /Nunca faça composição em 4K implícita/);
   assert.match(page, /Usando IA Premium compatível com este navegador/);
-  assert.match(page, /const usePremiumMatting = mattingQuality === "premium" \|\| isMacOS/);
+  assert.match(page, /const usePremiumMatting = mattingQuality === "premium" && !isMacOS/);
   assert.match(page, /"Identity:0", "Identity_1:0", "Identity_2:0"/);
   assert.match(page, /frameRate: \{ ideal: 30, max: 30 \}/);
   assert.match(page, /firstMaskTimer = window\.setTimeout/);
+  assert.match(page, /const macPort: SegmentPort/);
+  assert.match(page, /Recorte compatível com macOS pronto/);
+  assert.match(page, /selfie_multiclass_256x256\.tflite/);
+  assert.match(page, /worker\.postMessage\(\{ type: "segment", frame: inferenceCanvas/);
   assert.match(page, /Carregando e preparando o GIF/);
   assert.match(page, /inferenceDuration > 95 \? 384/);
   assert.match(page, /Vídeo e enquadramento/);

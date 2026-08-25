@@ -3300,13 +3300,9 @@ function ClipEditorV2({
     return layer.text.slice(0, Math.ceil(layer.text.length * progress));
   };
   const visualFilter = visualPreset === "cinematic" ? "contrast(1.12) saturate(.84) brightness(.92)" : visualPreset === "vivid" ? "contrast(1.08) saturate(1.35)" : visualPreset === "mono" ? "grayscale(1) contrast(1.18)" : visualPreset === "warm" ? "sepia(.22) saturate(1.16) contrast(1.04)" : "none";
-  function selectFile(file?: File) {
-    if (!file) return;
+  function resetWithClip(nextClip: EditorClip, message: string) {
     if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
-    setClip({
-      url: URL.createObjectURL(file),
-      name: file.name.replace(/\.[^.]+$/, ""),
-    });
+    setClip(nextClip);
     setDuration(0);
     setCurrent(0);
     setStart(0);
@@ -3319,7 +3315,81 @@ function ClipEditorV2({
     setIllustrations([]);
     setSelectedId("");
     setSelectedIllustrationId("");
-    setNotice("Vídeo carregado. Agora monte as camadas na linha do tempo.");
+    setNotice(message);
+  }
+  async function turnPhotoIntoClip(file: File) {
+    if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) {
+      setNotice("Este navegador não consegue transformar fotos em vídeo. Use uma versão atual do Chrome.");
+      return;
+    }
+    setNotice("Transformando sua foto em um clipe animado…");
+    const imageUrl = URL.createObjectURL(file);
+    const image = new Image();
+    try {
+      await new Promise<void>((resolve, reject) => {
+        image.onload = () => resolve();
+        image.onerror = () => reject(new Error("image-load"));
+        image.src = imageUrl;
+      });
+      const aspect = image.naturalWidth / image.naturalHeight || 16 / 9;
+      const canvas = document.createElement("canvas");
+      const width = aspect >= 1 ? 1280 : 720;
+      const height = Math.max(2, Math.round(width / aspect / 2) * 2);
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext("2d");
+      if (!context) throw new Error("canvas");
+      const stream = canvas.captureStream(30);
+      const mime = mimeForExport("webm") || "video/webm";
+      const recorder = new MediaRecorder(stream, { mimeType: mime, videoBitsPerSecond: 8_000_000 });
+      const chunks: BlobPart[] = [];
+      const seconds = 6;
+      recorder.ondataavailable = (event) => { if (event.data.size) chunks.push(event.data); };
+      recorder.onerror = () => setNotice("Não foi possível gerar o clipe a partir desta foto.");
+      recorder.onstop = () => {
+        stream.getTracks().forEach((track) => track.stop());
+        URL.revokeObjectURL(imageUrl);
+        if (!chunks.length) return;
+        setSourceAspect(aspect);
+        resetWithClip(
+          { url: URL.createObjectURL(new Blob(chunks, { type: mime })), name: `${file.name.replace(/\.[^.]+$/, "")} · foto animada` },
+          "Foto transformada em clipe de 6 segundos. Arraste, corte, adicione áudio e exporte.",
+        );
+      };
+      const draw = (progress: number) => {
+        context.fillStyle = "#090909";
+        context.fillRect(0, 0, width, height);
+        const cover = Math.max(width / image.naturalWidth, height / image.naturalHeight);
+        const zoom = 1 + progress * 0.075;
+        const drawWidth = image.naturalWidth * cover * zoom;
+        const drawHeight = image.naturalHeight * cover * zoom;
+        const driftX = Math.sin(progress * Math.PI) * width * 0.018;
+        context.drawImage(image, (width - drawWidth) / 2 + driftX, (height - drawHeight) / 2, drawWidth, drawHeight);
+      };
+      const started = performance.now();
+      const render = () => {
+        const progress = Math.min(1, (performance.now() - started) / (seconds * 1000));
+        draw(progress);
+        if (progress < 1) requestAnimationFrame(render);
+        else recorder.stop();
+      };
+      recorder.start(250);
+      render();
+    } catch {
+      URL.revokeObjectURL(imageUrl);
+      setNotice("Não foi possível abrir esta foto. Tente JPG, PNG, WebP ou GIF.");
+    }
+  }
+  async function selectFile(file?: File) {
+    if (!file) return;
+    if (file.type.startsWith("image/")) {
+      await turnPhotoIntoClip(file);
+      return;
+    }
+    resetWithClip({
+      url: URL.createObjectURL(file),
+      name: file.name.replace(/\.[^.]+$/, ""),
+    }, "Vídeo carregado. Agora monte as camadas na linha do tempo.");
   }
   function addAudioTrack(file?: File) {
     if (!file) return;
@@ -3973,8 +4043,8 @@ function ClipEditorV2({
       </header>
       <section className="editor-workspace">
         <aside className="editor-tools">
-          <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação ou vídeo do computador</small></div></div>
-          <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
+          <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
+          <label className="editor-upload">＋ Importar vídeo ou foto<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
           {clip && <p className="editor-file">● {clip.name}</p>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           <div className="tool-heading layer-heading"><span>00</span><div><b>Templates</b><small>Comece com um layout pronto</small></div></div>

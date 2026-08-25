@@ -79,7 +79,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.17.0-update";
+const APP_VERSION = "v0.17.1";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -4095,11 +4095,13 @@ function ClipEditorV2({
     if (edge === "start") {
       const next = Math.min(value, end - 0.05);
       setStart(Math.max(0, next));
+      updateActiveRadarRange({ start: Math.max(0, next) });
       seek(Math.max(0, next));
     } else {
       const next = Math.max(value, start + 0.05);
       if (next > duration) setDuration(next);
       setEnd(next);
+      updateActiveRadarRange({ end: next });
       seek(next);
     }
   }
@@ -4334,6 +4336,16 @@ function ClipEditorV2({
     setApprovedCuts((items) => items.filter((item) => item.id !== id));
     if (activeRadarCutId === id) setActiveRadarCutId("");
   }
+  function updateActiveRadarRange(patch: Partial<Pick<RadarSuggestion, "start" | "end">>) {
+    if (!activeRadarCutId) return;
+    setApprovedCuts((items) => {
+      const active = items.find((item) => item.id === activeRadarCutId);
+      if (!active) return items;
+      return items.map((item) =>
+        item.id === activeRadarCutId ? { ...item, ...patch } : item,
+      );
+    });
+  }
   useEffect(() => {
     const previewEnd = radarPreviewEnd.current;
     if (previewEnd === null || current < previewEnd - 0.03) return;
@@ -4357,10 +4369,12 @@ function ClipEditorV2({
     if (current <= (start + end) / 2) {
       const value = Math.min(current, end - 0.05);
       setStart(Math.max(0, value));
+      updateActiveRadarRange({ start: Math.max(0, value) });
       setNotice(`Início do corte movido para ${time(Math.max(0, value))}.`);
     } else {
       const value = Math.max(current, start + 0.05);
       setEnd(Math.min(duration, value));
+      updateActiveRadarRange({ end: Math.min(duration, value) });
       setNotice(`Fim do corte movido para ${time(Math.min(duration, value))}.`);
     }
   }
@@ -4414,10 +4428,12 @@ function ClipEditorV2({
     if (edge === "start") {
       const value = Math.min(snapTime(current), end - 0.05);
       setStart(Math.max(0, value));
+      updateActiveRadarRange({ start: Math.max(0, value) });
       setNotice(`Corte inicial marcado em ${time(Math.max(0, value))}.`);
     } else {
       const value = Math.max(snapTime(current), start + 0.05);
       setEnd(Math.min(duration, value));
+      updateActiveRadarRange({ end: Math.min(duration, value) });
       setNotice(`Corte final marcado em ${time(Math.min(duration, value))}.`);
     }
   }
@@ -4678,12 +4694,31 @@ function ClipEditorV2({
     return lines;
   }
   async function exportReel() {
-    const source = video.current;
-    if (!source || !clip || end <= start) return;
+    const currentSource = video.current;
+    if (!currentSource || !clip || end <= start) return;
+    const source: HTMLVideoElement = currentSource;
+    const montageRanges: Array<{ start: number; end: number }> = (
+      approvedCuts.length ? approvedCuts : [{ start, end }]
+    )
+      .map((item) => ({
+        start: Math.max(0, Math.min(sourceDuration || duration, item.start)),
+        end: Math.max(0, Math.min(sourceDuration || duration, item.end)),
+      }))
+      .filter((item) => item.end - item.start > 0.08)
+      .sort((first, second) => first.start - second.start);
+    if (!montageRanges.length) return;
+    const montageDuration = montageRanges.reduce(
+      (total, item) => total + item.end - item.start,
+      0,
+    );
     setExporting(true);
     setExportProgress(0);
     cancelExport.current = false;
-    setNotice("Renderizando o reel com todas as camadas e efeitos…");
+    setNotice(
+      montageRanges.length > 1
+        ? `Montando ${montageRanges.length} Klips com fade entre os cortes…`
+        : "Renderizando o reel com todas as camadas e efeitos…",
+    );
     const canvas = document.createElement("canvas"),
       context = canvas.getContext("2d");
     if (!context) {
@@ -4709,26 +4744,25 @@ function ClipEditorV2({
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
     ).captureStream?.();
     const exportAudio = new AudioContext(), audioDestination = exportAudio.createMediaStreamDestination();
+    let mainExportGain: GainNode | null = null;
     await exportAudio.resume();
     if (captured?.getAudioTracks().length) {
       const audioSource = exportAudio.createMediaStreamSource(new MediaStream(captured.getAudioTracks()));
       const gain = exportAudio.createGain(); gain.gain.value = audioGain / 100;
+      mainExportGain = gain;
       if (audioEnhance) { const highPass = exportAudio.createBiquadFilter(); highPass.type = "highpass"; highPass.frequency.value = 80; const compressor = exportAudio.createDynamicsCompressor(); compressor.threshold.value = -22; compressor.ratio.value = 3; audioSource.connect(highPass).connect(compressor).connect(gain).connect(audioDestination); }
       else audioSource.connect(gain).connect(audioDestination);
     }
-    const exportTrackElements: HTMLAudioElement[] = [];
-    audioTracks.filter((track) => track.end > start && track.start < end).forEach((track) => {
+    const exportTrackElements: Array<{ track: AudioTrack; element: HTMLAudioElement; gain: GainNode }> = [];
+    audioTracks.filter((track) => montageRanges.some((range) => track.end > range.start && track.start < range.end)).forEach((track) => {
       const element = new Audio(track.url);
       element.preload = "auto";
-      element.volume = 0;
+      element.volume = 1;
       const trackSource = exportAudio.createMediaElementSource(element);
       const trackGain = exportAudio.createGain();
       trackGain.gain.value = Math.max(0, Math.min(1.2, track.volume / 100));
       trackSource.connect(trackGain).connect(audioDestination);
-      const delay = Math.max(0, track.start - start);
-      window.setTimeout(() => { element.currentTime = Math.max(0, start - track.start); void element.play().catch(() => undefined); }, delay * 1000);
-      window.setTimeout(() => element.pause(), Math.max(0, Math.min(end, track.end) - start) * 1000);
-      exportTrackElements.push(element);
+      exportTrackElements.push({ track, element, gain: trackGain });
     });
     audioDestination.stream.getAudioTracks().forEach((track) => output.addTrack(track));
     const mime = mimeForExport(exportFormat) || mimeForExport("webm")!;
@@ -4741,10 +4775,36 @@ function ClipEditorV2({
       audioBitsPerSecond: 192_000,
     });
     editorRecorder.current = recorder;
-    let frame = 0;
+    let frame = 0,
+      rangeIndex = 0,
+      completedMontageDuration = 0,
+      switchingRange = false;
+    const montageFadeSeconds = 0.42;
     const draw = () => {
       if (cancelExport.current) { if (recorder.state !== "inactive") recorder.stop(); return; }
-      setExportProgress(Math.min(100, Math.round(((source.currentTime - start) / Math.max(.01, end - start)) * 100)));
+      const activeRange = montageRanges[rangeIndex],
+        sourceTime = source.currentTime,
+        localTime = Math.max(0, sourceTime - activeRange.start),
+        remaining = Math.max(0, activeRange.end - sourceTime),
+        rangeLength = activeRange.end - activeRange.start,
+        fadeLength = Math.min(montageFadeSeconds, rangeLength / 3),
+        montageOpacity = fadeLength > 0
+          ? 1 - Math.min(1, localTime / fadeLength, remaining / fadeLength)
+          : 0;
+      setExportProgress(Math.min(100, Math.round(((completedMontageDuration + localTime) / Math.max(.01, montageDuration)) * 100)));
+      if (mainExportGain)
+        mainExportGain.gain.value = (audioGain / 100) * (1 - montageOpacity);
+      exportTrackElements.forEach(({ track, element, gain }) => {
+        const active = sourceTime >= track.start && sourceTime < track.end;
+        const desired = Math.max(0, sourceTime - track.start);
+        if (active && Math.abs(element.currentTime - desired) > .24)
+          element.currentTime = desired;
+        const edgeIn = track.fadeIn > 0 ? Math.min(1, desired / track.fadeIn) : 1;
+        const edgeOut = track.fadeOut > 0 ? Math.min(1, Math.max(0, (track.end - sourceTime) / track.fadeOut)) : 1;
+        gain.gain.value = Math.max(0, Math.min(1.2, track.volume / 100)) * edgeIn * edgeOut * (1 - montageOpacity);
+        if (active && element.paused) void element.play().catch(() => undefined);
+        if (!active && !element.paused) element.pause();
+      });
       const scale = Math.max(
         canvas.width / source.videoWidth,
         canvas.height / source.videoHeight,
@@ -4762,7 +4822,10 @@ function ClipEditorV2({
         height,
       );
       context.filter = "none";
-      const videoTransition = videoTransitionOpacity(source.currentTime);
+      const videoTransition = Math.max(
+        montageOpacity,
+        montageRanges.length === 1 ? videoTransitionOpacity(sourceTime) : 0,
+      );
       if (videoTransition > 0) {
         context.fillStyle = transitionColor === "black" ? "#000000" : "#ffffff";
         context.globalAlpha = videoTransition;
@@ -4844,14 +4907,42 @@ function ClipEditorV2({
         });
         context.restore();
       });
-      if (source.currentTime < end && !source.paused)
+      if (source.currentTime < activeRange.end - .015 && !source.paused)
         frame = requestAnimationFrame(draw);
-      else if (recorder.state !== "inactive") recorder.stop();
+      else if (!switchingRange) void advanceMontageRange();
     };
+    async function seekExportSource(value: number) {
+      source.currentTime = value;
+      if (Math.abs(source.currentTime - value) < .025 && !source.seeking) return;
+      await new Promise<void>((resolve) =>
+        source.addEventListener("seeked", () => resolve(), { once: true }),
+      );
+    }
+    async function advanceMontageRange() {
+      if (switchingRange) return;
+      switchingRange = true;
+      source.pause();
+      exportTrackElements.forEach(({ element }) => element.pause());
+      const completed = montageRanges[rangeIndex];
+      completedMontageDuration += completed.end - completed.start;
+      rangeIndex += 1;
+      if (rangeIndex >= montageRanges.length) {
+        if (recorder.state !== "inactive") recorder.stop();
+        return;
+      }
+      await seekExportSource(montageRanges[rangeIndex].start);
+      try {
+        await source.play();
+        switchingRange = false;
+        draw();
+      } catch {
+        if (recorder.state !== "inactive") recorder.stop();
+      }
+    }
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
     recorder.onstop = () => {
       cancelAnimationFrame(frame);
-      exportTrackElements.forEach((element) => element.pause());
+      exportTrackElements.forEach(({ element }) => element.pause());
       if (cancelExport.current) { void exportAudio.close(); editorRecorder.current = null; setExportProgress(0); setExporting(false); setNotice("Renderização cancelada."); return; }
       const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
       const link = document.createElement("a");
@@ -4863,12 +4954,13 @@ function ClipEditorV2({
       editorRecorder.current = null;
       setExportProgress(100);
       setExporting(false);
-      setNotice("Reel exportado com corte, áudio, textos e efeitos.");
+      setNotice(
+        montageRanges.length > 1
+          ? `Montagem exportada com ${montageRanges.length} Klips e fades automáticos.`
+          : "Reel exportado com corte, áudio, textos e efeitos.",
+      );
     };
-    source.currentTime = start;
-    await new Promise<void>((resolve) =>
-      source.addEventListener("seeked", () => resolve(), { once: true }),
-    );
+    await seekExportSource(montageRanges[0].start);
     recorder.start();
     await source.play();
     draw();
@@ -4906,7 +4998,7 @@ function ClipEditorV2({
             <option value="standard">Bitrate padrão</option><option value="high">Alta qualidade</option><option value="ultra">Qualidade máxima</option>
           </select>
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
-            {exporting ? "Renderizando…" : `⇩ Exportar ${exportFormat.toUpperCase()}`}
+            {exporting ? "Renderizando…" : approvedCuts.length > 1 ? `⇩ Exportar montagem · ${approvedCuts.length} Klips` : `⇩ Exportar ${exportFormat.toUpperCase()}`}
           </button>
           {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar {exportProgress}%</button>}
         </div>}
@@ -4916,7 +5008,7 @@ function ClipEditorV2({
         <a href="#klip-tools">☷ Ferramentas</a>
         <a href="#klip-timeline">▤ Linha do tempo</a>
         <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}>✦ Radar</button>
-        <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : "⇩ Exportar"}</button>
+        <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : approvedCuts.length > 1 ? `⇩ Montagem (${approvedCuts.length})` : "⇩ Exportar"}</button>
       </nav>}
       <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
         <aside className="editor-tools" id="klip-tools">
@@ -5062,7 +5154,7 @@ function ClipEditorV2({
 
       {clip && <section className="timeline-panel multi-timeline" id="klip-timeline">
         <div className="timeline-top">
-          <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
+          <div><b>Linha do tempo</b><span>{approvedCuts.length > 1 ? `Montagem com ${approvedCuts.length} Klips · serão unidos em ordem com fade automático` : clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
           <button disabled={!history.current.length} onClick={undo} title="Desfazer">↶ Desfazer</button>
           <button disabled={!future.current.length} onClick={redo} title="Refazer">↷ Refazer</button>
           <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>

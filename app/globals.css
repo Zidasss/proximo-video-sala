@@ -1472,7 +1472,41 @@ body {
     max-width: calc(100vw - 20px);
     min-width: 240px;
   }
-  .settings-panel {
-    min-width: 280px;
-  }
+}
+.editor-publish-btn {
+  background: linear-gradient(135deg, #6366f1, #a855f7, #ec4899) !important;
+  border-color: #a855f7 !important;
+  color: #ffffff !important;
+  box-shadow: 0 4px 14px rgba(168, 85, 247, 0.35);
+  transition: all 0.2s ease;
+}
+.editor-publish-btn:hover {
+  opacity: 0.92;
+  transform: translateY(-1px);
+}
+.nav-action-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 14px;
+  border-radius: 10px;
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: 1px solid #ffffff20;
+  background: #1b1c1c;
+  color: #fff;
+}
+.nav-action-btn:hover {
+  background: #252627;
+  border-color: #ffffff35;
+}
+.nav-action-btn.primary {
+  background: linear-gradient(135deg, #6366f1, #ec4899);
+  border: none;
+  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+}
+.nav-action-btn.primary:hover {
+  opacity: 0.9;
 }

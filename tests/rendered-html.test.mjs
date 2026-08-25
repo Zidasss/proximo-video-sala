@@ -80,3 +80,19 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.virtual-effect-loading/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
+
+test("ships the image-to-GIF motion studio and camera background handoff", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const studio = await readFile(new URL("app/gif-studio.tsx", root), "utf8");
+  const css = await readFile(new URL("app/globals.css", root), "utf8");
+  assert.match(page, /Criador de GIF/);
+  assert.match(page, /<GifStudio/);
+  assert.match(studio, /function paintMotionFrame/);
+  assert.match(studio, /function lzwPixels/);
+  assert.match(studio, /"GIF89a"/);
+  assert.match(studio, /Usar como fundo/);
+  assert.match(studio, /Arraste para reorganizar/);
+  assert.match(css, /\.motion-studio/);
+  assert.match(css, /\.motion-frame-list/);
+  assert.match(css, /\.motion-exporting/);
+});

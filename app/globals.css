@@ -2041,3 +2041,57 @@ body {
 .landing .orb.one { right: -150px; top: 120px; width: 360px; height: 360px; opacity: .3; }.landing .orb.two { right: 14%; top: 68%; width: 120px; height: 120px; opacity: .32; }
 @media (max-width: 1180px) { .landing-hero-v2 { grid-template-columns: minmax(300px, 1fr) minmax(380px, 450px); }.landing-showcase { display: none; } }
 @media (max-width: 760px) { .landing nav { height: 68px; padding: 0 18px; }.landing .brand { font-size: 22px; }.landing-nav-actions .landing-studio-link { display: none; }.landing-nav-actions .open-editor { min-height: 34px; padding: 6px 9px; font-size: 11px; }.landing-hero-v2 { display: grid; grid-template-columns: 1fr; gap: 24px; width: min(100% - 32px, 520px); min-height: auto; margin: 30px auto 42px; }.landing-copy h1 { font-size: clamp(48px, 15vw, 70px); }.landing-copy > p { margin: 18px 0; font-size: 15px; }.landing-proof { gap: 6px; }.landing-proof span { padding: 7px 8px; font-size: 10px; }.landing-entry-card { padding: 14px; border-radius: 17px; }.entry-card-heading b { font-size: 20px; }.entry-card-description { min-height: 0; }.landing .orb { display: none; } }
+
+/* Klip Motion — image-to-GIF studio available from the welcome screen. */
+.motion-studio {
+  min-height: 100dvh;
+  color: #fff8f5;
+  background: radial-gradient(circle at 74% 24%, #ff654f1f, transparent 28%), linear-gradient(135deg, #101414, #201719);
+}
+.motion-header {
+  position: sticky;
+  z-index: 10;
+  top: 0;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;
+  align-items: center;
+  min-height: 68px;
+  padding: 10px 24px;
+  border-bottom: 1px solid #ffffff17;
+  background: #101313e8;
+  backdrop-filter: blur(18px);
+}
+.motion-header .brand { font-size: 22px; }.motion-header .brand em { color: #ff7768; font-style: normal; }
+.motion-header > div:nth-child(2) { display: grid; gap: 2px; text-align: center; }.motion-header > div:nth-child(2) b { font-size: 13px; }.motion-header > div:nth-child(2) span { color: #9f9995; font-size: 11px; }
+.motion-header > button { justify-self: end; padding: 10px 14px; border: 1px solid #ffffff24; border-radius: 9px; background: #191d1c; color: #fff; cursor: pointer; }
+.motion-workspace {
+  display: grid;
+  grid-template-columns: minmax(280px, 350px) minmax(420px, 1fr);
+  gap: 28px;
+  min-height: calc(100dvh - 264px);
+  padding: 24px;
+}
+.motion-controls { display: grid; align-content: start; gap: 13px; max-height: calc(100dvh - 290px); padding: 18px; overflow: auto; border: 1px solid #ffffff18; border-radius: 16px; background: #171a19d9; }
+.motion-intro small { color: #ff8475; font-size: 10px; font-weight: 900; letter-spacing: .14em; }.motion-intro h1 { margin: 5px 0; font-size: 27px; letter-spacing: -.05em; }.motion-intro p { margin: 0; color: #aaa39f; font-size: 12px; line-height: 1.45; }
+.motion-controls > label, .motion-caption-box label { display: grid; gap: 6px; color: #ded3ce; font-size: 12px; }.motion-controls label > b { justify-self: end; color: #ff8d80; }
+.motion-controls select, .motion-controls input[type="text"], .motion-caption-box > input { width: 100%; min-height: 40px; padding: 9px; border: 1px solid #65443e; border-radius: 8px; outline: none; background: #101313; color: #fff8f5; }
+.motion-controls input[type="range"] { width: 100%; accent-color: #ff6b5c; }.motion-controls input[type="color"] { width: 100%; height: 40px; padding: 3px; border: 1px solid #65443e; border-radius: 8px; background: #101313; }
+.motion-upload { display: grid; place-items: center; min-height: 48px; border: 1px dashed #ff8a7a; border-radius: 10px; background: #ff6b5c18; color: #ffc1b8 !important; font-size: 14px !important; font-weight: 850; cursor: pointer; }.motion-upload input { display: none; }
+.motion-caption-box { display: grid; gap: 9px; padding: 12px; border: 1px solid #ffffff16; border-radius: 11px; background: #ffffff06; }.motion-caption-box > b { color: #fff5f1; font-size: 13px; }.motion-caption-box > div { display: grid; grid-template-columns: 1fr 70px; gap: 8px; }
+.motion-preview-area { display: grid; place-items: center; align-content: center; gap: 14px; min-width: 0; }
+.motion-canvas-shell { position: relative; display: grid; place-items: center; overflow: hidden; width: min(100%, 960px); max-height: calc(100dvh - 350px); border: 1px solid #ffffff22; border-radius: 18px; background: #080a0a; box-shadow: 0 26px 70px #0008; }.motion-canvas-shell.motion-landscape { aspect-ratio: 16 / 9; }.motion-canvas-shell.motion-vertical { width: min(42vw, 400px); aspect-ratio: 9 / 16; }.motion-canvas-shell.motion-square { width: min(58vw, 560px); aspect-ratio: 1; }
+.motion-canvas-shell canvas { width: 100%; height: 100%; object-fit: contain; }.motion-empty { position: absolute; display: grid; gap: 5px; text-align: center; pointer-events: none; }.motion-empty b { font-size: clamp(20px, 2vw, 30px); }.motion-empty span { color: #9f9995; font-size: 12px; }
+.motion-actions { display: flex; gap: 9px; }.motion-actions button { min-width: 150px; padding: 12px 16px; border: 1px solid #ffffff25; border-radius: 9px; background: #171b1a; color: #fff; font-weight: 800; cursor: pointer; }.motion-actions button.primary { border-color: #ff6b5c; background: #ff6b5c; color: #2b1411; }.motion-actions button:disabled { opacity: .42; cursor: not-allowed; }.motion-preview-area > p { min-height: 18px; margin: 0; color: #aaa39f; font-size: 12px; text-align: center; }
+.motion-timeline { min-height: 170px; padding: 16px 24px 22px; border-top: 1px solid #ffffff18; background: #111414; }.motion-timeline > div:first-child { display: flex; justify-content: space-between; gap: 12px; margin-bottom: 11px; }.motion-timeline b { font-size: 14px; }.motion-timeline span { color: #98918d; font-size: 11px; }
+.motion-frame-list { display: flex; gap: 10px; overflow-x: auto; padding-bottom: 6px; }.motion-frame-card { position: relative; flex: 0 0 150px; display: grid; grid-template-columns: 26px 52px 1fr; align-items: center; gap: 7px; height: 76px; padding: 7px; border: 1px solid #ffffff1b; border-radius: 10px; background: #1a1e1d; cursor: grab; }.motion-frame-card.selected { border-color: #ff7668; box-shadow: inset 0 0 0 1px #ff7668; }.motion-frame-card > span { display: grid; place-items: center; width: 24px; height: 24px; border-radius: 50%; background: #ff6b5c; color: #241210; font-weight: 900; }.motion-frame-list img { width: 52px; height: 58px; object-fit: cover; border-radius: 6px; }.motion-frame-list small { overflow: hidden; color: #ddd2cc; font-size: 10px; text-overflow: ellipsis; white-space: nowrap; }.motion-frame-card button { position: absolute; top: 4px; right: 4px; border: 0; background: transparent; color: #ff9d91; cursor: pointer; }
+.motion-exporting { position: fixed; z-index: 50; inset: 0; display: grid; place-items: center; background: #080a0acb; backdrop-filter: blur(12px); }.motion-exporting > div { display: grid; gap: 9px; width: min(380px, calc(100% - 36px)); padding: 26px; border: 1px solid #ff887942; border-radius: 18px; background: #181b1a; text-align: center; box-shadow: 0 30px 80px #000b; }.motion-exporting span { color: #ff7b6c; font-size: 34px; font-weight: 900; }.motion-exporting b { font-size: 20px; }.motion-exporting i { height: 8px; overflow: hidden; border-radius: 99px; background: #080a0a; }.motion-exporting em { display: block; height: 100%; border-radius: inherit; background: #ff6b5c; transition: width .15s ease; }.motion-exporting small { color: #9d9692; }
+.landing-nav-actions .landing-motion-link { border-color: #ffb25c55; color: #ffd2a0; }
+@media (max-width: 900px) {
+  .motion-header { grid-template-columns: 1fr auto; }.motion-header > div:nth-child(2) { display: none; }
+  .motion-workspace { grid-template-columns: 1fr; min-height: auto; padding: 14px; }.motion-controls { max-height: none; }.motion-preview-area { order: -1; }.motion-canvas-shell { max-height: 54dvh; }.motion-canvas-shell.motion-vertical { width: min(74vw, 360px); }.motion-canvas-shell.motion-square { width: min(88vw, 520px); }
+  .motion-timeline { padding-inline: 14px; }.motion-timeline > div:first-child { display: grid; }
+}
+@media (max-width: 600px) {
+  .motion-header { min-height: 58px; padding: 8px 12px; }.motion-header .brand { font-size: 18px; }
+  .motion-workspace { gap: 16px; }.motion-controls { padding: 14px; }.motion-actions { width: 100%; }.motion-actions button { flex: 1; min-width: 0; padding-inline: 8px; font-size: 12px; }
+}

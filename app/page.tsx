@@ -2,6 +2,7 @@
 
 import { useEffect, useRef, useState } from "react";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
+import GifStudio from "./gif-studio";
 
 type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
@@ -129,6 +130,7 @@ const constraints = (
 export default function Home() {
   const [inRoom, setInRoom] = useState(false);
   const [localStudio, setLocalStudio] = useState(false);
+  const [motionStudio, setMotionStudio] = useState(false);
   const [editorOpen, setEditorOpen] = useState(false),
     [editorReturnToCall, setEditorReturnToCall] = useState(false),
     [editorClip, setEditorClip] = useState<EditorClip | null>(null);
@@ -275,6 +277,11 @@ export default function Home() {
     const query = new URLSearchParams(location.search);
     if (query.get("editor") === "1") {
       setEditorOpen(true);
+      setBooting(false);
+      return;
+    }
+    if (query.get("motion") === "1") {
+      setMotionStudio(true);
       setBooting(false);
       return;
     }
@@ -2371,6 +2378,17 @@ export default function Home() {
     );
   if (localStudio)
     return <OfflineStudio onBack={() => setLocalStudio(false)} />;
+  if (motionStudio)
+    return (
+      <GifStudio
+        onBack={() => setMotionStudio(false)}
+        onUseBackground={(file) => {
+          chooseBackground(file);
+          setMotionStudio(false);
+          setNotice("Fundo animado pronto. Entre em uma sala para usá-lo na câmera.");
+        }}
+      />
+    );
   if (!inRoom)
     return (
       <main className="landing">
@@ -2384,6 +2402,7 @@ export default function Home() {
           </div>
           <div className="landing-nav-actions">
             <button className="open-editor" onClick={openEditor}>✦ Editor de clipes</button>
+            <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}>◈ Criador de GIF</button>
             <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}>◉ Estúdio offline</button>
           </div>
         </nav>

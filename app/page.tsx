@@ -3181,6 +3181,9 @@ function ClipEditorV2({
   const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
   const timelineItemDrag = useRef<{ kind: "text" | "illustration" | "audio"; id: string; edge: "move" | "start" | "end"; start: number; end: number; startX: number } | null>(null);
+  const timelineFadeDrag = useRef<{ kind: "text" | "illustration" | "audio"; id: string; edge: "in" | "out"; initial: number; startX: number } | null>(null);
+  const playheadDrag = useRef(false);
+  const clipboard = useRef<{ kind: "text" | "illustration" | "audio"; item: TextLayer | IllustrationLayer | AudioTrack } | null>(null);
   const transitionResize = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const transitionMove = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
@@ -3263,6 +3266,8 @@ function ClipEditorV2({
       const meta = event.ctrlKey || event.metaKey;
       if (meta && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
       if (meta && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
+      if (meta && event.key.toLowerCase() === "c") { event.preventDefault(); copySelected(); return; }
+      if (meta && event.key.toLowerCase() === "v") { event.preventDefault(); pasteSelected(); return; }
       if (meta && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); return; }
       if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); return; }
       if (event.code === "Space") { event.preventDefault(); void togglePreviewPlayback(); }
@@ -3642,7 +3647,7 @@ function ClipEditorV2({
   }
   function moveTimelineItemDrag(event: React.PointerEvent<HTMLElement>) {
     const drag = timelineItemDrag.current;
-    const track = event.currentTarget.parentElement;
+    const track = event.currentTarget.parentElement?.parentElement;
     if (!drag || !track || !duration) return;
     const bounds = track.getBoundingClientRect();
     const delta = ((event.clientX - drag.startX) / bounds.width) * duration;
@@ -3664,6 +3669,47 @@ function ClipEditorV2({
     if (timelineItemDrag.current) setNotice("Clip atualizado na timeline.");
     timelineItemDrag.current = null;
   }
+  function beginTimelineFadeDrag(event: React.PointerEvent<HTMLElement>, kind: "text" | "illustration" | "audio", id: string, edge: "in" | "out", value: number) {
+    if (!duration) return;
+    event.preventDefault();
+    event.stopPropagation();
+    remember();
+    timelineFadeDrag.current = { kind, id, edge, initial: value, startX: event.clientX };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveTimelineFadeDrag(event: React.PointerEvent<HTMLElement>) {
+    const drag = timelineFadeDrag.current;
+    const track = event.currentTarget.parentElement?.parentElement;
+    if (!drag || !track || !duration) return;
+    const bounds = track.getBoundingClientRect();
+    const delta = ((event.clientX - drag.startX) / bounds.width) * duration;
+    const item = drag.kind === "text" ? layers.find((layer) => layer.id === drag.id) : drag.kind === "illustration" ? illustrations.find((layer) => layer.id === drag.id) : audioTracks.find((layer) => layer.id === drag.id);
+    if (!item) return;
+    const max = Math.max(0, (item.end - item.start) / 2);
+    const value = Math.max(0, Math.min(max, drag.initial + (drag.edge === "in" ? delta : -delta)));
+    const patch = drag.edge === "in" ? { fadeIn: value } : { fadeOut: value };
+    if (drag.kind === "text") updateLayer(drag.id, patch, false);
+    else if (drag.kind === "illustration") updateIllustration(drag.id, patch, false);
+    else updateAudioTrack(drag.id, patch, false);
+  }
+  function endTimelineFadeDrag() {
+    if (timelineFadeDrag.current) setNotice("Fade atualizado diretamente na timeline.");
+    timelineFadeDrag.current = null;
+  }
+  function beginPlayheadDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    event.preventDefault();
+    event.stopPropagation();
+    playheadDrag.current = true;
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function movePlayheadDrag(event: React.PointerEvent<HTMLButtonElement>) {
+    if (!playheadDrag.current || !duration) return;
+    const track = event.currentTarget.parentElement?.querySelector<HTMLElement>(".video-lane .lane-track");
+    if (!track) return;
+    const bounds = track.getBoundingClientRect();
+    seek(Math.max(0, Math.min(duration, ((event.clientX - bounds.left) / bounds.width) * duration)));
+  }
+  function endPlayheadDrag() { playheadDrag.current = false; }
   function beginTransitionResize(event: React.PointerEvent<HTMLElement>, edge: "in" | "out") {
     if (!duration) return;
     event.preventDefault();
@@ -3790,6 +3836,37 @@ function ClipEditorV2({
     if (selectedIllustrationId) { duplicateIllustration(); return; }
     if (selectedId) duplicateLayer();
   }
+  function copySelected() {
+    if (selectedIllustration) clipboard.current = { kind: "illustration", item: selectedIllustration };
+    else if (selectedAudio) clipboard.current = { kind: "audio", item: selectedAudio };
+    else if (selected) clipboard.current = { kind: "text", item: selected };
+    else return;
+    setNotice("Camada copiada. Use Ctrl V para colar no cursor.");
+  }
+  function pasteSelected() {
+    const copied = clipboard.current;
+    if (!copied) return;
+    const from = Math.max(start, Math.min(current, Math.max(start, end - .15)));
+    const makeRange = (item: TimedLayer) => {
+      const length = Math.max(.15, Math.min(item.end - item.start, Math.max(.15, end - from)));
+      return { start: from, end: Math.min(end, from + length) };
+    };
+    remember();
+    if (copied.kind === "text") {
+      const item = copied.item as TextLayer;
+      const next = { ...item, ...makeRange(item), id: crypto.randomUUID(), text: `${item.text} cópia`, x: Math.min(92, item.x + 4), y: Math.min(92, item.y + 4) };
+      setLayers((items) => [...items, next]); setSelectedId(next.id); setSelectedIllustrationId(""); setSelectedAudioId("");
+    } else if (copied.kind === "illustration") {
+      const item = copied.item as IllustrationLayer;
+      const next = { ...item, ...makeRange(item), id: crypto.randomUUID(), x: Math.min(92, item.x + 4), y: Math.min(92, item.y + 4) };
+      setIllustrations((items) => [...items, next]); setSelectedIllustrationId(next.id); setSelectedId(""); setSelectedAudioId("");
+    } else {
+      const item = copied.item as AudioTrack;
+      const next = { ...item, ...makeRange(item), id: crypto.randomUUID(), name: `${item.name} cópia` };
+      setAudioTracks((items) => [...items, next]); setSelectedAudioId(next.id); setSelectedId(""); setSelectedIllustrationId("");
+    }
+    setNotice("Camada colada no cursor.");
+  }
   function beginLayerDrag(event: React.PointerEvent<HTMLDivElement>, layer: TextLayer) {
     remember();
     setSelectedId(layer.id);
@@ -3890,6 +3967,13 @@ function ClipEditorV2({
     event.preventDefault();
     const kind = event.dataTransfer.getData("application/x-klip-transition") as "fade-black" | "fade-white" | "none";
     if (kind) applyTransition(kind, edge);
+  }
+  function dropTransitionOnTimeline(event: React.DragEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const kind = event.dataTransfer.getData("application/x-klip-transition") as "fade-black" | "fade-white" | "none";
+    if (!kind || !duration) return;
+    const bounds = event.currentTarget.getBoundingClientRect();
+    applyTransition(kind, (event.clientX - bounds.left) / bounds.width < .5 ? "in" : "out");
   }
   function previewStyle(layer: TextLayer): React.CSSProperties {
     const progress = effectProgress(layer, current);
@@ -4302,18 +4386,25 @@ function ClipEditorV2({
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
-          {audioTracks.map((track, index) => <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }}><b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip timeline-item-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "move", track.start, track.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "start", track.start, track.end)} /><span>{track.name}</span><i className="timeline-clip-meta">{track.volume}% · canal</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "end", track.start, track.end)} /></button></div></div>)}
+          {audioTracks.map((track, index) => (
+            <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }}>
+              <b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip timeline-item-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "move", track.start, track.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}>
+                <i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "start", track.start, track.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "in", track.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} />
+                <span>{track.name}</span><i className="timeline-clip-meta">{track.volume}% · canal</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "out", track.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "end", track.start, track.end)} />
+              </button></div>
+            </div>
+          ))}
           {illustrations.map((item, index) => (
             <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }}>
-              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
+              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
             </div>
           ))}
           {layers.map((layer, index) => (
             <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => { setSelectedId(layer.id); setSelectedIllustrationId(""); setSelectedAudioId(""); seek(Math.max(start, layer.start)); }}>
-              <b>T{index + 1}</b><div className="lane-track"><button className="text-clip timeline-item-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "move", layer.start, layer.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "start", layer.start, layer.end)} /><span>{layer.text || "Texto"}</span><i className="timeline-clip-meta">{layer.effect !== "none" ? layer.effect : "texto"}</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "end", layer.start, layer.end)} /></button></div>
+              <b>T{index + 1}</b><div className="lane-track"><button className="text-clip timeline-item-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "move", layer.start, layer.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "start", layer.start, layer.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "text", layer.id, "in", layer.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{layer.text || "Texto"}</span><i className="timeline-clip-meta">{layer.effect !== "none" ? layer.effect : "texto"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "text", layer.id, "out", layer.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "end", layer.start, layer.end)} /></button></div>
             </div>
           ))}
-          <div className="global-playhead" style={{ left: duration ? `calc(74px + (100% - 74px) * ${current / duration})` : "74px" }} />
+          <button type="button" className="global-playhead" aria-label={`Cursor em ${time(current)}`} style={{ left: duration ? `calc(74px + (100% - 74px) * ${current / duration})` : "74px" }} onPointerDown={beginPlayheadDrag} onPointerMove={movePlayheadDrag} onPointerUp={endPlayheadDrag} onPointerCancel={endPlayheadDrag} />
         </div>
         <div className="cut-controls editor-time-controls">
           <p className="timeline-trim-help"><b>{selected ? `T${layers.findIndex((layer) => layer.id === selected.id) + 1}` : selectedIllustration ? selectedIllustration.kind === "image" ? "Imagem" : "Vídeo" : selectedAudio ? "Áudio" : "Edição direta"}</b><span>{selected ? selected.text : selectedIllustration ? selectedIllustration.name : selectedAudio ? selectedAudio.name : "Selecione e arraste um clipe na linha do tempo."}</span></p>

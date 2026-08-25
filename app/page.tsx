@@ -4041,8 +4041,14 @@ function ClipEditorV2({
           {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar {exportProgress}%</button>}
         </div>
       </header>
+      <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
+        <a href="#klip-preview">▣ Prévia</a>
+        <a href="#klip-tools">☷ Ferramentas</a>
+        <a href="#klip-timeline">▤ Linha do tempo</a>
+        <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : "⇩ Exportar"}</button>
+      </nav>
       <section className="editor-workspace">
-        <aside className="editor-tools">
+        <aside className="editor-tools" id="klip-tools">
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
           <label className="editor-upload">＋ Importar vídeo ou foto<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
           {clip && <p className="editor-file">● {clip.name}</p>}
@@ -4127,7 +4133,7 @@ function ClipEditorV2({
           )}
         </aside>
 
-        <section className="editor-stage-wrap">
+        <section className="editor-stage-wrap" id="klip-preview">
           <div className="stage-meta" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)` }}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><div><button onClick={() => setPreviewScale((value) => Math.max(.7, Number((value - .1).toFixed(1))))}>−</button><b>{Math.round(previewScale * 100)}%</b><button onClick={() => setPreviewScale((value) => Math.min(2, Number((value + .1).toFixed(1))))}>＋</button></div><b>{time(current)}</b></div>
           <div className={`editor-stage preset-${visualPreset}`} style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
@@ -4163,9 +4169,9 @@ function ClipEditorV2({
         </section>
       </section>
 
-      <section className="timeline-panel multi-timeline">
+      <section className="timeline-panel multi-timeline" id="klip-timeline">
         <div className="timeline-top">
-          <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div>
+          <div><b>Linha do tempo</b><span>{clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
           <button disabled={!history.current.length} onClick={undo} title="Desfazer">↶ Desfazer</button>
           <button disabled={!future.current.length} onClick={redo} title="Refazer">↷ Refazer</button>
           <label className="timeline-zoom">Zoom {timelineZoom.toFixed(1)}×<input type="range" min="1" max="3" step="0.1" value={timelineZoom} onChange={(event) => setTimelineZoom(Number(event.target.value))} /></label>

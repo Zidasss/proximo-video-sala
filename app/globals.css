@@ -168,6 +168,124 @@
 .timeline-trim-help { grid-column: 1 / -1; margin: 0 0 2px; padding: 9px 11px; border: 1px solid #ff776940; border-radius: 8px; background: #ff77690d; color: #b9b1ac; font-size: 11px; line-height: 1.45; }.timeline-trim-help b { margin-right: 8px; color: #ff9a8e; }.timeline-trim-help em { color: #ffe2dc; font-style: normal; font-weight: 700; }
 @media (max-width: 1050px) { .clip-editor-v2 .editor-workspace { grid-template-columns: 320px minmax(420px, 1fr); padding-inline: 18px; }.clip-editor-v2 .editor-stage, .stage-meta { width: min(430px, 46vw); }.autosave-note { display: none; }.editor-time-controls { grid-template-columns: 1fr 1fr; } }
 @media (max-width: 760px) { .clip-editor-v2 .editor-workspace { grid-template-columns: 1fr; min-height: 0; }.clip-editor-v2 .editor-tools { max-height: none; }.clip-editor-v2 .editor-stage, .stage-meta { width: min(100%, 390px); }.stage-help { max-width: 390px; }.timeline-lane { grid-template-columns: 36px 1fr; }.multi-timeline .timeline-ruler { margin-left: 44px; }.global-playhead { display: none; }.editor-time-controls { grid-template-columns: 1fr; } }
+
+/* Mobile editor: large touch targets, a full-width preview and quick jumps for one-handed use. */
+.mobile-editor-nav { display: none; }
+@media (max-width: 760px) {
+  html { scroll-behavior: smooth; }
+  .clip-editor-v2 { min-height: 100dvh; overflow-x: hidden; }
+  .clip-editor-v2 .editor-header {
+    position: sticky;
+    top: 0;
+    z-index: 60;
+    height: auto;
+    min-height: 62px;
+    flex-wrap: wrap;
+    gap: 7px;
+    padding: 10px 12px 8px;
+  }
+  .clip-editor-v2 .editor-header .brand { font-size: 19px; }
+  .clip-editor-v2 .editor-header-actions {
+    width: 100%;
+    order: 2;
+    overflow-x: auto;
+    padding: 2px 0 5px;
+    gap: 8px;
+    -webkit-overflow-scrolling: touch;
+    scrollbar-width: none;
+  }
+  .clip-editor-v2 .editor-header-actions::-webkit-scrollbar { display: none; }
+  .clip-editor-v2 .editor-header-actions .autosave-note { display: none; }
+  .clip-editor-v2 .editor-header-actions button,
+  .clip-editor-v2 .editor-header-actions .export-format {
+    flex: 0 0 auto;
+    min-height: 42px;
+    padding: 9px 12px;
+    font-size: 14px;
+  }
+  .mobile-editor-nav {
+    position: sticky;
+    top: 113px;
+    z-index: 55;
+    display: grid;
+    grid-template-columns: 1fr 1fr 1.25fr 1fr;
+    gap: 7px;
+    padding: 8px 12px;
+    border-bottom: 1px solid #ffffff17;
+    background: #121313f5;
+    backdrop-filter: blur(14px);
+  }
+  .mobile-editor-nav a,
+  .mobile-editor-nav button {
+    min-height: 44px;
+    display: grid;
+    place-items: center;
+    border: 1px solid #ffffff2a;
+    border-radius: 10px;
+    background: #1e2020;
+    color: #fff8f4;
+    font: 800 12px/1 Inter, sans-serif;
+    text-decoration: none;
+    touch-action: manipulation;
+  }
+  .mobile-editor-nav button { border-color: #ff6d5c; background: #ff6d5c; color: #2d110f; }
+  .mobile-editor-nav button:disabled { opacity: .42; }
+  .clip-editor-v2 .editor-workspace { gap: 14px; padding: 14px 12px 16px; }
+  .clip-editor-v2 .editor-stage-wrap { order: 1; padding: 4px 0 12px; }
+  .clip-editor-v2 .editor-stage,
+  .clip-editor-v2 .stage-meta {
+    width: min(100%, 520px) !important;
+    max-width: 100%;
+  }
+  .clip-editor-v2 .editor-stage { border-radius: 14px; }
+  .clip-editor-v2 .stage-meta { min-height: 40px; font-size: 13px; }
+  .clip-editor-v2 .stage-meta button { width: 34px; height: 34px; font-size: 18px; }
+  .clip-editor-v2 .stage-help { padding: 0 8px; font-size: 12px; line-height: 1.45; }
+  .clip-editor-v2 .editor-tools { order: 2; padding: 15px; border-radius: 14px; }
+  .clip-editor-v2 .editor-tools,
+  .clip-editor-v2 .editor-tools textarea,
+  .clip-editor-v2 .editor-tools select,
+  .clip-editor-v2 .editor-tools input { font-size: 16px; }
+  .clip-editor-v2 .tool-heading { margin: 10px 0 12px; }
+  .clip-editor-v2 .tool-heading b { font-size: 16px; }
+  .clip-editor-v2 .tool-heading small,
+  .clip-editor-v2 .illustration-help { font-size: 13px; line-height: 1.35; }
+  .clip-editor-v2 .editor-upload,
+  .clip-editor-v2 .project-actions button,
+  .clip-editor-v2 .project-actions label,
+  .clip-editor-v2 .template-grid button,
+  .clip-editor-v2 .layer-actions button,
+  .clip-editor-v2 .subtitle-import,
+  .clip-editor-v2 .audio-editor-controls button,
+  .clip-editor-v2 .transition-shelf button { min-height: 44px; font-size: 14px; }
+  .clip-editor-v2 .layer-list button { min-height: 48px; padding: 10px; }
+  .clip-editor-v2 .layer-list span,
+  .clip-editor-v2 .layer-list small { font-size: 13px; }
+  .clip-editor-v2 .range-label,
+  .clip-editor-v2 .audio-editor-controls label,
+  .clip-editor-v2 .effect-grid label { font-size: 14px; }
+  .clip-editor-v2 .caption-overlay small,
+  .clip-editor-v2 .illustration-overlay small { display: block; font-size: 11px; }
+  .clip-editor-v2 .video-frame-resize { width: 38px; height: 38px; font-size: 19px; }
+  .clip-editor-v2 .illustration-resize-handle { width: 33px; height: 33px; font-size: 18px; }
+  .clip-editor-v2 .timeline-panel.multi-timeline {
+    margin: 0 12px 18px;
+    padding: 15px 12px 17px;
+    overflow-x: auto;
+    border-radius: 14px;
+    -webkit-overflow-scrolling: touch;
+  }
+  .clip-editor-v2 .timeline-panel.multi-timeline .timeline-top { min-width: 680px; gap: 12px; }
+  .clip-editor-v2 .timeline-panel.multi-timeline .timeline-lanes { min-width: 680px; }
+  .clip-editor-v2 .timeline-top button { min-height: 42px; padding: 9px 12px; font-size: 13px; }
+  .clip-editor-v2 .timeline-play-toggle { min-width: 150px; min-height: 48px; font-size: 16px !important; }
+  .clip-editor-v2 .timeline-lane { grid-template-columns: 48px 1fr; min-height: 46px; }
+  .clip-editor-v2 .timeline-lane > b { font-size: 11px; }
+  .clip-editor-v2 .lane-track { height: 38px; }
+  .clip-editor-v2 .cut-marker { width: 8px; }
+  .clip-editor-v2 .timeline-transition { min-width: 78px; font-size: 11px; }
+  .clip-editor-v2 .editor-time-controls { grid-template-columns: 1fr 1fr; gap: 12px; }
+}
 .tiktok-preview {
   position: fixed;
   z-index: 12;

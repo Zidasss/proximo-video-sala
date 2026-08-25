@@ -162,6 +162,7 @@ export default function Home() {
     ),
     [skinSmooth, setSkinSmooth] = useState(false),
     [blurAmount, setBlurAmount] = useState(16),
+    [virtualEffectLoading, setVirtualEffectLoading] = useState(""),
     [cameraEpoch, setCameraEpoch] = useState(0),
     [virtualEpoch, setVirtualEpoch] = useState(0);
   const [friend, setFriend] = useState(""),
@@ -538,7 +539,15 @@ export default function Home() {
             }
           };
         }
-        if (mattingQuality === "premium") {
+        // O pipeline MediaPipe dentro de Worker ainda varia entre navegadores
+        // no macOS (inclusive em máquinas Apple Silicon fortes). Nesses casos
+        // usamos diretamente o RVM/WebGL, que não depende de OffscreenCanvas
+        // nem da transferência de ImageBitmap para entregar a primeira máscara.
+        const isMacOS = /Macintosh|Mac OS X/i.test(navigator.userAgent);
+        const usePremiumMatting = mattingQuality === "premium" || isMacOS;
+        if (usePremiumMatting) {
+          if (isMacOS && mattingQuality !== "premium")
+            setNotice("Desfoque compatível com macOS ativado na GPU.");
           setNotice("Preparando IA Premium na GPU…");
           const tf = await import("@tensorflow/tfjs");
           try {
@@ -652,6 +661,7 @@ export default function Home() {
                 maskPixels.data[index * 4 + 3] = Math.round(Math.max(0, Math.min(1, alpha[index])) * 255);
               maskContext.putImageData(maskPixels, 0, 0);
               hasMask = true;
+              setVirtualEffectLoading("");
               attachOutput();
               src.dispose();
               fgr.dispose();
@@ -702,8 +712,13 @@ export default function Home() {
         let workerReady = false,
           workerBusy = false,
           bitmapFailures = 0,
+          fallbackTriggered = false,
+          firstMaskTimer = 0,
           maskPixels: ImageData | null = null;
         const fallbackToPremium = () => {
+          if (fallbackTriggered || !active) return;
+          fallbackTriggered = true;
+          window.clearTimeout(firstMaskTimer);
           // Safari/macOS pode não oferecer ImageBitmap/OffscreenCanvas de modo
           // compatível dentro do Worker. Em máquinas fortes, como Apple Silicon,
           // a IA Premium no WebGL principal é um fallback funcional.
@@ -756,6 +771,8 @@ export default function Home() {
           }
           maskContext.putImageData(maskPixels, 0, 0);
           hasMask = true;
+          window.clearTimeout(firstMaskTimer);
+          setVirtualEffectLoading("");
           if (!attached) {
             processedLocal.current = output;
             refreshCameraForPeer();
@@ -772,6 +789,11 @@ export default function Home() {
           fallbackToPremium();
         };
         worker.postMessage({ type: "init" });
+        // Alguns WebKit inicializam o Worker sem disparar erro, mas nunca
+        // entregam uma máscara. O timeout impede um desfoque eternamente cru.
+        firstMaskTimer = window.setTimeout(() => {
+          if (!hasMask) fallbackToPremium();
+        }, 7_000);
         const render = () => {
           if (!active || !context) return;
           if (shouldSkipAnimatedRender()) {
@@ -885,6 +907,7 @@ export default function Home() {
         return () => {
           cancelAnimationFrame(segmentationFrame);
           cancelAnimationFrame(renderFrame);
+          window.clearTimeout(firstMaskTimer);
           worker.postMessage({ type: "close" });
           worker.terminate();
           output.getTracks().forEach((track) => track.stop());
@@ -895,7 +918,11 @@ export default function Home() {
           }
         };
       } catch {
-        setNotice(
+        setVirtualEffectLoading("");
+        if (mattingQuality === "standard") {
+          setMattingQuality("premium");
+          setNotice("O recorte leve não abriu neste navegador. Tentando o modo compatível com GPU.");
+        } else setNotice(
           "Não foi possível aplicar o fundo virtual. A câmera continua normal.",
         );
         output.getTracks().forEach((track) => track.stop());
@@ -1544,6 +1571,13 @@ export default function Home() {
       setNotice("Escolha uma imagem, GIF ou MP4 para o fundo da câmera.");
       return;
     }
+    setVirtualEffectLoading(
+      video
+        ? "Carregando vídeo de fundo…"
+        : animated
+          ? "Carregando e preparando o GIF…"
+          : "Preparando imagem de fundo…",
+    );
     if (video) {
       visualCompositionActive.current = true;
       setBackgroundVideo(URL.createObjectURL(file));
@@ -1565,6 +1599,10 @@ export default function Home() {
           ? "GIF animado aplicado. Ele aparece atrás da câmera e também na gravação."
           : "Imagem de fundo aplicada à câmera.",
       );
+    };
+    reader.onerror = () => {
+      setVirtualEffectLoading("");
+      setNotice("Não foi possível ler este arquivo de fundo.");
     };
     reader.readAsDataURL(file);
   }
@@ -1609,6 +1647,7 @@ export default function Home() {
   }
   function toggleBlur() {
     const next = backgroundMode === "blur" ? "none" : "blur";
+    setVirtualEffectLoading(next === "blur" ? "Preparando o desfoque…" : "");
     visualCompositionActive.current = next !== "none";
     setBackgroundMode(next);
     if (next === "none" && mine.current && local.current) {
@@ -1619,6 +1658,7 @@ export default function Home() {
   }
   function toggleBackgroundRemoval() {
     const next = backgroundMode === "remove" ? "none" : "remove";
+    setVirtualEffectLoading(next === "remove" ? "Preparando a remoção do fundo…" : "");
     visualCompositionActive.current = next !== "none";
     setBackgroundMode(next);
     if (next === "none" && mine.current && local.current) {
@@ -2808,6 +2848,15 @@ export default function Home() {
         <div className="toast">
           {notice}
           <button onClick={() => setNotice("")}>×</button>
+        </div>
+      )}
+      {virtualEffectLoading && (
+        <div className="virtual-effect-loading" role="status" aria-live="polite">
+          <span aria-hidden="true" />
+          <div>
+            <b>{virtualEffectLoading}</b>
+            <small>A câmera continua conectada enquanto o efeito é preparado.</small>
+          </div>
         </div>
       )}
       <footer>

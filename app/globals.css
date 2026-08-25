@@ -1207,6 +1207,38 @@ body {
   margin-left: 12px;
   cursor: pointer;
 }
+.virtual-effect-loading {
+  position: fixed;
+  z-index: 160;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  display: flex;
+  align-items: center;
+  gap: 13px;
+  width: min(360px, calc(100vw - 32px));
+  box-sizing: border-box;
+  padding: 16px 18px;
+  border: 1px solid #ff7a68;
+  border-radius: 14px;
+  background: #1a1717f2;
+  color: #fff7f3;
+  box-shadow: 0 18px 60px #000a, 0 0 0 1px #ffffff0a inset;
+  backdrop-filter: blur(14px);
+}
+.virtual-effect-loading > span {
+  flex: 0 0 auto;
+  width: 28px;
+  height: 28px;
+  border: 3px solid #ffffff2d;
+  border-top-color: #ff6b5c;
+  border-radius: 50%;
+  animation: virtual-effect-spin .75s linear infinite;
+}
+.virtual-effect-loading div { display: grid; gap: 3px; }
+.virtual-effect-loading b { font-size: 14px; line-height: 1.25; }
+.virtual-effect-loading small { color: #cbbfba; font-size: 11px; line-height: 1.35; }
+@keyframes virtual-effect-spin { to { transform: rotate(360deg); } }
 @media (max-width: 700px) {
   .landing nav {
     padding: 0 24px;

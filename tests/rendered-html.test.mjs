@@ -39,6 +39,9 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /if \(background\) image\.src = background/);
   assert.match(page, /Nunca faça composição em 4K implícita/);
   assert.match(page, /Usando IA Premium compatível com este navegador/);
+  assert.match(page, /const usePremiumMatting = mattingQuality === "premium" \|\| isMacOS/);
+  assert.match(page, /firstMaskTimer = window\.setTimeout/);
+  assert.match(page, /Carregando e preparando o GIF/);
   assert.match(page, /inferenceDuration > 95 \? 384/);
   assert.match(page, /Vídeo e enquadramento/);
   assert.match(page, /Arraste diretamente na prévia ou faça o ajuste preciso aqui/);
@@ -68,5 +71,6 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.video-properties-grid/);
   assert.match(css, /\.position-grid/);
   assert.match(css, /\.settings-panel::-webkit-scrollbar/);
+  assert.match(css, /\.virtual-effect-loading/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });

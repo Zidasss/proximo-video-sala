@@ -3161,7 +3161,7 @@ function ClipEditorV2({
   const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
-  const videoFrameResize = useRef<{ scale: number; startX: number } | null>(null);
+  const videoFrameResize = useRef<{ scale: number; startX: number; startY: number; axis: "horizontal" | "vertical" } | null>(null);
 
   useEffect(() => {
     if (!selectedId && layers[0]) setSelectedId(layers[0].id);
@@ -3576,10 +3576,10 @@ function ClipEditorV2({
       y: Math.max(-45, Math.min(45, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)),
     }));
   }
-  function beginVideoFrameResize(event: React.PointerEvent<HTMLDivElement>) {
+  function beginVideoFrameResize(event: React.PointerEvent<HTMLDivElement>, axis: "horizontal" | "vertical" = "horizontal") {
     event.preventDefault();
     event.stopPropagation();
-    videoFrameResize.current = { scale: videoTransform.scale, startX: event.clientX };
+    videoFrameResize.current = { scale: videoTransform.scale, startX: event.clientX, startY: event.clientY, axis };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
   function moveVideoFrameResize(event: React.PointerEvent<HTMLDivElement>) {
@@ -3587,7 +3587,8 @@ function ClipEditorV2({
     const stage = event.currentTarget.parentElement;
     if (!resize || !stage) return;
     const bounds = stage.getBoundingClientRect();
-    setVideoTransform((currentFrame) => ({ ...currentFrame, scale: Math.max(1, Math.min(2.5, resize.scale + ((event.clientX - resize.startX) / bounds.width) * 2)) }));
+    const delta = resize.axis === "vertical" ? (event.clientY - resize.startY) / bounds.height : (event.clientX - resize.startX) / bounds.width;
+    setVideoTransform((currentFrame) => ({ ...currentFrame, scale: Math.max(1, Math.min(2.5, resize.scale + delta * 2)) }));
   }
   function applyTransition(kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
     const duration = kind === "none" ? 0 : .38;
@@ -3938,7 +3939,7 @@ function ClipEditorV2({
           <div className="stage-meta" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)` }}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><div><button onClick={() => setPreviewScale((value) => Math.max(.7, Number((value - .1).toFixed(1))))}>−</button><b>{Math.round(previewScale * 100)}%</b><button onClick={() => setPreviewScale((value) => Math.min(2, Number((value + .1).toFixed(1))))}>＋</button></div><b>{time(current)}</b></div>
           <div className="editor-stage" style={{ width: `min(${Math.round(520 * previewScale)}px, 55vw)`, aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${Math.max(1, videoTransform.scale)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o vídeo para enquadrar</div><div className="video-frame-resize" onPointerDown={beginVideoFrameResize} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar o zoom">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scale: 1 })}>↺ Enquadrar</button></>
+              <><video ref={video} className="transformable-video" src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${Math.max(1, videoTransform.scale)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setDuration(value); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /><div className="video-layout-hint">Arraste o vídeo para enquadrar</div><div className="video-frame-resize vertical top" onPointerDown={(event) => beginVideoFrameResize(event, "vertical")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para ajustar a altura do enquadramento">↕</div><div className="video-frame-resize vertical bottom" onPointerDown={(event) => beginVideoFrameResize(event, "vertical")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para ajustar a altura do enquadramento">↕</div><div className="video-frame-resize" onPointerDown={beginVideoFrameResize} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar o zoom">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scale: 1 })}>↺ Enquadrar</button></>
             ) : (
               <div className="editor-empty"><b>Monte seu próximo reel.</b><span>Importe um vídeo para editar corte, textos e efeitos.</span></div>
             )}

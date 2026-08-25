@@ -1,6 +1,6 @@
 ﻿"use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useRef } from "react";
 import {
   X,
   Share2,
@@ -13,6 +13,9 @@ import {
   Eye,
   Send,
   Video,
+  UploadCloud,
+  FileVideo,
+  RefreshCw,
 } from "lucide-react";
 import { SocialPlatform, PlatformPublishStatus } from "../lib/types/publishing";
 
@@ -33,9 +36,9 @@ interface PublishModalProps {
 export function PublishModal({
   isOpen,
   onClose,
-  videoBlob,
+  videoBlob: initialVideoBlob,
   videoUrl: initialVideoUrl,
-  defaultTitle = "Meu Novo Vídeo no Klip",
+  defaultTitle = "Novo Vídeo Klip",
 }: PublishModalProps) {
   const [title, setTitle] = useState(defaultTitle);
   const [description, setDescription] = useState("");
@@ -49,7 +52,13 @@ export function PublishModal({
   const [visibility, setVisibility] = useState<"public" | "unlisted" | "private">("public");
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishStep, setPublishStep] = useState<string>("");
+  
+  const [activeBlob, setActiveBlob] = useState<Blob | null>(initialVideoBlob || null);
   const [videoPreviewUrl, setVideoPreviewUrl] = useState<string>("");
+  const [videoFileName, setVideoFileName] = useState<string>("");
+  const [isDragging, setIsDragging] = useState(false);
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const [platformStatus, setPlatformStatus] = useState<Record<SocialPlatform, PlatformPublishStatus>>({
     youtube: { platform: "youtube", status: "idle", progress: 0 },
@@ -60,14 +69,15 @@ export function PublishModal({
   const [isCompleted, setIsCompleted] = useState(false);
 
   useEffect(() => {
-    if (videoBlob) {
-      const url = URL.createObjectURL(videoBlob);
+    if (initialVideoBlob) {
+      setActiveBlob(initialVideoBlob);
+      const url = URL.createObjectURL(initialVideoBlob);
       setVideoPreviewUrl(url);
       return () => URL.revokeObjectURL(url);
     } else if (initialVideoUrl) {
       setVideoPreviewUrl(initialVideoUrl);
     }
-  }, [videoBlob, initialVideoUrl]);
+  }, [initialVideoBlob, initialVideoUrl]);
 
   useEffect(() => {
     if (isOpen) {
@@ -81,6 +91,44 @@ export function PublishModal({
   }, [isOpen]);
 
   if (!isOpen) return null;
+
+  const handleProcessFile = (file: File) => {
+    if (!file.type.startsWith("video/")) {
+      alert("Por favor, selecione um arquivo de vídeo válido (MP4, MOV, WebM).");
+      return;
+    }
+
+    setActiveBlob(file);
+    setVideoFileName(file.name);
+
+    // Auto update title if current is default
+    if (!title || title === "Novo Vídeo Klip" || title === "Meu Novo Vídeo no Klip") {
+      const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-]/g, " ");
+      const formattedTitle = cleanName.charAt(0).toUpperCase() + cleanName.slice(1);
+      setTitle(formattedTitle);
+    }
+
+    const url = URL.createObjectURL(file);
+    setVideoPreviewUrl(url);
+  };
+
+  const handleDrop = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      handleProcessFile(e.dataTransfer.files[0]);
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent<HTMLDivElement>) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
 
   const togglePlatform = (platform: SocialPlatform) => {
     if (selectedPlatforms.includes(platform)) {
@@ -104,6 +152,11 @@ export function PublishModal({
   };
 
   const handlePublish = async () => {
+    if (!videoPreviewUrl && !activeBlob) {
+      alert("Por favor, arraste ou selecione um vídeo para publicar.");
+      return;
+    }
+
     if (!title.trim()) {
       alert("Por favor, informe um título para o vídeo.");
       return;
@@ -117,9 +170,9 @@ export function PublishModal({
       let finalVideoUrl = videoPreviewUrl;
 
       // 1. Upload video if Blob is present
-      if (videoBlob) {
+      if (activeBlob) {
         const formData = new FormData();
-        formData.append("video", videoBlob, "klip_video.mp4");
+        formData.append("video", activeBlob, videoFileName || "klip_video.mp4");
 
         const uploadRes = await fetch("/api/upload", {
           method: "POST",
@@ -183,6 +236,19 @@ export function PublishModal({
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md p-4 animate-in fade-in duration-200">
       <div className="relative w-full max-w-4xl bg-zinc-900 border border-zinc-800 rounded-2xl shadow-2xl overflow-hidden flex flex-col max-h-[90vh] text-zinc-100">
+        {/* Hidden File Input */}
+        <input
+          type="file"
+          ref={fileInputRef}
+          accept="video/*,.mp4,.mov,.webm"
+          className="hidden"
+          onChange={(e) => {
+            if (e.target.files && e.target.files.length > 0) {
+              handleProcessFile(e.target.files[0]);
+            }
+          }}
+        />
+
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-zinc-800 bg-zinc-900/50">
           <div className="flex items-center gap-3">
@@ -206,24 +272,71 @@ export function PublishModal({
 
         {/* Content Body */}
         <div className="flex-1 overflow-y-auto p-6 grid grid-cols-1 lg:grid-cols-12 gap-6">
-          {/* Left Column: Video Preview & Network Selection */}
+          {/* Left Column: Drag & Drop Video Area & Network Selection */}
           <div className="lg:col-span-5 flex flex-col gap-4">
-            <div className="relative aspect-[9/16] max-h-[380px] w-full bg-black rounded-xl overflow-hidden border border-zinc-800 flex items-center justify-center group shadow-inner">
+            <div
+              onDrop={handleDrop}
+              onDragOver={handleDragOver}
+              onDragLeave={handleDragLeave}
+              onClick={() => !videoPreviewUrl && fileInputRef.current?.click()}
+              className={`relative aspect-[9/16] max-h-[380px] w-full rounded-2xl overflow-hidden border-2 transition-all flex flex-col items-center justify-center cursor-pointer group shadow-inner ${
+                isDragging
+                  ? "border-indigo-500 bg-indigo-500/10 scale-[1.01]"
+                  : videoPreviewUrl
+                  ? "border-zinc-800 bg-black cursor-default"
+                  : "border-dashed border-zinc-700 hover:border-indigo-500/60 bg-zinc-950/60 hover:bg-zinc-900/80"
+              }`}
+            >
               {videoPreviewUrl ? (
-                <video
-                  src={videoPreviewUrl}
-                  controls
-                  playsInline
-                  className="w-full h-full object-contain"
-                />
+                <>
+                  <video
+                    src={videoPreviewUrl}
+                    controls
+                    playsInline
+                    className="w-full h-full object-contain"
+                  />
+                  {/* Floating Action to Change/Replace Video */}
+                  <div className="absolute bottom-3 left-3 right-3 flex items-center justify-between pointer-events-none">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        fileInputRef.current?.click();
+                      }}
+                      className="pointer-events-auto px-3 py-1.5 rounded-lg bg-black/75 hover:bg-black text-white text-xs font-medium backdrop-blur-md border border-white/20 shadow-lg flex items-center gap-1.5 transition"
+                    >
+                      <RefreshCw className="w-3.5 h-3.5" /> Trocar Vídeo
+                    </button>
+                    {videoFileName && (
+                      <span className="text-[10px] px-2 py-1 bg-black/70 text-zinc-300 rounded backdrop-blur truncate max-w-[140px]">
+                        {videoFileName}
+                      </span>
+                    )}
+                  </div>
+                </>
               ) : (
-                <div className="flex flex-col items-center gap-2 text-zinc-500">
-                  <Video className="w-10 h-10" />
-                  <span className="text-xs">Nenhum vídeo carregado</span>
+                <div className="flex flex-col items-center justify-center p-6 text-center gap-3">
+                  <div className={`w-14 h-14 rounded-2xl flex items-center justify-center transition-all ${
+                    isDragging ? "bg-indigo-500 text-white scale-110" : "bg-zinc-800/80 text-zinc-400 group-hover:text-indigo-400 group-hover:scale-105"
+                  }`}>
+                    {isDragging ? <UploadCloud className="w-7 h-7 animate-bounce" /> : <FileVideo className="w-7 h-7" />}
+                  </div>
+                  <div>
+                    <p className="text-sm font-semibold text-zinc-200">
+                      {isDragging ? "Solte o vídeo aqui!" : "Arraste e solte o vídeo aqui"}
+                    </p>
+                    <p className="text-xs text-zinc-500 mt-1">
+                      ou clique para escolher do seu computador
+                    </p>
+                  </div>
+                  <span className="text-[10px] px-2.5 py-1 bg-zinc-800/60 rounded-full text-zinc-400 border border-zinc-800">
+                    MP4, MOV, WebM (Formato 9:16)
+                  </span>
                 </div>
               )}
-              <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur rounded text-[10px] font-mono text-zinc-300">
-                9:16 Vertical (Shorts/Reels)
+
+              <div className="absolute top-2 right-2 px-2 py-1 bg-black/60 backdrop-blur rounded text-[10px] font-mono text-zinc-300 pointer-events-none">
+                9:16 Vertical
               </div>
             </div>
 
@@ -376,7 +489,7 @@ export function PublishModal({
               <div className="flex flex-col justify-end">
                 <div className="p-2.5 rounded-xl bg-zinc-800/40 border border-zinc-800 text-[11px] text-zinc-400 flex items-center gap-2">
                   <Sparkles className="w-4 h-4 text-amber-400 shrink-0" />
-                  <span>Tags de otimização de alcance incluídas automaticamente.</span>
+                  <span>Tags e otimização para Shorts/Reels/TikTok incluídas.</span>
                 </div>
               </div>
             </div>

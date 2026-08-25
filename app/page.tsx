@@ -219,7 +219,7 @@ export default function Home() {
     cutRequested = useRef(false),
     speakingRef = useRef({ mine: false, friend: false }),
     pipVideo = useRef<HTMLVideoElement | null>(null),
-    pipFrame = useRef(0),
+    pipTimer = useRef(0),
     peerRetry = useRef(0),
     peerConnectTimer = useRef(0),
     peerRetryTimer = useRef(0),
@@ -2130,8 +2130,15 @@ export default function Home() {
     const canvas = document.createElement("canvas"),
       context = canvas.getContext("2d");
     if (!context) return;
-    canvas.width = vertical ? 540 : 960;
-    canvas.height = vertical ? 960 : 540;
+    // O PiP aparece pequeno. Compor em 720p mantém a imagem nítida sem
+    // decodificar e redesenhar desnecessariamente um canvas Full HD/4K.
+    canvas.width = vertical ? 405 : 720;
+    canvas.height = vertical ? 720 : 405;
+    context.imageSmoothingEnabled = true;
+    context.imageSmoothingQuality = "medium";
+    const pipFps = 30,
+      output = canvas.captureStream(0),
+      outputTrack = output.getVideoTracks()[0] as CanvasCaptureMediaStreamTrack;
     const cover = (
       video: HTMLVideoElement | null,
       x: number,
@@ -2212,33 +2219,39 @@ export default function Home() {
           canvas.height * 0.26,
         );
       }
-      pipFrame.current = requestAnimationFrame(draw);
+      // captureStream(0) só envia um quadro quando pedimos. Isso evita uma
+      // segunda renderização descontrolada e, ao contrário de rAF, continua
+      // fluido quando a aba fica oculta/minimizada enquanto o PiP está ativo.
+      outputTrack.requestFrame();
     };
     const video = document.createElement("video");
     video.muted = true;
     video.playsInline = true;
-    video.srcObject = canvas.captureStream(30);
+    video.srcObject = output;
     video.style.cssText = "position:fixed;left:-9999px;width:1px;height:1px";
     document.body.append(video);
     pipVideo.current = video;
+    const cleanup = () => {
+      window.clearInterval(pipTimer.current);
+      pipTimer.current = 0;
+      output.getTracks().forEach((track) => track.stop());
+      video.srcObject = null;
+      video.remove();
+      if (pipVideo.current === video) pipVideo.current = null;
+    };
     video.addEventListener(
       "leavepictureinpicture",
-      () => {
-        cancelAnimationFrame(pipFrame.current);
-        video.remove();
-        if (pipVideo.current === video) pipVideo.current = null;
-      },
+      cleanup,
       { once: true },
     );
     draw();
+    pipTimer.current = window.setInterval(draw, 1000 / pipFps);
     try {
       await video.play();
       await video.requestPictureInPicture();
       setNotice("Prévia aberta em Picture-in-Picture.");
     } catch {
-      cancelAnimationFrame(pipFrame.current);
-      video.remove();
-      pipVideo.current = null;
+      cleanup();
       setNotice(
         "Não foi possível abrir o Picture-in-Picture. Tente pelo Chrome.",
       );

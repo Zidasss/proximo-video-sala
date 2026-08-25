@@ -1740,3 +1740,26 @@ body {
 .clip-editor-v2 .editor-empty { width: min(560px, 100%); min-height: 440px; place-content: center; padding: 52px; border-radius: 18px; background: radial-gradient(circle at 50% 24%, #ff71601d, transparent 34%), linear-gradient(135deg, #242022, #101111); }.clip-editor-v2 .editor-empty small { color: #ff9488; font: 800 11px Inter, sans-serif; letter-spacing: .12em; text-transform: uppercase; }.clip-editor-v2 .editor-empty b { font-size: clamp(28px, 4vw, 46px); }.clip-editor-v2 .editor-empty span { max-width: 370px; line-height: 1.5; }.clip-editor-v2 .editor-empty i { color: #77716c; font: 11px Inter, sans-serif; }.clip-editor-v2 .editor-empty-upload { display: block; min-width: 260px; margin: 14px auto 1px; padding: 15px 18px; border-radius: 11px; background: #ff6b5c; color: #2a1010; font: 900 15px Inter, sans-serif; cursor: pointer; }.clip-editor-v2 .editor-empty-upload input { display: none; }
 .clip-editor-v2 .editor-workspace-empty { grid-template-columns: 1fr !important; min-height: calc(100dvh - 250px) !important; }.clip-editor-v2 .editor-workspace-empty .editor-tools { display: none; }.clip-editor-v2 .editor-workspace-empty .editor-stage-wrap { min-height: calc(100dvh - 300px); }.clip-editor-v2 .editor-workspace-empty .editor-stage { width: min(760px, 76vw) !important; aspect-ratio: 16 / 10 !important; min-height: 0; }.clip-editor-v2 .empty-timeline { min-height: 0 !important; padding-block: 16px !important; }.clip-editor-v2 .empty-timeline .timeline-top button, .clip-editor-v2 .empty-timeline .timeline-ruler, .clip-editor-v2 .empty-timeline .timeline-lanes, .clip-editor-v2 .empty-timeline .editor-time-controls { display: none; }.empty-timeline-message { margin: 11px 0 0; color: #938b85; font-size: 12px; }
 @media (max-width: 760px) { .clip-editor-v2 .editor-workspace-empty { padding-top: 26px; }.clip-editor-v2 .editor-workspace-empty .editor-stage { width: min(100%, 560px) !important; aspect-ratio: 4 / 5 !important; }.clip-editor-v2 .editor-empty { min-height: 440px; padding: 32px 20px; }.clip-editor-v2 .editor-empty-upload { min-width: 230px; }.clip-editor-v2 .empty-timeline { margin-top: 0; } }
+
+/* Media has an explicit destination once a project exists: principal, scene, or overlay. */
+.clip-editor-v2 .media-destination-title { display: grid; gap: 3px; margin: 14px 2px 8px; }
+.clip-editor-v2 .media-destination-title b { color: #fff4f0; font-size: 14px; }
+.clip-editor-v2 .media-destination-title small { color: #b9ada7; font-size: 12px; line-height: 1.4; }
+.clip-editor-v2 .media-destinations { display: grid; gap: 8px; }
+.clip-editor-v2 .media-destinations .editor-upload { min-height: 42px; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 800; }
+.clip-editor-v2 .editor-replace-upload { background: #292526; border: 1px solid #6b5c57; color: #fff4ef; }
+.clip-editor-v2 .editor-scene-upload { background: #efb64e; color: #271b0c; }
+.clip-editor-v2 .media-destinations + .media-import-help { margin-top: 10px; }
+
+/* The editor is used on large, dense screens: keep labels readable without inflating the canvas. */
+@media (min-width: 900px) {
+  .clip-editor-v2 .editor-tools { font-size: 15px; }
+  .clip-editor-v2 .tool-heading b { font-size: 16px; }
+  .clip-editor-v2 .tool-heading small, .clip-editor-v2 .media-import-help, .clip-editor-v2 .illustration-help { font-size: 12px; line-height: 1.45; }
+  .clip-editor-v2 .tool-disclosure > summary { font-size: 15px; }
+  .clip-editor-v2 .tool-disclosure button, .clip-editor-v2 .project-actions button, .clip-editor-v2 .project-actions label, .clip-editor-v2 .layer-actions button, .clip-editor-v2 .subtitle-import { font-size: 12px; }
+  .clip-editor-v2 .layer-list button { min-height: 38px; font-size: 12px; }
+  .clip-editor-v2 .layer-list button span { font-size: 12px; }
+  .clip-editor-v2 .timeline-lane > b, .clip-editor-v2 .timeline-ruler span, .clip-editor-v2 .timeline-clip-meta { font-size: 11px; }
+  .clip-editor-v2 .text-clip span, .clip-editor-v2 .illustration-clip span, .clip-editor-v2 .audio-clip { font-size: 11px; }
+}

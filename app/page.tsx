@@ -3352,7 +3352,7 @@ function ClipEditorV2({
     setSelectedIllustrationId("");
     setNotice(message);
   }
-  async function turnPhotoIntoClip(file: File) {
+  async function turnPhotoIntoClip(file: File, target: "main" | "scene" = "main") {
     if (typeof MediaRecorder === "undefined" || !HTMLCanvasElement.prototype.captureStream) {
       setNotice("Este navegador não consegue transformar fotos em vídeo. Use uma versão atual do Chrome.");
       return;
@@ -3385,11 +3385,12 @@ function ClipEditorV2({
         stream.getTracks().forEach((track) => track.stop());
         URL.revokeObjectURL(imageUrl);
         if (!chunks.length) return;
-        setSourceAspect(aspect);
-        resetWithClip(
-          { url: URL.createObjectURL(new Blob(chunks, { type: mime })), name: `${file.name.replace(/\.[^.]+$/, "")} · foto animada` },
-          "Foto transformada em clipe de 6 segundos. Arraste, corte, adicione áudio e exporte.",
-        );
+        const generated = { url: URL.createObjectURL(new Blob(chunks, { type: mime })), name: `${file.name.replace(/\.[^.]+$/, "")} · foto animada` };
+        if (target === "scene") insertScene(generated.url, generated.name, seconds, false);
+        else {
+          setSourceAspect(aspect);
+          resetWithClip(generated, "Foto transformada em clipe de 6 segundos. Arraste, corte, adicione áudio e exporte.");
+        }
       };
       const draw = (progress: number) => {
         context.fillStyle = "#090909";
@@ -3418,11 +3419,6 @@ function ClipEditorV2({
   async function selectFile(file?: File) {
     if (!file) return;
     if (file.type.startsWith("image/")) {
-      if (clip) {
-        addIllustration(file);
-        setNotice("A foto principal foi mantida. Esta nova foto entrou como uma camada na timeline — arraste e redimensione como quiser.");
-        return;
-      }
       await turnPhotoIntoClip(file);
       return;
     }
@@ -3431,6 +3427,22 @@ function ClipEditorV2({
       name: file.name.replace(/\.[^.]+$/, ""),
     }, "Vídeo carregado. Agora monte as camadas na linha do tempo.");
   }
+  function insertScene(url: string, name: string, sourceDuration: number, withAudio: boolean) {
+    const from = Math.max(start, Math.min(current, Math.max(start, end - .4)));
+    const available = Math.max(.4, end - from);
+    const clipLength = Math.min(Math.max(.4, sourceDuration || 6), available);
+    const scene: IllustrationLayer = { id: crypto.randomUUID(), kind: "video", url, name, x: 50, y: 50, size: 140, start: from, end: from + clipLength, fadeIn: .35, fadeOut: .35, fit: "cover", role: "scene" };
+    remember();
+    setIllustrations((items) => [...items, scene]);
+    if (withAudio) setAudioTracks((items) => [...items, { id: crypto.randomUUID(), url, name: `Áudio · ${scene.name}`, start: scene.start, end: scene.end, volume: 100, fadeIn: scene.fadeIn, fadeOut: scene.fadeOut }]);
+    setSelectedIllustrationId(scene.id); setSelectedId(""); setSelectedAudioId("");
+    setNotice("Cena adicionada. Arraste o clip na timeline e ajuste os fades nas duas pontas para criar a transição.");
+  }
+  async function addSceneMedia(file?: File) {
+    if (!file) return;
+    if (file.type.startsWith("image/")) { await turnPhotoIntoClip(file, "scene"); return; }
+    addSceneVideo(file);
+  }
   function addSceneVideo(file?: File) {
     if (!file || !file.type.startsWith("video/")) return;
     const url = URL.createObjectURL(file);
@@ -3438,16 +3450,7 @@ function ClipEditorV2({
     probe.preload = "metadata";
     probe.src = url;
     probe.onloadedmetadata = () => {
-      const from = Math.max(start, Math.min(current, Math.max(start, end - .4)));
-      const available = Math.max(.4, end - from);
-      const clipLength = Number.isFinite(probe.duration) && probe.duration > 0 ? Math.min(probe.duration, available) : Math.min(6, available);
-      const scene: IllustrationLayer = { id: crypto.randomUUID(), kind: "video", url, name: file.name.replace(/\.[^.]+$/, ""), x: 50, y: 50, size: 140, start: from, end: from + clipLength, fadeIn: .35, fadeOut: .35, fit: "cover", role: "scene" };
-      const sceneAudio: AudioTrack = { id: crypto.randomUUID(), url, name: `Áudio · ${scene.name}`, start: scene.start, end: scene.end, volume: 100, fadeIn: scene.fadeIn, fadeOut: scene.fadeOut };
-      remember();
-      setIllustrations((items) => [...items, scene]);
-      setAudioTracks((items) => [...items, sceneAudio]);
-      setSelectedIllustrationId(scene.id); setSelectedId(""); setSelectedAudioId("");
-      setNotice("Cena de vídeo adicionada. Arraste o clip na timeline e ajuste os fades nas duas pontas para criar a transição.");
+      insertScene(url, file.name.replace(/\.[^.]+$/, ""), Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 6, true);
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setNotice("Não foi possível abrir este vídeo como cena."); };
   }
@@ -4306,9 +4309,18 @@ function ClipEditorV2({
       <section className="editor-workspace">
         <aside className="editor-tools" id="klip-tools">
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
-          <label className="editor-upload">＋ Importar vídeo ou foto<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
-          <small className="media-import-help">A primeira foto vira o clipe principal. As próximas entram como camadas, sem apagar as anteriores.</small>
-          {clip && <label className="editor-upload editor-scene-upload">＋ Adicionar cena de vídeo<input type="file" accept="video/*" onChange={(event) => addSceneVideo(event.target.files?.[0])} /></label>}
+          {!clip ? <>
+            <label className="editor-upload">＋ Importar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
+            <small className="media-import-help">A mídia principal é a base do seu vídeo. Uma foto vira um clipe animado de 6 segundos.</small>
+          </> : <>
+            <div className="media-destination-title"><b>Adicionar mídia</b><small>Escolha o destino antes de importar. Nada será trocado por acidente.</small></div>
+            <div className="media-destinations">
+              <label className="editor-upload editor-replace-upload">↻ Trocar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
+              <label className="editor-upload editor-scene-upload">＋ Inserir como cena<input type="file" accept="video/*,image/*" onChange={(event) => void addSceneMedia(event.target.files?.[0])} /></label>
+              <label className="editor-upload editor-illustration-upload">▧ Inserir como camada<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
+            </div>
+            <small className="media-import-help"><b>Cena</b> entra na faixa de vídeo. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
+          </>}
           {clip && <p className="editor-file">● {clip.name}</p>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           {clip && <>
@@ -4331,8 +4343,7 @@ function ClipEditorV2({
           </div></details>}
 
           <div className="tool-heading layer-heading"><span>02</span><div><b>Ilustrações</b><small>Imagem ou vídeo por cima da conversa</small></div></div>
-          <label className="editor-upload editor-illustration-upload">＋ Imagem ou vídeo<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
-          <small className="illustration-help">Use para contextualizar enquanto o vídeo principal continua falando.</small>
+          <small className="illustration-help">As camadas novas são inseridas pelo bloco “Adicionar mídia” acima. Selecione uma abaixo para ajustar.</small>
           {!!illustrations.length && <div className="layer-list illustration-list">
             {illustrations.map((item, index) => (
               <button key={item.id} className={selectedIllustration?.id === item.id ? "selected" : ""} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }}>

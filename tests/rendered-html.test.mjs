@@ -16,6 +16,8 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function openContextMenu/);
   assert.match(page, /function updateSnapGuide/);
   assert.match(page, /function addSceneVideo/);
+  assert.match(page, /function addSceneMedia/);
+  assert.match(page, /target: "main" \| "scene"/);
   assert.match(page, /role: "scene"/);
   assert.match(page, /editor-workspace-empty/);
   assert.match(page, /empty-timeline-message/);
@@ -37,6 +39,8 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.tool-disclosure/);
   assert.match(css, /\.editor-workspace-empty/);
   assert.match(css, /\.editor-empty-upload/);
+  assert.match(css, /\.media-destinations/);
+  assert.match(css, /\.editor-replace-upload/);
   assert.match(css, /\.timeline-more/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });

@@ -3391,6 +3391,11 @@ function ClipEditorV2({
   async function selectFile(file?: File) {
     if (!file) return;
     if (file.type.startsWith("image/")) {
+      if (clip) {
+        addIllustration(file);
+        setNotice("A foto principal foi mantida. Esta nova foto entrou como uma camada na timeline — arraste e redimensione como quiser.");
+        return;
+      }
       await turnPhotoIntoClip(file);
       return;
     }
@@ -4081,6 +4086,7 @@ function ClipEditorV2({
         <aside className="editor-tools" id="klip-tools">
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
           <label className="editor-upload">＋ Importar vídeo ou foto<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
+          <small className="media-import-help">A primeira foto vira o clipe principal. As próximas entram como camadas, sem apagar as anteriores.</small>
           {clip && <p className="editor-file">● {clip.name}</p>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           <div className="tool-heading layer-heading"><span>00</span><div><b>Templates</b><small>Comece com um layout pronto</small></div></div>

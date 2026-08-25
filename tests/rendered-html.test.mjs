@@ -19,7 +19,7 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function addSceneMedia/);
   assert.match(page, /function splitSelectedAtPlayhead/);
   assert.match(page, /function openVideoContextMenu/);
-  assert.match(page, /SEQUÊNCIA DE CENAS/);
+  assert.match(page, /Cena na sequência: arraste para mover/);
   assert.match(page, /target: "main" \| "scene"/);
   assert.match(page, /role: "scene"/);
   assert.match(page, /editor-workspace-empty/);

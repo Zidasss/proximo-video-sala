@@ -1820,34 +1820,20 @@ body {
   }
 }
 
-/* Sequence clips share the VÍDEO lane: they are not overlay layers. */
-.clip-editor-v2 .scene-track-heading { display: none; }
-.clip-editor-v2 .timeline-lanes { position: relative; }
-.clip-editor-v2 .scene-lane {
-  position: absolute;
-  z-index: 4;
+/* Sequence clips are actual blocks on VÍDEO, just like clips in a real editor. */
+.clip-editor-v2 .scene-track-heading,
+.clip-editor-v2 .scene-lane { display: none; }
+.clip-editor-v2 .video-lane .lane-track { overflow: visible; }
+.clip-editor-v2 .video-lane .scene-clip {
+  z-index: 2;
   top: 3px;
-  right: 3px;
-  left: 77px;
-  display: block;
-  min-height: 0;
-  padding: 0;
-  border: 0;
-  background: transparent;
-  pointer-events: none;
+  bottom: 3px;
+  min-width: 42px;
+  pointer-events: auto;
+  cursor: grab;
 }
-.clip-editor-v2 .scene-lane > b { display: none; }
-.clip-editor-v2 .scene-lane .lane-track {
-  height: 40px;
-  overflow: visible;
-  background: transparent;
-  pointer-events: none;
-}
-.clip-editor-v2 .scene-lane .scene-clip { z-index: 4; pointer-events: auto; }
-@media (max-width: 760px) {
-  .clip-editor-v2 .scene-lane { left: 39px; }
-  .clip-editor-v2 .scene-lane .lane-track { height: 32px; }
-}
+.clip-editor-v2 .video-lane .scene-clip:active { cursor: grabbing; }
+.clip-editor-v2 .video-lane .scene-clip .timeline-clip-handle { opacity: .95; }
 
 /* Keep all preview UI above the timeline dock at browser zoom levels too. */
 @media (min-width: 761px) {

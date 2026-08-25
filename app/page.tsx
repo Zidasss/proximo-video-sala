@@ -3128,6 +3128,8 @@ function ClipEditorV2({
     [end, setEnd] = useState(0),
     [videoFadeIn, setVideoFadeIn] = useState(0),
     [videoFadeOut, setVideoFadeOut] = useState(0),
+    [videoFadeInAt, setVideoFadeInAt] = useState(0),
+    [videoFadeOutAt, setVideoFadeOutAt] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
     [visualPreset, setVisualPreset] = useState<VisualPreset>("clean"),
     [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scale: 1 }),
@@ -3179,6 +3181,7 @@ function ClipEditorV2({
   const illustrationResize = useRef<{ id: string; size: number; startX: number } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
   const transitionResize = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
+  const transitionMove = useRef<{ edge: "in" | "out"; initial: number; startX: number } | null>(null);
   const videoFrameDrag = useRef<{ x: number; y: number; startX: number; startY: number } | null>(null);
   const videoFrameResize = useRef<{ scale: number; startX: number; startY: number; axis: "horizontal" | "vertical" } | null>(null);
 
@@ -3275,8 +3278,8 @@ function ClipEditorV2({
   };
   useEffect(() => {
     if (!clip) return;
-    try { localStorage.setItem("klip-editor-draft", JSON.stringify({ name: clip.name, start, end, videoFadeIn, videoFadeOut, videoTransform, exportAspect, exportResolution, layers, illustrations })); } catch { /* storage may be unavailable */ }
-  }, [clip, start, end, videoFadeIn, videoFadeOut, videoTransform, exportAspect, exportResolution, layers, illustrations]);
+    try { localStorage.setItem("klip-editor-draft", JSON.stringify({ name: clip.name, start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, videoTransform, exportAspect, exportResolution, layers, illustrations })); } catch { /* storage may be unavailable */ }
+  }, [clip, start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, videoTransform, exportAspect, exportResolution, layers, illustrations]);
   const layerOpacity = (layer: TimedLayer, at: number) => {
     if (at < layer.start || at > layer.end) return 0;
     let opacity = 1;
@@ -3289,8 +3292,10 @@ function ClipEditorV2({
   const videoTransitionOpacity = (at: number) => {
     if (at < start || at > end) return 1;
     let opacity = 0;
-    if (videoFadeIn > 0) opacity = Math.max(opacity, Math.pow(1 - Math.min(1, Math.max(0, (at - start) / videoFadeIn)), 1.7));
-    if (videoFadeOut > 0) opacity = Math.max(opacity, Math.pow(1 - Math.min(1, Math.max(0, (end - at) / videoFadeOut)), 1.7));
+    if (videoFadeIn > 0 && at >= videoFadeInAt && at <= videoFadeInAt + videoFadeIn)
+      opacity = Math.max(opacity, Math.pow(1 - Math.min(1, Math.max(0, (at - videoFadeInAt) / videoFadeIn)), 1.7));
+    if (videoFadeOut > 0 && at >= videoFadeOutAt && at <= videoFadeOutAt + videoFadeOut)
+      opacity = Math.max(opacity, Math.pow(Math.min(1, Math.max(0, (at - videoFadeOutAt) / videoFadeOut)), 1.7));
     return Math.max(0, Math.min(1, opacity));
   };
   const effectProgress = (layer: TextLayer, at: number) =>
@@ -3310,6 +3315,8 @@ function ClipEditorV2({
     setEnd(0);
     setVideoFadeIn(0);
     setVideoFadeOut(0);
+    setVideoFadeInAt(0);
+    setVideoFadeOutAt(0);
     setVideoTransform({ x: 0, y: 0, scale: 1 });
     setMarkers([]);
     setLayers([initialLayer()]);
@@ -3472,12 +3479,12 @@ function ClipEditorV2({
     } catch { setNotice("Não foi possível ler o arquivo de legenda."); }
   }
   function exportProject() {
-    const project = { version: 1, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, createdAt: new Date().toISOString() };
+    const project = { version: 2, clipName: clip?.name || "", start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, createdAt: new Date().toISOString() };
     const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Ao abrir, importe também o vídeo original.");
   }
   async function importProject(file?: File) {
     if (!file) return;
-    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); setStart(Number(project.start) || 0); setEnd(Number(project.end) || duration); setVideoFadeIn(Number(project.videoFadeIn) || 0); setVideoFadeOut(Number(project.videoFadeOut) || 0); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scale: Math.max(1, Math.min(2.5, Number(project.videoTransform?.scale) || 1)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
+    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); const restoredStart = Number(project.start) || 0, restoredEnd = Number(project.end) || duration; const restoredIn = Number(project.videoFadeIn) || 0, restoredOut = Number(project.videoFadeOut) || 0; setStart(restoredStart); setEnd(restoredEnd); setVideoFadeIn(restoredIn); setVideoFadeOut(restoredOut); setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart)); setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut))); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scale: Math.max(1, Math.min(2.5, Number(project.videoTransform?.scale) || 1)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -3590,14 +3597,14 @@ function ClipEditorV2({
     if (timelineTrim.current) setNotice("Corte atualizado na linha do tempo.");
     timelineTrim.current = null;
   }
-  function beginTransitionResize(event: React.PointerEvent<HTMLButtonElement>, edge: "in" | "out") {
+  function beginTransitionResize(event: React.PointerEvent<HTMLElement>, edge: "in" | "out") {
     if (!duration) return;
     event.preventDefault();
     event.stopPropagation();
     transitionResize.current = { edge, initial: edge === "in" ? videoFadeIn : videoFadeOut, startX: event.clientX };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
-  function moveTransitionResize(event: React.PointerEvent<HTMLButtonElement>) {
+  function moveTransitionResize(event: React.PointerEvent<HTMLElement>) {
     const resize = transitionResize.current;
     const track = event.currentTarget.parentElement;
     if (!resize || !track || !duration) return;
@@ -3610,6 +3617,27 @@ function ClipEditorV2({
   function endTransitionResize() {
     if (transitionResize.current) setNotice("Duração do fade ajustada na timeline.");
     transitionResize.current = null;
+  }
+  function beginTransitionMove(event: React.PointerEvent<HTMLElement>, edge: "in" | "out") {
+    if (!duration || (event.target as HTMLElement).closest(".transition-grip")) return;
+    event.preventDefault();
+    event.stopPropagation();
+    transitionMove.current = { edge, initial: edge === "in" ? videoFadeInAt : videoFadeOutAt, startX: event.clientX };
+    event.currentTarget.setPointerCapture(event.pointerId);
+  }
+  function moveTransitionPosition(event: React.PointerEvent<HTMLElement>) {
+    const moving = transitionMove.current;
+    const track = event.currentTarget.parentElement;
+    if (!moving || !track || !duration) return;
+    const bounds = track.getBoundingClientRect();
+    const fadeDuration = moving.edge === "in" ? videoFadeIn : videoFadeOut;
+    const delta = ((event.clientX - moving.startX) / bounds.width) * duration;
+    const next = Math.max(start, Math.min(Math.max(start, end - fadeDuration), moving.initial + delta));
+    if (moving.edge === "in") setVideoFadeInAt(next); else setVideoFadeOutAt(next);
+  }
+  function endTransitionMove() {
+    if (transitionMove.current) setNotice("Fade reposicionado na timeline.");
+    transitionMove.current = null;
   }
   async function togglePreviewPlayback() {
     if (!video.current) return;
@@ -3764,9 +3792,10 @@ function ClipEditorV2({
     setVideoTransform((currentFrame) => ({ ...currentFrame, scale: Math.max(1, Math.min(2.5, resize.scale + delta * 2)) }));
   }
   function applyTransition(kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
-    const duration = kind === "none" ? 0 : .38;
+    const fadeDuration = kind === "none" ? 0 : 1;
     if (kind !== "none") setTransitionColor(kind === "fade-white" ? "white" : "black");
-    if (edge === "in") setVideoFadeIn(duration); else setVideoFadeOut(duration);
+    if (edge === "in") { setVideoFadeIn(fadeDuration); setVideoFadeInAt(start); }
+    else { setVideoFadeOut(fadeDuration); setVideoFadeOutAt(Math.max(start, end - fadeDuration)); }
     setNotice(kind === "none" ? `Transição de ${edge === "in" ? "entrada" : "saída"} removida.` : `${kind === "fade-white" ? "Fade branco" : "Fade preto"} aplicado na ${edge === "in" ? "entrada" : "saída"}.`);
   }
   function dropTransition(event: React.DragEvent<HTMLDivElement>, edge: "in" | "out") {
@@ -4187,7 +4216,7 @@ function ClipEditorV2({
         </div>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{duration ? time((duration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" style={{ width: `${timelineZoom * 100}%` }}>
-          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionResize(event, "in")} onPointerMove={moveTransitionResize} onPointerUp={endTransitionResize} onPointerCancel={endTransitionResize} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste para ajustar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}</button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${((end - videoFadeOut) / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionResize(event, "out")} onPointerMove={moveTransitionResize} onPointerUp={endTransitionResize} onPointerCancel={endTransitionResize} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste para ajustar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"} ↗</button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} />{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(start / duration) * 100}%` : "0%" }}><span>{time(start)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(end / duration) * 100}%` : "100%" }}><span>{time(end)}</span></button></div></div>
           <div className="timeline-lane audio-lane"><b>ÁUDIO</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title="Forma de onda do áudio. Clique para posicionar o cursor.">{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {audioTracks.map((track, index) => <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); seek(Math.max(start, track.start)); }}><b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }}><span>{track.name}</span><i>{track.volume}% · canal</i></button></div></div>)}
           {illustrations.map((item, index) => (

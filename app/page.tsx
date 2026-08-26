@@ -2636,17 +2636,17 @@ export default function Home() {
         </nav>
         <section className="hero landing-hero-v2">
           <div className="landing-copy">
-            <div className="eyebrow">✦ KLIP STUDIO · A PLATAFORMA PARA CRIADORES DE CONTEÚDO</div>
-            <h1>Grave conversas,<br />corte clipes e <em>domine as redes.</em></h1>
-            <p>Salas de gravação de alta qualidade, editor vertical integrado em 9:16 e publicação em 1 clique no YouTube, TikTok e Instagram.</p>
+            <div className="eyebrow">✦ KLIP STUDIO</div>
+            <h1>Do seu papo<br />ao seu <em>próximo clipe.</em></h1>
+            <p>Grave conversas com alta qualidade, corte momentos em 9:16 e publique diretamente no YouTube, TikTok e Instagram.</p>
             <div className="landing-proof">
-              <span><b>Ultra HD</b> gravação local sem perda</span>
-              <span><b>Multi-Cam</b> podcasts & entrevistas</span>
-              <span><b>9:16</b> Reels, Shorts & TikTok</span>
+              <span><b>MP4</b> gravação local</span>
+              <span><b>9:16</b> editor de clipes</span>
+              <span><b>1-Clique</b> publicação multi-plataforma</span>
             </div>
           </div>
           <div className="landing-entry-card">
-            <div className="entry-card-heading"><div><small>ESTÚDIO AO VIVO</small><b>{mode === "host" ? "Iniciar nova sessão" : "Entrar na sessão"}</b></div><span>● privado</span></div>
+            <div className="entry-card-heading"><div><small>ESTÚDIO AO VIVO</small><b>{mode === "host" ? "Iniciar sessão" : "Entrar na sessão"}</b></div><span>● privado</span></div>
             <p className="entry-card-description">{mode === "host" ? "Crie uma sala protegida para gravar com seus convidados." : `Você vai entrar na sala de ${owner || "seu convidado"}.`}</p>
             <div className="entry-tabs">
               <button className={mode === "host" ? "selected" : ""} onClick={() => setMode("host")}>Criar sala</button>
@@ -2699,40 +2699,7 @@ export default function Home() {
               <b>→</b>
             </button>
             {notice && <p>{notice}</p>}
-
-            {!currentUser ? (
-              <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(255, 113, 96, 0.08)", border: "1px solid rgba(255, 113, 96, 0.28)", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
-                <span style={{ fontSize: "11px", color: "#ffe0db" }}>
-                  🔐 <b>Fazer Login:</b> Conecte suas contas do YouTube, TikTok e Instagram.
-                </span>
-                <button
-                  type="button"
-                  onClick={() => setAuthModalOpen(true)}
-                  style={{ fontSize: "11px", fontWeight: 800, padding: "6px 12px", borderRadius: "9px", background: "linear-gradient(135deg, #ff7564, #d84f41)", color: "#24100e", border: "1px solid #ff7160", cursor: "pointer", whiteSpace: "nowrap" }}
-                >
-                  Entrar / Cadastrar
-                </button>
-              </div>
-            ) : (
-              <div style={{ marginTop: "10px", padding: "8px 12px", background: "rgba(16,185,129,0.08)", border: "1px solid rgba(16,185,129,0.2)", borderRadius: "10px", display: "flex", alignItems: "center", justifyContent: "space-between" }}>
-                <Link href="/perfil" style={{ fontSize: "11px", color: "#6ee7b7", textDecoration: "none" }}>
-                  ✓ Conectado como <b>{currentUser.name || currentUser.email}</b>
-                </Link>
-                <Link
-                  href="/perfil"
-                  style={{ fontSize: "11px", color: "#a7f3d0", textDecoration: "underline" }}
-                >
-                  Ver Perfil & Redes
-                </Link>
-              </div>
-            )}
             </div>
-            <div className="entry-quality-note"><i>✓</i><span><b>Estúdio Alta Definição</b><small>Câmera, microfone e compartilhamento de tela com gravação isolada.</small></span></div>
-          </div>
-          <div className="landing-showcase" aria-hidden="true">
-            <div className="showcase-top"><span>● AO VIVO</span><b>Estúdio de Gravação</b></div>
-            <div className="showcase-canvas"><div className="showcase-camera"><i>CAM 01</i><strong>Você</strong></div><div className="showcase-camera friend"><i>CAM 02</i><strong>Convidado</strong></div><div className="showcase-screen"><span>Compartilhamento de tela</span><b>Seu conteúdo em destaque</b></div></div>
-            <div className="showcase-footer"><span>● GRAVANDO LOCAL</span><b>00:24:18</b><i>MP4 · áudio estéreo isolado</i></div>
           </div>
         </section>
 

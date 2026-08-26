@@ -2164,6 +2164,14 @@ body {
 .clip-editor-v2 .primary-video-clip { cursor: grab; touch-action: none; }
 .clip-editor-v2 .primary-video-clip:active { cursor: grabbing; }
 .clip-editor-v2 .transformable-video.timeline-video-hidden { opacity: 0; pointer-events: none; }
+.clip-editor-v2 .multi-timeline.montage-active .video-lane { display: none; }
+.clip-editor-v2 .montage-video-lane .lane-track { overflow: visible; background: #211816; }
+.clip-editor-v2 .montage-video-lane > b { color: #ffb7aa !important; line-height: 1.05; white-space: normal; }
+.clip-editor-v2 .montage-cut { top: 3px; bottom: 3px; min-width: 0; border-radius: 5px; background: linear-gradient(135deg, #a94e43, #71342d); }
+.clip-editor-v2 .montage-cut + .montage-cut { border-left-color: #ffd3ca; }
+.clip-editor-v2 .montage-cut span { padding-right: 4px; font-size: 12px; }
+.clip-editor-v2 .montage-cut small { display: block; overflow: hidden; color: #ffd6ce; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.clip-editor-v2 .montage-audio-boundary { position: absolute; top: 0; bottom: 0; width: 2px; height: 100% !important; background: #ff8b78; box-shadow: 0 0 7px #ff6d5d; }
 .clip-editor-v2 .video-lane .scene-clip {
   z-index: 2;
   top: 3px;

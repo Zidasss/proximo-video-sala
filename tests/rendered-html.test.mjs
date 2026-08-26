@@ -116,6 +116,11 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /function applyRadarSuggestions/);
   assert.match(page, /function previewRadarSuggestion/);
   assert.match(page, /const montageRanges/);
+  assert.match(page, /const montageTimelineClips/);
+  assert.match(page, /const editorTimelineDuration/);
+  assert.match(page, /Montagem contínua/);
+  assert.match(page, /ÁUDIO RECORTADO/);
+  assert.match(page, /vídeo e áudio contínuos/);
   assert.match(page, /function advanceMontageRange/);
   assert.match(page, /fades automáticos/);
   assert.match(page, /Exportar montagem/);

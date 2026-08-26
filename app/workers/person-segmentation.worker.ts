@@ -87,9 +87,7 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
       const softAlpha = new Uint8ClampedArray(total);
       const previous = previousAlpha!;
 
-      // Algoritmo de precisão anatômica:
-      // Usa estritamente as classes semânticas da pessoa (cabelo, rosto, pele, roupas e fones)
-      // para eliminar sombras de parede, encosto de cadeira e névoa escura acima da cabeça.
+      // Algoritmo de Recorte de Alta Fidelidade (Zero Halo & Preservação Total de Fones):
       for (let index = 0; index < total; index += 1) {
         const hairVal = hair[index];
         const bodySkinVal = bodySkin[index];
@@ -98,34 +96,41 @@ function segment(bitmap: ImageBitmap, timestamp: number) {
         const accVal = accessories ? accessories[index] : 0;
         const bgVal = background[index];
 
-        // 1. Confiança semântica direta do corpo
-        const personFg =
-          hairVal * 1.30 +
-          faceSkinVal * 1.15 +
-          bodySkinVal * 1.15 +
-          clothesVal * 1.05 +
-          accVal * 0.95;
+        // 1. Força combinada do corpo
+        const personScore =
+          hairVal * 1.35 +
+          faceSkinVal * 1.18 +
+          bodySkinVal * 1.18 +
+          clothesVal * 1.10 +
+          accVal * 1.55;
 
-        // 2. Razão discriminante contra o fundo
-        const relativeFg = personFg / (personFg + bgVal * 1.12 + 1e-4);
+        // 2. Diferencial estrito contra o fundo (evita vazar sombra/quarto para o cenário)
+        const diff = personScore - bgVal;
 
-        // 3. Corte firme para eliminar sombras de parede e encosto de cadeira:
-        // Qualquer sombra ou vazamento com relativeFg < 0.42 é cortado a zero.
-        // A transição entre 0.42 e 0.76 garante suavização perfeita das bordas do cabelo real.
-        const normalized = Math.max(
-          0,
-          Math.min(1, (relativeFg - 0.42) / 0.34),
-        );
-        const target = normalized * normalized * (3 - 2 * normalized);
+        // 3. Curva de corte precisa:
+        // Transição estreita e limpa que acompanha a raiz e os fios do cabelo sem criar nuvem/fumaça
+        const t = Math.max(0, Math.min(1, (diff - 0.02) / 0.38));
+        let target = t * t * (3 - 2 * t);
 
-        // 4. Estabilização temporal rápida (evita fantasmas e sombras residuais)
+        // 4. Preservação de fones pretos, headsets e óculos
+        if (accVal > 0.15) {
+          const accTarget = Math.min(1, accVal * 1.85);
+          target = Math.max(target, accTarget);
+        }
+
+        // 5. Hard clamp para ruídos periféricos do quarto
+        if (target < 0.035) {
+          target = 0;
+        }
+
+        // 6. Estabilização temporal sem arrasto/fantasma
         const prev = previous[index];
         const stabilized =
           target > prev
-            ? prev * 0.08 + target * 0.92
-            : prev * 0.20 + target * 0.80;
+            ? prev * 0.06 + target * 0.94
+            : prev * 0.14 + target * 0.86;
 
-        previous[index] = stabilized < 0.015 ? 0 : stabilized;
+        previous[index] = stabilized < 0.01 ? 0 : stabilized;
         softAlpha[index] = Math.round(previous[index] * 255);
       }
 

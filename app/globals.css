@@ -2012,24 +2012,28 @@ body {
   padding: 8px 14px;
   border-radius: 10px;
   font-size: 13px;
-  font-weight: 600;
+  font-weight: 700;
   cursor: pointer;
   transition: all 0.2s ease;
-  border: 1px solid #ffffff20;
-  background: #1b1c1c;
-  color: #fff;
+  border: 1px solid #ffffff24;
+  background: #1e1b1b;
+  color: #fff8f4;
 }
 .nav-action-btn:hover {
-  background: #252627;
-  border-color: #ffffff35;
+  background: #2b2221;
+  border-color: #ff8879;
+  color: #fff;
 }
 .nav-action-btn.primary {
-  background: linear-gradient(135deg, #6366f1, #ec4899);
-  border: none;
-  box-shadow: 0 2px 10px rgba(99, 102, 241, 0.3);
+  background: linear-gradient(135deg, #ff7564, #d84f41);
+  border: 1px solid #ff7160;
+  color: #24100e;
+  font-weight: 900;
+  box-shadow: 0 4px 14px rgba(255, 107, 92, 0.35);
 }
 .nav-action-btn.primary:hover {
-  opacity: 0.9;
+  filter: brightness(1.08);
+  transform: translateY(-1px);
 }
 
 /* The editor starts as a single focused import action, then reveals the full workspace. */

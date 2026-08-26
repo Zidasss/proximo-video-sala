@@ -2157,6 +2157,9 @@ body {
   white-space: nowrap;
 }
 .clip-editor-v2 .primary-video-clip .timeline-clip-handle { opacity: .8; }
+.clip-editor-v2 .primary-video-clip { cursor: grab; touch-action: none; }
+.clip-editor-v2 .primary-video-clip:active { cursor: grabbing; }
+.clip-editor-v2 .transformable-video.timeline-video-hidden { opacity: 0; pointer-events: none; }
 .clip-editor-v2 .video-lane .scene-clip {
   z-index: 2;
   top: 3px;

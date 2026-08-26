@@ -8,6 +8,10 @@ test("keeps the Klip editor interaction model in the production source", async (
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   assert.match(page, /function ClipEditorV2/);
   assert.match(page, /function beginTimelineItemDrag/);
+  assert.match(page, /function beginPrimaryTimelineMove/);
+  assert.match(page, /function movePrimaryTimelineMove/);
+  assert.match(page, /primaryTimelineStart/);
+  assert.match(page, /O trecho cortado foi preservado/);
   assert.match(page, /function moveTimelineItemDrag/);
   assert.match(page, /function beginTimelineFadeDrag/);
   assert.match(page, /function beginPlayheadDrag/);
@@ -30,7 +34,7 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function togglePreviewPlayback/);
   assert.match(page, /function playTimelineAt/);
   assert.match(page, /const baseLoopOffset/);
-  assert.match(page, /onEnded=\{\(event\) => void playTimelineAt/);
+  assert.match(page, /onEnded=\{\(\) => void playTimelineAt/);
   assert.match(page, /const hasFriendVideo/);
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);

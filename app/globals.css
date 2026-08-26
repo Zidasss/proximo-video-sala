@@ -2171,7 +2171,12 @@ body {
 .clip-editor-v2 .montage-cut + .montage-cut { border-left-color: #ffd3ca; }
 .clip-editor-v2 .montage-cut span { padding-right: 4px; font-size: 12px; }
 .clip-editor-v2 .montage-cut small { display: block; overflow: hidden; color: #ffd6ce; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.clip-editor-v2 .montage-cut .montage-download { right: 27px; background: #ffd0c7; color: #31120e; }
+.clip-editor-v2 .montage-cut .montage-remove { right: 5px; }
 .clip-editor-v2 .montage-audio-boundary { position: absolute; top: 0; bottom: 0; width: 2px; height: 100% !important; background: #ff8b78; box-shadow: 0 0 7px #ff6d5d; }
+.clip-editor-v2 .radar-item-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; margin-top: 8px; }
+.clip-editor-v2 .radar-item-actions button { min-height: 38px; }
+.clip-editor-v2 .radar-download-one { border-color: #ff8b78 !important; background: #ff6d5d !important; color: #180b09 !important; font-weight: 900 !important; }
 .clip-editor-v2 .video-lane .scene-clip {
   z-index: 2;
   top: 3px;

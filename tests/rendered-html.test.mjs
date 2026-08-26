@@ -121,6 +121,9 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /Montagem contínua/);
   assert.match(page, /ÁUDIO RECORTADO/);
   assert.match(page, /vídeo e áudio contínuos/);
+  assert.match(page, /Salvar este Klip/);
+  assert.match(page, /exportReel\(false, \[item\]/);
+  assert.match(page, /Os demais Klips continuam na montagem/);
   assert.match(page, /function advanceMontageRange/);
   assert.match(page, /fades automáticos/);
   assert.match(page, /Exportar montagem/);

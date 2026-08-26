@@ -1,14 +1,36 @@
 "use client";
 
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
 import { AuthModal } from "../components/AuthModal";
 import { SocialAccountsModal } from "../components/SocialAccountsModal";
 import { PublishModal } from "../components/PublishModal";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
-import { Share2, Link2, User, Sparkles } from "lucide-react";
+import { Share2, User } from "lucide-react";
 import GifStudio from "./gif-studio";
+import QuickCreate, {
+  getSocialPreset,
+  type SocialPreset,
+  type SocialPresetId,
+} from "./social-presets";
+import { AudioLibrary } from "../components/audio-library";
+import {
+  KLIP_AUDIO_CATALOG,
+  synthesizeAudio,
+  type AudioLicense,
+  type TimelineAudioPayload,
+} from "../lib/audio/audio-library";
+import { EffectsGallery } from "../components/effects";
+import {
+  createVisualEffectApplication,
+  drawVisualEffectFrame,
+  getVisualEffect,
+  getVisualEffectFrame,
+  visualEffectFrameToCssFilter,
+  VISUAL_EFFECTS,
+  type VisualEffectApplication,
+} from "../lib/video-effects";
 import {
   analyzeClipForRadar,
   type RadarMode,
@@ -17,7 +39,7 @@ import {
 
 type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
-type ExportAspect = "original" | "vertical" | "landscape" | "square";
+type ExportAspect = "original" | "vertical" | "portrait" | "landscape" | "square";
 type Msg = { name: string; text: string };
 type SavedCall = {
   room: string;
@@ -72,8 +94,26 @@ type AudioTrack = {
   volume: number;
   fadeIn: number;
   fadeOut: number;
+  assetId?: string;
+  license?: AudioLicense;
+};
+type EditorSnapshot = {
+  layers: TextLayer[];
+  illustrations: IllustrationLayer[];
+  audioTracks: AudioTrack[];
+  start: number;
+  end: number;
+  primaryTimelineStart: number;
+  videoFadeIn: number;
+  videoFadeOut: number;
+  videoFadeInAt: number;
+  videoFadeOutAt: number;
+  transitionColor: "black" | "white";
+  visualEffect: VisualEffectApplication | null;
+  visualEffectIntensity: number;
 };
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
+type StudioPanel = "formats" | "audio" | "effects";
 type TimedLayer = Pick<IllustrationLayer, "start" | "end" | "fadeIn" | "fadeOut">;
 type ConnectionStats = {
   fps: number;
@@ -85,7 +125,27 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.17.6";
+const APP_VERSION = "v0.18.0";
+const SOCIAL_PRESET_IDS: SocialPresetId[] = [
+  "tiktok",
+  "instagram-reels",
+  "youtube-shorts",
+  "stories",
+  "feed-portrait",
+  "feed-square",
+  "youtube-landscape",
+  "custom",
+];
+const socialPresetForAspect = (aspect: ExportAspect): SocialPresetId =>
+  aspect === "vertical"
+    ? "instagram-reels"
+    : aspect === "portrait"
+      ? "feed-portrait"
+      : aspect === "landscape"
+        ? "youtube-landscape"
+        : aspect === "square"
+          ? "feed-square"
+          : "custom";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -4032,6 +4092,12 @@ function ClipEditorV2({
     [videoFadeOutAt, setVideoFadeOutAt] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
     [visualPreset, setVisualPreset] = useState<VisualPreset>("clean"),
+    [visualEffect, setVisualEffect] = useState<VisualEffectApplication | null>(null),
+    [visualEffectPreview, setVisualEffectPreview] = useState<VisualEffectApplication | null>(null),
+    [visualEffectIntensity, setVisualEffectIntensity] = useState(1),
+    [studioPanel, setStudioPanel] = useState<StudioPanel | null>(null),
+    [selectedSocialPresetId, setSelectedSocialPresetId] = useState<SocialPresetId>("custom"),
+    [draftSocialPresetId, setDraftSocialPresetId] = useState<SocialPresetId>("custom"),
     [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1 }),
     [exportAspect, setExportAspect] = useState<ExportAspect>("original"),
     [exportResolution, setExportResolution] = useState<"source" | "1080" | "720">("source"),
@@ -4068,8 +4134,8 @@ function ClipEditorV2({
     [approvedCuts, setApprovedCuts] = useState<RadarSuggestion[]>([]),
     [activeRadarCutId, setActiveRadarCutId] = useState(""),
     [contextMenu, setContextMenu] = useState<{ x: number; y: number; kind: "text" | "illustration" | "audio" | "video"; id: string } | null>(null);
-  const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; primaryTimelineStart: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
-  const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; primaryTimelineStart: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
+  const history = useRef<EditorSnapshot[]>([]);
+  const future = useRef<EditorSnapshot[]>([]);
   const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
   const exportInProgress = useRef(false);
   const selected = layers.find((layer) => layer.id === selectedId);
@@ -4095,6 +4161,8 @@ function ClipEditorV2({
   const primaryClipEnd = primaryClipStart + Math.max(.05, primarySourceEnd - primarySourceStart);
   const illustrationElements = useRef<Map<string, HTMLImageElement | HTMLVideoElement>>(new Map());
   const audioElements = useRef<Map<string, HTMLAudioElement>>(new Map());
+  const managedAudioUrls = useRef<Set<string>>(new Set());
+  const studioDialog = useRef<HTMLElement | null>(null);
   const layerDrag = useRef<{
     id: string;
     x: number;
@@ -4123,6 +4191,40 @@ function ClipEditorV2({
   const baseLoopOffset = useRef(0);
   const autoRadarAnalyzed = useRef(false);
   const radarPreviewEnd = useRef<number | null>(null);
+
+  const releaseManagedAudioUrls = () => {
+    managedAudioUrls.current.forEach((url) => URL.revokeObjectURL(url));
+    managedAudioUrls.current.clear();
+  };
+
+  useEffect(() => () => releaseManagedAudioUrls(), []);
+
+  useEffect(() => {
+    if (!studioPanel) return;
+    const previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
+    const dialog = studioDialog.current;
+    const focusableSelector = "button:not([disabled]), input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex='-1'])";
+    const focusFirst = window.requestAnimationFrame(() => dialog?.querySelector<HTMLElement>(focusableSelector)?.focus());
+    const handleDialogKeys = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        closeStudioPanel();
+        return;
+      }
+      if (event.key !== "Tab" || !dialog) return;
+      const focusable = Array.from(dialog.querySelectorAll<HTMLElement>(focusableSelector));
+      if (!focusable.length) return;
+      const first = focusable[0], last = focusable.at(-1)!;
+      if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+      else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+    };
+    document.addEventListener("keydown", handleDialogKeys);
+    return () => {
+      window.cancelAnimationFrame(focusFirst);
+      document.removeEventListener("keydown", handleDialogKeys);
+      previousFocus?.focus();
+    };
+  }, [studioPanel]);
 
   useEffect(() => {
     if (!selectedId && !selectedIllustrationId && !selectedAudioId && layers[0]) setSelectedId(layers[0].id);
@@ -4222,9 +4324,9 @@ function ClipEditorV2({
     const tenths = Math.floor((safe % 1) * 10);
     return `${String(minutes).padStart(2, "0")}:${String(seconds).padStart(2, "0")}.${tenths}`;
   };
-  const snapshot = () => ({ layers, illustrations, audioTracks, start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor });
+  const snapshot = (): EditorSnapshot => ({ layers, illustrations, audioTracks, start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, visualEffect, visualEffectIntensity });
   const remember = () => { history.current = [...history.current.slice(-40), snapshot()]; future.current = []; };
-  const restoreSnapshot = (item: ReturnType<typeof snapshot>) => { setLayers(item.layers); setIllustrations(item.illustrations); setAudioTracks(item.audioTracks); setStart(item.start); setEnd(item.end); setPrimaryTimelineStart(item.primaryTimelineStart || 0); setVideoFadeIn(item.videoFadeIn); setVideoFadeOut(item.videoFadeOut); setVideoFadeInAt(item.videoFadeInAt); setVideoFadeOutAt(item.videoFadeOutAt); setTransitionColor(item.transitionColor); };
+  const restoreSnapshot = (item: EditorSnapshot) => { setLayers(item.layers); setIllustrations(item.illustrations); setAudioTracks(item.audioTracks); setStart(item.start); setEnd(item.end); setPrimaryTimelineStart(item.primaryTimelineStart || 0); setVideoFadeIn(item.videoFadeIn); setVideoFadeOut(item.videoFadeOut); setVideoFadeInAt(item.videoFadeInAt); setVideoFadeOutAt(item.videoFadeOutAt); setTransitionColor(item.transitionColor); setVisualEffect(item.visualEffect || null); setVisualEffectIntensity(item.visualEffectIntensity || 1); };
   const undo = () => { const previous = history.current.pop(); if (!previous) return; future.current.push(snapshot()); restoreSnapshot(previous); setNotice("Ação desfeita."); };
   const redo = () => { const next = future.current.pop(); if (!next) return; history.current.push(snapshot()); restoreSnapshot(next); setNotice("Ação refeita."); };
   const updateLayer = (id: string, patch: Partial<TextLayer>, record = true) => {
@@ -4269,8 +4371,52 @@ function ClipEditorV2({
     return layer.text.slice(0, Math.ceil(layer.text.length * progress));
   };
   const visualFilter = visualPreset === "cinematic" ? "contrast(1.12) saturate(.84) brightness(.92)" : visualPreset === "vivid" ? "contrast(1.08) saturate(1.35)" : visualPreset === "mono" ? "grayscale(1) contrast(1.18)" : visualPreset === "warm" ? "sepia(.22) saturate(1.16) contrast(1.04)" : "none";
+  const selectedSocialPreset = getSocialPreset(selectedSocialPresetId);
+  const activeVisualEffect = visualEffectPreview || visualEffect;
+  const activeEffectFrame = activeVisualEffect
+    ? getVisualEffectFrame(
+        activeVisualEffect.effectId,
+        ((current * 1000) % activeVisualEffect.durationMs) / activeVisualEffect.durationMs,
+        activeVisualEffect.intensity,
+      )
+    : null;
+  const activeEffectFilter = activeEffectFrame
+    ? visualEffectFrameToCssFilter(activeEffectFrame)
+    : "";
+  const previewFilter = [visualFilter === "none" ? "" : visualFilter, activeEffectFilter]
+    .filter(Boolean)
+    .join(" ") || "none";
+  function closeStudioPanel() {
+    setVisualEffectPreview(null);
+    setStudioPanel(null);
+  }
+  function applySocialPreset(preset: SocialPreset) {
+    setSelectedSocialPresetId(preset.id);
+    setDraftSocialPresetId(preset.id);
+    if (preset.aspectRatio.width === 9 && preset.aspectRatio.height === 16)
+      setExportAspect("vertical");
+    else if (preset.aspectRatio.width === 4 && preset.aspectRatio.height === 5)
+      setExportAspect("portrait");
+    else if (preset.aspectRatio.width === 16 && preset.aspectRatio.height === 9)
+      setExportAspect("landscape");
+    else if (preset.aspectRatio.width === 1 && preset.aspectRatio.height === 1)
+      setExportAspect("square");
+    else setExportAspect("original");
+    setExportResolution("1080");
+    setExportFps(preset.fps);
+    setSafeGuides(true);
+    const projectLength = hasMontageTimeline ? montageTimelineDuration : Math.max(0, duration, end - start);
+    const durationWarning = projectLength > preset.recommendedDuration.maxSeconds
+      ? ` Seu vídeo tem ${time(projectLength)}; para ${preset.title}, recomendamos até ${preset.recommendedDuration.label}.`
+      : "";
+    setNotice(`${preset.title} configurado em ${preset.aspectRatio.label}, ${preset.resolution.width}×${preset.resolution.height} e ${preset.fps} FPS.${durationWarning}`);
+    closeStudioPanel();
+  }
   function resetWithClip(nextClip: EditorClip, message: string) {
     if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
+    releaseManagedAudioUrls();
+    history.current = [];
+    future.current = [];
     setClip(nextClip);
     setDuration(0);
     setSourceDuration(0);
@@ -4283,9 +4429,18 @@ function ClipEditorV2({
     setVideoFadeInAt(0);
     setVideoFadeOutAt(0);
     setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
+    setVisualPreset("clean");
+    setVisualEffect(null);
+    setVisualEffectPreview(null);
+    setVisualEffectIntensity(1);
+    setSelectedSocialPresetId("custom");
+    setDraftSocialPresetId("custom");
+    setExportAspect("original");
+    setExportResolution("source");
     setMarkers([]);
     setLayers([initialLayer()]);
     setIllustrations([]);
+    setAudioTracks([]);
     setSelectedId("");
     setSelectedIllustrationId("");
     setRadarSuggestions([]);
@@ -4398,17 +4553,56 @@ function ClipEditorV2({
     };
     probe.onerror = () => { URL.revokeObjectURL(url); setNotice("Não foi possível abrir este vídeo como cena."); };
   }
-  function addAudioTrack(file?: File) {
-    if (!file) return;
+  function addAudioTrack(
+    file?: File,
+    metadata?: { assetId?: string; license?: AudioLicense },
+    durationHint?: number,
+  ): Promise<boolean> {
+    if (!file) return Promise.resolve(false);
     const url = URL.createObjectURL(file);
+    managedAudioUrls.current.add(url);
     const probe = document.createElement("audio");
+    probe.preload = "metadata";
     probe.src = url;
-    probe.onloadedmetadata = () => {
-      const from = Math.max(start, current);
-      const track: AudioTrack = { id: crypto.randomUUID(), url, name: file.name.replace(/\.[^.]+$/, ""), start: from, end: Math.min(end || duration || from + probe.duration, from + (Number.isFinite(probe.duration) ? probe.duration : 8)), volume: 85, fadeIn: .08, fadeOut: .12 };
-      remember(); setAudioTracks((items) => [...items, track]); setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); setNotice("Faixa de áudio adicionada. Arraste e ajuste na timeline.");
-    };
-    probe.onerror = () => { URL.revokeObjectURL(url); setNotice("Não foi possível abrir este áudio."); };
+    return new Promise((resolve) => {
+      probe.onloadedmetadata = () => {
+        const measuredDuration = Number.isFinite(probe.duration) && probe.duration > 0 ? probe.duration : 0;
+        const trackLength = Number.isFinite(durationHint) && durationHint! > 0 ? durationHint! : measuredDuration || 8;
+        // AudioTrack.start/end always live in project-timeline time. Source trim
+        // values (`start`/`end`) must never leak into this coordinate system.
+        const projectEnd = Math.max(.1, editorTimelineDuration || duration || trackLength);
+        const cursor = Math.max(0, Math.min(current, projectEnd));
+        const from = cursor >= projectEnd - .1
+          ? Math.max(0, projectEnd - Math.min(trackLength, projectEnd))
+          : cursor;
+        const track: AudioTrack = {
+          id: crypto.randomUUID(),
+          url,
+          name: file.name.replace(/\.[^.]+$/, ""),
+          start: from,
+          end: Math.max(from + .1, Math.min(projectEnd, from + trackLength)),
+          volume: 85,
+          fadeIn: .08,
+          fadeOut: .12,
+          assetId: metadata?.assetId,
+          license: metadata?.license,
+        };
+        remember();
+        setAudioTracks((items) => [...items, track]);
+        setSelectedAudioId(track.id);
+        setSelectedId("");
+        setSelectedIllustrationId("");
+        setNotice("Faixa de áudio adicionada. Arraste e ajuste na timeline.");
+        resolve(true);
+      };
+      probe.onerror = () => {
+        managedAudioUrls.current.delete(url);
+        URL.revokeObjectURL(url);
+        setNotice("Não foi possível abrir este áudio.");
+        resolve(false);
+      };
+      probe.load();
+    });
   }
   function addBuiltInSound(kind: "pop" | "whoosh" | "ding") {
     const rate = 44100, seconds = kind === "whoosh" ? .52 : .24, samples = Math.floor(rate * seconds);
@@ -4421,7 +4615,7 @@ function ClipEditorV2({
       const wave = kind === "whoosh" ? (Math.random() * 2 - 1) : Math.sin(Math.PI * 2 * frequency * t);
       view.setInt16(44 + index * 2, Math.max(-1, Math.min(1, wave * envelope * .52)) * 32767, true);
     }
-    addAudioTrack(new File([buffer], `klip-${kind}.wav`, { type: "audio/wav" }));
+    void addAudioTrack(new File([buffer], `klip-${kind}.wav`, { type: "audio/wav" }));
   }
   function updateAudioTrack(id: string, patch: Partial<AudioTrack>, record = true) {
     if (record) remember();
@@ -4475,17 +4669,112 @@ function ClipEditorV2({
       const captions = blocks.map((block) => { const lines = block.split("\n").filter(Boolean); const timing = lines.find((line) => line.includes("-->")); if (!timing) return null; const [from, to] = timing.split("-->").map(parseTime); const text = lines.slice(lines.indexOf(timing) + 1).join(" ").replace(/<[^>]+>/g, "").trim(); return text ? { from, to, text } : null; }).filter((item): item is { from: number; to: number; text: string } => Boolean(item));
       if (!captions.length) { setNotice("Não encontrei legendas válidas neste arquivo SRT."); return; }
       remember();
-      const made = captions.map((item, index): TextLayer => ({ ...initialLayer(), id: crypto.randomUUID(), text: item.text, start: Math.max(start, item.from), end: Math.min(end || duration || item.to, Math.max(item.from + .1, item.to)), y: 76, size: 56, effect: "pop", background: true, color: "#ffffff", x: 50, align: "center" }));
+      const made = captions.map((item): TextLayer => ({ ...initialLayer(), id: crypto.randomUUID(), text: item.text, start: Math.max(start, item.from), end: Math.min(end || duration || item.to, Math.max(item.from + .1, item.to)), y: 76, size: 56, effect: "pop", background: true, color: "#ffffff", x: 50, align: "center" }));
       setLayers((items) => [...items, ...made]); setSelectedId(made[0]?.id || ""); setNotice(`${made.length} legendas importadas para a timeline.`);
     } catch { setNotice("Não foi possível ler o arquivo de legenda."); }
   }
   function exportProject() {
-    const project = { version: 4, clipName: clip?.name || "", start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, layers, radarMode, approvedCuts, createdAt: new Date().toISOString() };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Ao abrir, importe também o vídeo original.");
+    const persistedAudioTracks = audioTracks.map((track) => ({ id: track.id, name: track.name, start: track.start, end: track.end, volume: track.volume, fadeIn: track.fadeIn, fadeOut: track.fadeOut, assetId: track.assetId, license: track.license }));
+    const project = { version: 6, clipName: clip?.name || "", start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, audioTracks: persistedAudioTracks, visualPreset, visualEffect, visualEffectIntensity, selectedSocialPresetId, layers, radarMode, approvedCuts, createdAt: new Date().toISOString() };
+    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Sons Klip Original serão restaurados; mídia própria precisa ser reimportada.");
   }
   async function importProject(file?: File) {
     if (!file) return;
-    try { const project = JSON.parse(await file.text()); if (!Array.isArray(project.layers)) throw new Error("invalid"); const restoredStart = Number(project.start) || 0, restoredEnd = Number(project.end) || duration; const restoredIn = Number(project.videoFadeIn) || 0, restoredOut = Number(project.videoFadeOut) || 0; const legacyScale = Number(project.videoTransform?.scale) || 1; const restoredCuts: RadarSuggestion[] = Array.isArray(project.approvedCuts) ? project.approvedCuts.filter((item: RadarSuggestion) => Number.isFinite(item?.start) && Number.isFinite(item?.end) && item.end > item.start).map((item: RadarSuggestion) => ({ ...item, id: item.id || crypto.randomUUID(), selected: true })) : []; setStart(restoredStart); setEnd(restoredEnd); setPrimaryTimelineStart(Math.max(0, Number(project.primaryTimelineStart) || 0)); setVideoFadeIn(restoredIn); setVideoFadeOut(restoredOut); setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart)); setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut))); setTransitionColor(project.transitionColor === "white" ? "white" : "black"); setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scaleX: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleX) || legacyScale)), scaleY: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleY) || legacyScale)) }); setExportAspect(["original", "vertical", "landscape", "square"].includes(project.exportAspect) ? project.exportAspect : "vertical"); setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080"); setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30); setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high"); setAudioGain(Number(project.audioGain) || 100); setAudioEnhance(project.audioEnhance !== false); setLayers(project.layers); setRadarMode(["reels", "shorts", "highlights"].includes(project.radarMode) ? project.radarMode : "reels"); setApprovedCuts(restoredCuts); setRadarSuggestions(restoredCuts); setSelectedId(project.layers[0]?.id || ""); setNotice("Projeto restaurado. Importe o vídeo original para terminar a edição."); } catch { setNotice("Arquivo de projeto inválido."); }
+    try {
+      const project = JSON.parse(await file.text());
+      if (!Array.isArray(project.layers)) throw new Error("invalid");
+      const restoredStart = Number(project.start) || 0,
+        restoredEnd = Number(project.end) || duration,
+        restoredIn = Number(project.videoFadeIn) || 0,
+        restoredOut = Number(project.videoFadeOut) || 0,
+        legacyScale = Number(project.videoTransform?.scale) || 1;
+      const restoredCuts: RadarSuggestion[] = Array.isArray(project.approvedCuts)
+        ? project.approvedCuts
+            .filter((item: RadarSuggestion) => Number.isFinite(item?.start) && Number.isFinite(item?.end) && item.end > item.start)
+            .map((item: RadarSuggestion) => ({ ...item, id: item.id || crypto.randomUUID(), selected: true }))
+        : [];
+      const effectDefinition = project.visualEffect && VISUAL_EFFECTS.find((effect) => effect.id === project.visualEffect.effectId);
+      const restoredEffectIntensity = Math.max(0, Math.min(2, Number(project.visualEffectIntensity ?? project.visualEffect?.intensity ?? 1) || 1));
+      const restoredEffect = effectDefinition
+        ? createVisualEffectApplication(effectDefinition.id, restoredEffectIntensity)
+        : null;
+      const restoredAspect: ExportAspect = ["original", "vertical", "portrait", "landscape", "square"].includes(project.exportAspect)
+        ? project.exportAspect
+        : "vertical";
+      const requestedPresetId = SOCIAL_PRESET_IDS.includes(project.selectedSocialPresetId)
+        ? project.selectedSocialPresetId as SocialPresetId
+        : null;
+      const requestedPreset = requestedPresetId ? getSocialPreset(requestedPresetId) : null;
+      const requestedAspect: ExportAspect = !requestedPreset || requestedPreset.customizable
+        ? "original"
+        : requestedPreset.aspectRatio.width === 9 && requestedPreset.aspectRatio.height === 16
+          ? "vertical"
+          : requestedPreset.aspectRatio.width === 4 && requestedPreset.aspectRatio.height === 5
+            ? "portrait"
+            : requestedPreset.aspectRatio.width === 16 && requestedPreset.aspectRatio.height === 9
+              ? "landscape"
+              : "square";
+      const restoredPresetId: SocialPresetId = requestedPresetId && requestedAspect === restoredAspect
+        ? requestedPresetId
+        : socialPresetForAspect(restoredAspect);
+      const restoredAudioTracks: AudioTrack[] = [];
+      let skippedAudioTracks = 0;
+      releaseManagedAudioUrls();
+      history.current = [];
+      future.current = [];
+      if (Array.isArray(project.audioTracks)) {
+        for (const stored of project.audioTracks) {
+          const asset = KLIP_AUDIO_CATALOG.find((item) => item.id === stored?.assetId);
+          if (!asset?.recipe) { skippedAudioTracks += 1; continue; }
+          const restoredUrl = URL.createObjectURL(synthesizeAudio(asset));
+          managedAudioUrls.current.add(restoredUrl);
+          const trackStart = Math.max(0, Number(stored.start) || 0);
+          restoredAudioTracks.push({
+            id: typeof stored.id === "string" ? stored.id : crypto.randomUUID(),
+            url: restoredUrl,
+            name: typeof stored.name === "string" ? stored.name : asset.title,
+            start: trackStart,
+            end: Math.max(trackStart + .1, Number(stored.end) || trackStart + asset.duration),
+            volume: Math.max(0, Math.min(120, Number(stored.volume) || 85)),
+            fadeIn: Math.max(0, Number(stored.fadeIn) || 0),
+            fadeOut: Math.max(0, Number(stored.fadeOut) || 0),
+            assetId: asset.id,
+            license: asset.license,
+          });
+        }
+      }
+      setStart(restoredStart);
+      setEnd(restoredEnd);
+      setPrimaryTimelineStart(Math.max(0, Number(project.primaryTimelineStart) || 0));
+      setVideoFadeIn(restoredIn);
+      setVideoFadeOut(restoredOut);
+      setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart));
+      setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut)));
+      setTransitionColor(project.transitionColor === "white" ? "white" : "black");
+      setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scaleX: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleX) || legacyScale)), scaleY: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleY) || legacyScale)) });
+      setExportAspect(restoredAspect);
+      setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080");
+      setExportFps([24, 30, 60].includes(project.exportFps) ? project.exportFps : 30);
+      setExportBitrate(["standard", "high", "ultra"].includes(project.exportBitrate) ? project.exportBitrate : "high");
+      setAudioGain(Number(project.audioGain) || 100);
+      setAudioEnhance(project.audioEnhance !== false);
+      setAudioTracks(restoredAudioTracks);
+      setVisualPreset(["clean", "cinematic", "vivid", "mono", "warm"].includes(project.visualPreset) ? project.visualPreset : "clean");
+      setVisualEffect(restoredEffect);
+      setVisualEffectIntensity(restoredEffectIntensity);
+      setSelectedSocialPresetId(restoredPresetId);
+      setDraftSocialPresetId(restoredPresetId);
+      setLayers(project.layers);
+      setRadarMode(["reels", "shorts", "highlights"].includes(project.radarMode) ? project.radarMode : "reels");
+      setApprovedCuts(restoredCuts);
+      setRadarSuggestions(restoredCuts);
+      setSelectedId(project.layers[0]?.id || "");
+      setNotice(skippedAudioTracks
+        ? `Projeto restaurado. ${skippedAudioTracks} faixa${skippedAudioTracks > 1 ? "s" : ""} própria${skippedAudioTracks > 1 ? "s" : ""} precisa${skippedAudioTracks > 1 ? "m" : ""} ser reimportada${skippedAudioTracks > 1 ? "s" : ""}.`
+        : "Projeto restaurado. Importe o vídeo original para terminar a edição.");
+    } catch {
+      setNotice("Arquivo de projeto inválido.");
+    }
   }
   function addIllustration(file?: File) {
     if (!file) return;
@@ -5303,13 +5592,21 @@ function ClipEditorV2({
     if (!currentSource || !clip || end <= start) return;
     const source: HTMLVideoElement = currentSource;
     const requestedCuts = cutOverride.length ? cutOverride : approvedCuts;
-    const montageRanges: Array<{ start: number; end: number }> = (
+    const montageRanges: Array<{ start: number; end: number; audioTimelineStart: number }> = (
       requestedCuts.length ? requestedCuts : [{ start, end }]
     )
-      .map((item) => ({
-        start: Math.max(0, Math.min(sourceDuration || duration, item.start)),
-        end: Math.max(0, Math.min(sourceDuration || duration, item.end)),
-      }))
+      .map((item) => {
+        const montageItem = "id" in item
+          ? montageTimelineClips.find((candidate) => candidate.id === item.id)
+          : undefined;
+        return {
+          start: Math.max(0, Math.min(sourceDuration || duration, item.start)),
+          end: Math.max(0, Math.min(sourceDuration || duration, item.end)),
+          // Keep the original montage position when exporting one Radar Klip.
+          // This makes timeline music use the correct slice instead of restarting.
+          audioTimelineStart: montageItem?.timelineStart || 0,
+        };
+      })
       .filter((item) => item.end - item.start > 0.08)
       .sort((first, second) => first.start - second.start);
     if (!montageRanges.length) return;
@@ -5337,18 +5634,27 @@ function ClipEditorV2({
     }
     const sourceWidth = source.videoWidth || 1920;
     const sourceHeight = source.videoHeight || 1080;
-    const aspect = exportAspect === "vertical" ? 9 / 16 : exportAspect === "landscape" ? 16 / 9 : 1;
+    const aspect = exportAspect === "vertical" ? 9 / 16 : exportAspect === "portrait" ? 4 / 5 : exportAspect === "landscape" ? 16 / 9 : 1;
     const original = exportAspect === "original";
     let outputWidth = original ? sourceWidth : aspect >= 1 ? 1920 : 1080;
     let outputHeight = original ? sourceHeight : Math.round(outputWidth / aspect);
     if (exportResolution !== "source") {
       const limit = Number(exportResolution);
-      const scale = Math.min(1, limit / Math.max(outputWidth, outputHeight));
-      outputWidth = Math.max(2, Math.round(outputWidth * scale));
-      outputHeight = Math.max(2, Math.round(outputHeight * scale));
+      const outputAspect = outputWidth / outputHeight;
+      if (outputAspect >= 1) {
+        outputHeight = limit;
+        outputWidth = Math.max(2, Math.round(limit * outputAspect));
+      } else {
+        outputWidth = limit;
+        outputHeight = Math.max(2, Math.round(limit / outputAspect));
+      }
     }
     canvas.width = outputWidth;
     canvas.height = outputHeight;
+    const effectCanvas = document.createElement("canvas");
+    effectCanvas.width = outputWidth;
+    effectCanvas.height = outputHeight;
+    const effectContext = effectCanvas.getContext("2d");
     const output = canvas.captureStream(exportFps);
     const captured = (
       source as HTMLVideoElement & { captureStream?: () => MediaStream }
@@ -5364,7 +5670,10 @@ function ClipEditorV2({
       else audioSource.connect(gain).connect(audioDestination);
     }
     const exportTrackElements: Array<{ track: AudioTrack; element: HTMLAudioElement; gain: GainNode }> = [];
-    audioTracks.filter((track) => montageRanges.some((range) => track.end > range.start && track.start < range.end)).forEach((track) => {
+    audioTracks.filter((track) => montageRanges.some((range) => {
+      const rangeEnd = range.audioTimelineStart + range.end - range.start;
+      return track.end > range.audioTimelineStart && track.start < rangeEnd;
+    })).forEach((track) => {
       const element = new Audio(track.url);
       element.preload = "auto";
       element.volume = 1;
@@ -5415,6 +5724,8 @@ function ClipEditorV2({
       const activeRange = montageRanges[rangeIndex],
         sourceTime = source.currentTime,
         localTime = Math.max(0, sourceTime - activeRange.start),
+        timelineTime = completedMontageDuration + localTime,
+        audioTimelineTime = activeRange.audioTimelineStart + localTime,
         remaining = Math.max(0, activeRange.end - sourceTime),
         rangeLength = activeRange.end - activeRange.start,
         fadeLength = Math.min(montageFadeSeconds, rangeLength / 3),
@@ -5432,12 +5743,12 @@ function ClipEditorV2({
       if (mainExportGain)
         mainExportGain.gain.value = (audioGain / 100) * (1 - montageOpacity);
       exportTrackElements.forEach(({ track, element, gain }) => {
-        const active = sourceTime >= track.start && sourceTime < track.end;
-        const desired = Math.max(0, sourceTime - track.start);
+        const active = audioTimelineTime >= track.start && audioTimelineTime < track.end;
+        const desired = Math.max(0, audioTimelineTime - track.start);
         if (active && Math.abs(element.currentTime - desired) > .24)
           element.currentTime = desired;
         const edgeIn = track.fadeIn > 0 ? Math.min(1, desired / track.fadeIn) : 1;
-        const edgeOut = track.fadeOut > 0 ? Math.min(1, Math.max(0, (track.end - sourceTime) / track.fadeOut)) : 1;
+        const edgeOut = track.fadeOut > 0 ? Math.min(1, Math.max(0, (track.end - audioTimelineTime) / track.fadeOut)) : 1;
         gain.gain.value = Math.max(0, Math.min(1.2, track.volume / 100)) * edgeIn * edgeOut * (1 - montageOpacity);
         if (active && element.paused) void element.play().catch(() => undefined);
         if (!active && !element.paused) element.pause();
@@ -5448,17 +5759,32 @@ function ClipEditorV2({
       );
       const width = source.videoWidth * scale * videoTransform.scaleX,
         height = source.videoHeight * scale * videoTransform.scaleY;
-      context.fillStyle = "#090909";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.filter = visualFilter;
-      context.drawImage(
+      const baseContext = visualEffect && effectContext ? effectContext : context;
+      baseContext.save();
+      baseContext.filter = "none";
+      baseContext.fillStyle = "#090909";
+      baseContext.fillRect(0, 0, canvas.width, canvas.height);
+      baseContext.filter = visualFilter;
+      baseContext.drawImage(
         source,
         (canvas.width - width) / 2 + (videoTransform.x / 100) * canvas.width,
         (canvas.height - height) / 2 + (videoTransform.y / 100) * canvas.height,
         width,
         height,
       );
-      context.filter = "none";
+      baseContext.restore();
+      if (visualEffect && effectContext) {
+        context.fillStyle = "#090909";
+        context.fillRect(0, 0, canvas.width, canvas.height);
+        const effectElapsedMs = (completedMontageDuration + localTime) * 1000;
+        drawVisualEffectFrame(
+          context,
+          effectCanvas,
+          visualEffect.effectId,
+          (effectElapsedMs % visualEffect.durationMs) / visualEffect.durationMs,
+          { fit: "contain", intensity: visualEffect.intensity },
+        );
+      }
       const videoTransition = Math.max(
         montageOpacity,
         montageRanges.length === 1 ? videoTransitionOpacity(sourceTime) : 0,
@@ -5631,6 +5957,15 @@ function ClipEditorV2({
       setExporting(false);
     };
     try {
+      await Promise.all(exportTrackElements.map(({ element, track }) => new Promise<void>((resolve, reject) => {
+        if (element.readyState >= HTMLMediaElement.HAVE_CURRENT_DATA) { resolve(); return; }
+        const timeout = window.setTimeout(() => reject(new Error(`audio-timeout:${track.name}`)), 6000);
+        const done = () => { window.clearTimeout(timeout); resolve(); };
+        const failed = () => { window.clearTimeout(timeout); reject(new Error(`audio-error:${track.name}`)); };
+        element.addEventListener("canplay", done, { once: true });
+        element.addEventListener("error", failed, { once: true });
+        element.load();
+      })));
       await seekExportSource(montageRanges[0].start);
       recorder.start(1000);
       lastSourceTime = source.currentTime;
@@ -5638,8 +5973,10 @@ function ClipEditorV2({
       exportWatchdog = window.setTimeout(() => finishExportWithError("A renderização demorou além do esperado e foi interrompida com segurança."), Math.max(30_000, montageDuration * 4000 + 15_000));
       await source.play();
       draw();
-    } catch {
-      finishExportWithError("Não foi possível iniciar a renderização. Clique em salvar novamente ou escolha WebM.");
+    } catch (error) {
+      finishExportWithError(error instanceof Error && error.message.startsWith("audio-")
+        ? "Uma faixa de áudio não ficou pronta para a exportação. Reimporte o som e tente novamente."
+        : "Não foi possível iniciar a renderização. Clique em salvar novamente ou escolha WebM.");
     }
   }
 
@@ -5657,9 +5994,10 @@ function ClipEditorV2({
             <option value="mp4">MP4</option>
             <option value="webm">WebM</option>
           </select>
-          <select className="export-format" aria-label="Formato do vídeo" value={exportAspect} onChange={(event) => setExportAspect(event.target.value as ExportAspect)}>
+          <select className="export-format" aria-label="Formato do vídeo" value={exportAspect} onChange={(event) => { const next = event.target.value as ExportAspect; const presetId: SocialPresetId = next === "vertical" ? "instagram-reels" : next === "portrait" ? "feed-portrait" : next === "landscape" ? "youtube-landscape" : next === "square" ? "feed-square" : "custom"; setExportAspect(next); setSelectedSocialPresetId(presetId); setDraftSocialPresetId(presetId); }}>
             <option value="original">Original (preservar)</option>
             <option value="vertical">Vertical 9:16</option>
+            <option value="portrait">Feed retrato 4:5</option>
             <option value="landscape">Horizontal 16:9</option>
             <option value="square">Quadrado 1:1</option>
           </select>
@@ -5709,6 +6047,11 @@ function ClipEditorV2({
           {clip && <p className="editor-file">● {clip.name}</p>}
           {clip && <button className="radar-tool-card" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><span>✦</span><b>Klip Radar</b><small>{approvedCuts.length ? `${approvedCuts.length} corte${approvedCuts.length > 1 ? "s" : ""} na timeline` : "Encontre pausas e bons momentos automaticamente"}</small></button>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
+          {clip && <div className="studio-quick-actions" aria-label="Criação rápida">
+            <button type="button" onClick={() => { setDraftSocialPresetId(selectedSocialPresetId); setStudioPanel("formats"); }}><span>▣</span><b>Formatos</b><small>{selectedSocialPreset.title} · {selectedSocialPreset.aspectRatio.label}</small></button>
+            <button type="button" onClick={() => setStudioPanel("audio")}><span>♫</span><b>Sons</b><small>{audioTracks.length ? `${audioTracks.length} na timeline` : "Músicas e efeitos seguros"}</small></button>
+            <button type="button" onClick={() => setStudioPanel("effects")}><span>✦</span><b>Efeitos</b><small>{visualEffect ? getVisualEffect(visualEffect.effectId).name : "Prévia na sua mídia"}</small></button>
+          </div>}
           {clip && <>
           <details className="tool-disclosure" open><summary>Templates e aparência</summary>
             <div className="template-grid"><button onClick={() => applyTemplate("podcast")}>🎙️ Podcast</button><button onClick={() => applyTemplate("react")}>👀 React</button><button onClick={() => applyTemplate("gameplay")}>🎮 Gameplay</button><button onClick={() => applyTemplate("interview")}>💬 Entrevista</button></div>
@@ -5722,7 +6065,7 @@ function ClipEditorV2({
             <label>Altura · {Math.round(videoTransform.scaleY * 100)}%<input type="range" min="0.25" max="4" step="0.01" value={videoTransform.scaleY} onChange={(event) => setVideoTransform((frame) => ({ ...frame, scaleY: Number(event.target.value) }))} /></label>
             <button type="button" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar enquadramento</button>
           </div></details>
-          {clip && <details className="tool-disclosure"><summary>Áudio {audioTracks.length ? `· ${audioTracks.length} faixa${audioTracks.length > 1 ? "s" : ""}` : ""}</summary><div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div><div className="audio-editor-controls audio-library"><label className="audio-import">＋ Adicionar áudio<input type="file" accept="audio/*" onChange={(event) => addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}>● Pop</button><button onClick={() => addBuiltInSound("whoosh")}>〰 Whoosh</button><button onClick={() => addBuiltInSound("ding")}>✦ Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }}>♫ {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Canal selecionado</b><button onClick={removeAudioTrack}>Excluir</button></div><label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div></details>}
+          {clip && <details className="tool-disclosure"><summary>Áudio {audioTracks.length ? `· ${audioTracks.length} faixa${audioTracks.length > 1 ? "s" : ""}` : ""}</summary><div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div><div className="audio-editor-controls audio-library"><label className="audio-import">＋ Adicionar áudio<input type="file" accept="audio/*" onChange={(event) => void addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}>● Pop</button><button onClick={() => addBuiltInSound("whoosh")}>〰 Whoosh</button><button onClick={() => addBuiltInSound("ding")}>✦ Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }}>♫ {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Canal selecionado</b><button onClick={removeAudioTrack}>Excluir</button></div>{selectedAudio.license && <small title={selectedAudio.license.summary}>{selectedAudio.license.name} · {selectedAudio.license.commercialUse ? "uso comercial liberado" : "verifique seus direitos de uso"}</small>}<label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div></details>}
           {clip && <details className="tool-disclosure"><summary>Transições</summary><div className="video-transition-controls">
             <small>Arraste uma transição para entrada, saída ou para a faixa de vídeo.</small>
             <div className="transition-shelf">
@@ -5799,10 +6142,10 @@ function ClipEditorV2({
         </aside>
 
         <section className="editor-stage-wrap" id="klip-preview">
-          {clip && <div className={`stage-meta ${exportAspect === "vertical" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "stage-meta-tall" : ""}`}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>}
-          <div className={`editor-stage preset-${visualPreset} ${exportAspect === "vertical" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "editor-stage-tall" : ""}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
+          {clip && <div className={`stage-meta ${exportAspect === "vertical" || exportAspect === "portrait" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "stage-meta-tall" : ""}`}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "portrait" ? "retrato · 4:5" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>}
+          <div className={`editor-stage preset-${visualPreset} ${exportAspect === "vertical" || exportAspect === "portrait" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "editor-stage-tall" : ""}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "portrait" ? "4 / 5" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scaleX}, ${videoTransform.scaleY})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} /><div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
+              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ filter: previewFilter, opacity: activeEffectFrame?.opacity ?? 1, transform: `translate(${videoTransform.x + (activeEffectFrame?.transform.translateX || 0) * 100}%, ${videoTransform.y + (activeEffectFrame?.transform.translateY || 0) * 100}%) rotate(${activeEffectFrame?.transform.rotationDeg || 0}deg) scale(${videoTransform.scaleX * (activeEffectFrame?.transform.scale || 1)}, ${videoTransform.scaleY * (activeEffectFrame?.transform.scale || 1)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} />{activeEffectFrame && <div className="studio-effect-layer" aria-hidden="true">{activeEffectFrame.overlays.map((overlay, index) => overlay.kind === "color" ? <i key={index} className="effect-color" style={{ background: overlay.color, opacity: overlay.opacity, mixBlendMode: overlay.blendMode }} /> : overlay.kind === "scanlines" ? <i key={index} className="effect-scanlines" style={{ opacity: overlay.opacity, backgroundSize: `100% ${overlay.spacing}px` }} /> : overlay.kind === "noise" ? <i key={index} className="effect-noise" style={{ opacity: overlay.opacity }} /> : overlay.kind === "vignette" ? <i key={index} className="effect-vignette" style={{ opacity: overlay.opacity }} /> : overlay.kind === "letterbox" ? <i key={index} className="effect-letterbox" style={{ "--letterbox-size": `${overlay.size * 100}%`, opacity: overlay.opacity } as CSSProperties} /> : <i key={index} className="effect-rgb" style={{ opacity: overlay.opacity, transform: `translate(${overlay.offsetX * 100}%, ${overlay.offsetY * 100}%)` }} />)}</div>}<div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
             ) : (
               <div className="editor-empty"><small>Klip Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload">＋ Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}
@@ -5827,7 +6170,7 @@ function ClipEditorV2({
               if (!text || layerOpacity(layer, current) <= 0) return null;
               return <div key={layer.id} className={`caption-overlay ${selected?.id === layer.id ? "selected-layer" : ""} ${layer.background ? "with-background" : ""}`} onPointerDown={(event) => beginLayerDrag(event, layer)} onPointerMove={moveLayerDrag} onPointerUp={() => { layerDrag.current = null; }} onPointerCancel={() => { layerDrag.current = null; }} style={previewStyle(layer)}><span>{text}</span><small>Arraste</small></div>;
             })}
-            {safeGuides && exportAspect === "vertical" && <div className="safe-area-guides" aria-label="Área segura para TikTok, Reels e Shorts"><i /><span>Área segura</span></div>}
+            {clip && safeGuides && <div className="safe-area-guides" aria-label={selectedSocialPreset.safeArea.label} style={{ top: `${selectedSocialPreset.safeArea.insetPercent.top}%`, right: `${selectedSocialPreset.safeArea.insetPercent.right}%`, bottom: `${selectedSocialPreset.safeArea.insetPercent.bottom}%`, left: `${selectedSocialPreset.safeArea.insetPercent.left}%` }}><i /><span>{selectedSocialPreset.safeArea.label}</span></div>}
           </div>
           {notice && <p className="editor-notice">{notice}</p>}
         </section>
@@ -5874,6 +6217,50 @@ function ClipEditorV2({
           {(selected || selectedIllustration || selectedAudio) && <p className="timeline-shortcuts">Arraste o bloco para mover · arraste as pontas para cortar · <kbd>Del</kbd> remover · <kbd>Ctrl D</kbd> duplicar · <kbd>Espaço</kbd> reproduzir</p>}
         </div>
       </section>}
+      {studioPanel && <div className="studio-hub-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) closeStudioPanel(); }}>
+        <section ref={studioDialog} className={`studio-hub studio-hub-${studioPanel}`} role="dialog" aria-modal="true" aria-label="Ferramentas de criação do Klip Studio">
+          <header className="studio-hub-header">
+            <div><span>✦ KLIP CREATOR</span><b>{studioPanel === "formats" ? "Escolha onde vai publicar" : studioPanel === "audio" ? "Dê ritmo à sua história" : "Transforme sua própria mídia"}</b><small>{studioPanel === "formats" ? "TikTok, Reels, Shorts, Stories, feed ou YouTube — sem decorar medidas." : studioPanel === "audio" ? "Músicas e efeitos Klip Original, com licença comercial clara." : "Passe o mouse ou toque para conferir antes de aplicar."}</small></div>
+            <button type="button" onClick={closeStudioPanel} aria-label="Fechar ferramentas">×</button>
+          </header>
+          <nav className="studio-hub-tabs" aria-label="Ferramentas do criador">
+            <button type="button" className={studioPanel === "formats" ? "selected" : ""} onClick={() => setStudioPanel("formats")}>▣ Formatos</button>
+            <button type="button" className={studioPanel === "audio" ? "selected" : ""} onClick={() => setStudioPanel("audio")}>♫ Sons</button>
+            <button type="button" className={studioPanel === "effects" ? "selected" : ""} onClick={() => setStudioPanel("effects")}>✦ Efeitos</button>
+          </nav>
+          <div className="studio-hub-content">
+            {studioPanel === "formats" && <QuickCreate
+              selectedId={draftSocialPresetId}
+              onPresetSelect={(preset) => setDraftSocialPresetId(preset.id)}
+              onCreate={applySocialPreset}
+              onCustomize={(preset) => { setSelectedSocialPresetId(preset.id); setDraftSocialPresetId(preset.id); setExportAspect("original"); setNotice("Formato livre ativado. Use os controles de formato, resolução e FPS no topo."); closeStudioPanel(); }}
+            />}
+            {studioPanel === "audio" && <AudioLibrary onInsert={async (payload: TimelineAudioPayload) => {
+              try {
+                const added = await addAudioTrack(payload.file, { assetId: payload.asset.id, license: payload.asset.license }, payload.duration);
+                if (!added) throw new Error("Não foi possível inserir este áudio na timeline.");
+                closeStudioPanel();
+              } finally {
+                payload.revoke();
+              }
+            }} />}
+            {studioPanel === "effects" && <div className="studio-effects-shell">
+              <div className="studio-effect-controls">
+                <div><b>Intensidade</b><span>{Math.round(visualEffectIntensity * 100)}%</span></div>
+                <input aria-label="Intensidade do efeito" type="range" min="0.2" max="2" step="0.05" value={visualEffectIntensity} onPointerDown={remember} onChange={(event) => { const value = Number(event.target.value); setVisualEffectIntensity(value); setVisualEffect((effect) => effect ? { ...effect, intensity: value } : effect); setVisualEffectPreview((effect) => effect ? { ...effect, intensity: value } : effect); }} />
+                <button type="button" disabled={!visualEffect} onClick={() => { remember(); setVisualEffect(null); setVisualEffectPreview(null); setNotice("Efeito visual removido."); }}>Sem efeito</button>
+              </div>
+              <EffectsGallery
+                media={clip ? { src: clip.url, type: "video", alt: clip.name } : null}
+                selectedEffectId={visualEffect?.effectId}
+                intensity={visualEffectIntensity}
+                onPreview={(_, application) => setVisualEffectPreview(application)}
+                onApply={(effect, application) => { remember(); setVisualEffect(application); setVisualEffectPreview(null); setNotice(`${effect.name} aplicado à prévia e à exportação.`); }}
+              />
+            </div>}
+          </div>
+        </section>
+      </div>}
       {radarOpen && <aside className="radar-panel" aria-label="Sugestões automáticas de cortes">
         <div className="radar-panel-header"><div><span>✦ KLIP RADAR</span><b>Onde estão os melhores momentos?</b><small>A análise acontece somente neste navegador.</small></div><button onClick={() => setRadarOpen(false)} aria-label="Fechar">×</button></div>
         <div className="radar-config">

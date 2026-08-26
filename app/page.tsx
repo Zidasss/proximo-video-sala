@@ -114,6 +114,7 @@ type EditorSnapshot = {
 };
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type StudioPanel = "formats" | "audio" | "effects";
+type EditorTool = "media" | "text" | "audio" | "effects" | "transitions" | "formats" | "radar";
 type TimedLayer = Pick<IllustrationLayer, "start" | "end" | "fadeIn" | "fadeOut">;
 type ConnectionStats = {
   fps: number;
@@ -125,7 +126,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.18.0";
+const APP_VERSION = "v0.19.0";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",
@@ -4130,6 +4131,8 @@ function ClipEditorV2({
     [visualEffectPreview, setVisualEffectPreview] = useState<VisualEffectApplication | null>(null),
     [visualEffectIntensity, setVisualEffectIntensity] = useState(1),
     [studioPanel, setStudioPanel] = useState<StudioPanel | null>(null),
+    [activeTool, setActiveTool] = useState<EditorTool>("media"),
+    [toolPanelOpen, setToolPanelOpen] = useState(false),
     [selectedSocialPresetId, setSelectedSocialPresetId] = useState<SocialPresetId>("custom"),
     [draftSocialPresetId, setDraftSocialPresetId] = useState<SocialPresetId>("custom"),
     [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1 }),
@@ -4146,7 +4149,7 @@ function ClipEditorV2({
     [timelineZoom, setTimelineZoom] = useState(1),
     [safeGuides, setSafeGuides] = useState(true),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
-    [layers, setLayers] = useState<TextLayer[]>(() => [initialLayer()]),
+    [layers, setLayers] = useState<TextLayer[]>([]),
     [illustrations, setIllustrations] = useState<IllustrationLayer[]>([]),
     [selectedId, setSelectedId] = useState(""),
     [selectedIllustrationId, setSelectedIllustrationId] = useState(""),
@@ -4232,6 +4235,12 @@ function ClipEditorV2({
   };
 
   useEffect(() => () => releaseManagedAudioUrls(), []);
+
+  useEffect(() => {
+    if (!notice) return;
+    const timer = window.setTimeout(() => setNotice(""), 4800);
+    return () => window.clearTimeout(timer);
+  }, [notice]);
 
   useEffect(() => {
     if (!studioPanel) return;
@@ -4472,7 +4481,7 @@ function ClipEditorV2({
     setExportAspect("original");
     setExportResolution("source");
     setMarkers([]);
-    setLayers([initialLayer()]);
+    setLayers([]);
     setIllustrations([]);
     setAudioTracks([]);
     setSelectedId("");
@@ -6016,55 +6025,62 @@ function ClipEditorV2({
 
   return (
     <main className="clip-editor clip-editor-v2">
-      <header className="editor-header">
+      <header className="editor-header editor-header-pro">
         <div className="brand">
           <span className="brand-mark"><i /><i /></span>Klip <em>Studio</em>
         </div>
+        {clip && <div className="editor-project-status" title={clip.name}>
+          <b>{clip.name}</b>
+          <span><i /> Salvo localmente</span>
+        </div>}
         {clip && <div className="editor-header-actions">
-          <span className="autosave-note">Projeto local · nada é enviado</span>
-          <button onClick={onBack}>← Voltar para sala</button>
-          <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}>✦ Encontrar momentos</button>
-          <select className="export-format" aria-label="Formato de saída" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}>
-            <option value="mp4">MP4</option>
-            <option value="webm">WebM</option>
-          </select>
-          <select className="export-format" aria-label="Formato do vídeo" value={exportAspect} onChange={(event) => { const next = event.target.value as ExportAspect; const presetId: SocialPresetId = next === "vertical" ? "instagram-reels" : next === "portrait" ? "feed-portrait" : next === "landscape" ? "youtube-landscape" : next === "square" ? "feed-square" : "custom"; setExportAspect(next); setSelectedSocialPresetId(presetId); setDraftSocialPresetId(presetId); }}>
-            <option value="original">Original (preservar)</option>
-            <option value="vertical">Vertical 9:16</option>
-            <option value="portrait">Feed retrato 4:5</option>
-            <option value="landscape">Horizontal 16:9</option>
-            <option value="square">Quadrado 1:1</option>
-          </select>
-          <select className="export-format" aria-label="Resolução do vídeo" value={exportResolution} onChange={(event) => setExportResolution(event.target.value as "source" | "1080" | "720")}>
-            <option value="source">Resolução original</option>
-            <option value="1080">Até 1080p</option>
-            <option value="720">Até 720p</option>
-          </select>
-          <select className="export-format" aria-label="Quadros por segundo" value={exportFps} onChange={(event) => setExportFps(Number(event.target.value))}>
-            <option value="24">24 FPS</option><option value="30">30 FPS</option><option value="60">60 FPS</option>
-          </select>
-          <select className="export-format" aria-label="Bitrate" value={exportBitrate} onChange={(event) => setExportBitrate(event.target.value as "standard" | "high" | "ultra")}>
-            <option value="standard">Bitrate padrão</option><option value="high">Alta qualidade</option><option value="ultra">Qualidade máxima</option>
-          </select>
+          <button className="header-quiet-action" onClick={onBack} title="Voltar para a sala" aria-label="Voltar para a sala">← <span>Sala</span></button>
+          <button className="header-quiet-action radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()} title="Encontrar os melhores momentos">✦ <span>Radar</span></button>
+          <button className="header-format-action" onClick={() => { setActiveTool("formats"); setToolPanelOpen(true); }} title="Alterar formato do vídeo"><span>▣</span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label}</small></button>
+          <details className="export-settings-popover">
+            <summary title="Configurações de exportação" aria-label="Configurações de exportação">⚙ <span>Qualidade</span></summary>
+            <div className="export-settings-menu">
+              <header><b>Exportação</b><span>{exportResolution === "source" ? "Original" : `${exportResolution}p`} · {exportFps} FPS</span></header>
+              <label>Arquivo<select aria-label="Formato de saída" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="mp4">MP4</option><option value="webm">WebM</option></select></label>
+              <label>Formato<select aria-label="Formato do vídeo" value={exportAspect} onChange={(event) => { const next = event.target.value as ExportAspect; const presetId: SocialPresetId = next === "vertical" ? "instagram-reels" : next === "portrait" ? "feed-portrait" : next === "landscape" ? "youtube-landscape" : next === "square" ? "feed-square" : "custom"; setExportAspect(next); setSelectedSocialPresetId(presetId); setDraftSocialPresetId(presetId); }}><option value="original">Original</option><option value="vertical">Vertical 9:16</option><option value="portrait">Retrato 4:5</option><option value="landscape">Horizontal 16:9</option><option value="square">Quadrado 1:1</option></select></label>
+              <label>Resolução<select aria-label="Resolução do vídeo" value={exportResolution} onChange={(event) => setExportResolution(event.target.value as "source" | "1080" | "720")}><option value="source">Original</option><option value="1080">Até 1080p</option><option value="720">Até 720p</option></select></label>
+              <label>FPS<select aria-label="Quadros por segundo" value={exportFps} onChange={(event) => setExportFps(Number(event.target.value))}><option value="24">24 FPS</option><option value="30">30 FPS</option><option value="60">60 FPS</option></select></label>
+              <label>Qualidade<select aria-label="Bitrate" value={exportBitrate} onChange={(event) => setExportBitrate(event.target.value as "standard" | "high" | "ultra")}><option value="standard">Padrão</option><option value="high">Alta</option><option value="ultra">Máxima</option></select></label>
+            </div>
+          </details>
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel(false)}>
-            {exporting ? "Renderizando…" : approvedCuts.length > 1 ? `⇩ Exportar montagem · ${approvedCuts.length} Klips` : `⇩ Exportar ${exportFormat.toUpperCase()}`}
+            {exporting ? `${exportProgress}%` : approvedCuts.length > 1 ? `Exportar ${approvedCuts.length} Klips` : `Exportar ${exportFormat.toUpperCase()}`}
           </button>
-          <button className="editor-export editor-publish-btn" disabled={!clip || exporting} onClick={() => void exportReel(true)}>
-            <Share2 style={{ width: "14px", height: "14px", display: "inline-block", verticalAlign: "middle", marginRight: "4px" }} />
-            {exporting ? "Processando..." : "🚀 Publicar nas Redes"}
+          <button className="editor-publish-btn" disabled={!clip || exporting} onClick={() => void exportReel(true)} title="Publicar nas redes">
+            <Share2 aria-hidden="true" /><span>Publicar</span>
           </button>
-          {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar {exportProgress}%</button>}
+          {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar</button>}
         </div>}
       </header>
       {clip && <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
         <a href="#klip-preview">▣ Prévia</a>
-        <a href="#klip-tools">☷ Ferramentas</a>
+        <button onClick={() => { setActiveTool("media"); setToolPanelOpen(true); }}>☷ Ferramentas</button>
         <a href="#klip-timeline">▤ Linha do tempo</a>
         <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}>✦ Radar</button>
         <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : approvedCuts.length > 1 ? `⇩ Montagem (${approvedCuts.length})` : "⇩ Exportar"}</button>
       </nav>}
       <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
-        <aside className="editor-tools" id="klip-tools">
+        <aside className={`editor-tool-dock ${toolPanelOpen ? "panel-open" : ""}`} id="klip-tools">
+          <nav className="editor-tool-rail" aria-label="Ferramentas do editor">
+            {([
+              ["media", "＋", "Mídia"],
+              ["text", "T", "Texto"],
+              ["audio", "♫", "Áudio"],
+              ["effects", "✦", "Efeitos"],
+              ["transitions", "◐", "Transições"],
+              ["formats", "▣", "Formatos"],
+              ["radar", "◇", "Radar"],
+            ] as const).map(([tool, icon, label]) => <button key={tool} type="button" className={activeTool === tool ? "active" : ""} onClick={() => { setActiveTool(tool); setToolPanelOpen(true); }} title={label} aria-label={label} aria-pressed={activeTool === tool}><span>{icon}</span><b>{label}</b></button>)}
+          </nav>
+          <aside className="editor-tools" data-tool={activeTool}>
+            <header className="editor-tool-panel-header"><div><span>{activeTool === "radar" ? "IA" : "EDITOR"}</span><b>{activeTool === "media" ? "Mídia" : activeTool === "text" ? "Texto" : activeTool === "audio" ? "Áudio" : activeTool === "effects" ? "Efeitos" : activeTool === "transitions" ? "Transições" : activeTool === "formats" ? "Formatos" : "Klip Radar"}</b></div><button type="button" onClick={() => setToolPanelOpen(false)} aria-label="Fechar ferramentas">×</button></header>
+
+          {activeTool === "media" && <section className="editor-tool-section tool-media-panel">
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
           {!clip ? <>
             <label className="editor-upload">＋ Importar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
@@ -6079,13 +6095,11 @@ function ClipEditorV2({
             <small className="media-import-help"><b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado do principal. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
           </>}
           {clip && <p className="editor-file">● {clip.name}</p>}
-          {clip && <button className="radar-tool-card" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><span>✦</span><b>Klip Radar</b><small>{approvedCuts.length ? `${approvedCuts.length} corte${approvedCuts.length > 1 ? "s" : ""} na timeline` : "Encontre pausas e bons momentos automaticamente"}</small></button>}
           <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
-          {clip && <div className="studio-quick-actions" aria-label="Criação rápida">
-            <button type="button" onClick={() => { setDraftSocialPresetId(selectedSocialPresetId); setStudioPanel("formats"); }}><span>▣</span><b>Formatos</b><small>{selectedSocialPreset.title} · {selectedSocialPreset.aspectRatio.label}</small></button>
-            <button type="button" onClick={() => setStudioPanel("audio")}><span>♫</span><b>Sons</b><small>{audioTracks.length ? `${audioTracks.length} na timeline` : "Músicas e efeitos seguros"}</small></button>
-            <button type="button" onClick={() => setStudioPanel("effects")}><span>✦</span><b>Efeitos</b><small>{visualEffect ? getVisualEffect(visualEffect.effectId).name : "Prévia na sua mídia"}</small></button>
-          </div>}
+          </section>}
+
+          {activeTool === "effects" && <section className="editor-tool-section tool-effects-panel">
+          <button className="tool-primary-action" type="button" onClick={() => setStudioPanel("effects")}><span>✦</span><b>Galeria de efeitos</b></button>
           {clip && <>
           <details className="tool-disclosure" open><summary>Templates e aparência</summary>
             <div className="template-grid"><button onClick={() => applyTemplate("podcast")}>🎙️ Podcast</button><button onClick={() => applyTemplate("react")}>👀 React</button><button onClick={() => applyTemplate("gameplay")}>🎮 Gameplay</button><button onClick={() => applyTemplate("interview")}>💬 Entrevista</button></div>
@@ -6099,8 +6113,17 @@ function ClipEditorV2({
             <label>Altura · {Math.round(videoTransform.scaleY * 100)}%<input type="range" min="0.25" max="4" step="0.01" value={videoTransform.scaleY} onChange={(event) => setVideoTransform((frame) => ({ ...frame, scaleY: Number(event.target.value) }))} /></label>
             <button type="button" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar enquadramento</button>
           </div></details>
-          {clip && <details className="tool-disclosure"><summary>Áudio {audioTracks.length ? `· ${audioTracks.length} faixa${audioTracks.length > 1 ? "s" : ""}` : ""}</summary><div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label><button onClick={() => void detectSilence()}>✂ Remover silêncios nas pontas</button></div><div className="audio-editor-controls audio-library"><label className="audio-import">＋ Adicionar áudio<input type="file" accept="audio/*" onChange={(event) => void addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}>● Pop</button><button onClick={() => addBuiltInSound("whoosh")}>〰 Whoosh</button><button onClick={() => addBuiltInSound("ding")}>✦ Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }}>♫ {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Canal selecionado</b><button onClick={removeAudioTrack}>Excluir</button></div>{selectedAudio.license && <small title={selectedAudio.license.summary}>{selectedAudio.license.name} · {selectedAudio.license.commercialUse ? "uso comercial liberado" : "verifique seus direitos de uso"}</small>}<label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div></details>}
-          {clip && <details className="tool-disclosure"><summary>Transições</summary><div className="video-transition-controls">
+          </>}
+          </section>}
+
+          {activeTool === "audio" && <section className="editor-tool-section tool-audio-panel">
+            <button className="tool-primary-action" type="button" onClick={() => setStudioPanel("audio")}><span>♫</span><b>Biblioteca de sons</b></button>
+            {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz</label><button onClick={() => void detectSilence()}>✂ Remover silêncios</button></div>}
+            {clip && <div className="audio-editor-controls audio-library"><label className="audio-import">＋ Importar áudio<input type="file" accept="audio/*" onChange={(event) => void addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}>● Pop</button><button onClick={() => addBuiltInSound("whoosh")}>〰 Whoosh</button><button onClick={() => addBuiltInSound("ding")}>✦ Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(track.start); }}>♫ {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Faixa selecionada</b><button onClick={removeAudioTrack}>Excluir</button></div>{selectedAudio.license && <small title={selectedAudio.license.summary}>{selectedAudio.license.name}</small>}<label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div>}
+          </section>}
+
+          {activeTool === "transitions" && <section className="editor-tool-section tool-transitions-panel">
+          {clip && <div className="video-transition-controls">
             <small>Arraste uma transição para entrada, saída ou para a faixa de vídeo.</small>
             <div className="transition-shelf">
               <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-black")} onClick={() => applyTransition("fade-black", "in")}>◐ Fade preto</button>
@@ -6111,8 +6134,10 @@ function ClipEditorV2({
               <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "in")}><b>Entrada</b><span>{videoFadeIn ? `${transitionColor === "white" ? "Fade branco" : "Fade preto"} · ${videoFadeIn.toFixed(1)}s` : "Solte aqui"}</span></div>
               <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "out")}><b>Saída</b><span>{videoFadeOut ? `${transitionColor === "white" ? "Fade branco" : "Fade preto"} · ${videoFadeOut.toFixed(1)}s` : "Solte aqui"}</span></div>
             </div>
-          </div></details>}
+          </div>}
+          </section>}
 
+          {activeTool === "media" && !!illustrations.length && <section className="editor-tool-section tool-overlays-panel">
           <div className="tool-heading layer-heading"><span>02</span><div><b>Ilustrações</b><small>Imagem ou vídeo por cima da conversa</small></div></div>
           <small className="illustration-help">As camadas novas são inseridas pelo bloco “Adicionar mídia” acima. Selecione uma abaixo para ajustar.</small>
           {!!illustrations.length && <div className="layer-list illustration-list">
@@ -6132,7 +6157,9 @@ function ClipEditorV2({
               <label>Fade out<input type="number" min="0" max="3" step="0.1" value={selectedIllustration.fadeOut} onChange={(event) => updateIllustration(selectedIllustration.id, { fadeOut: Math.max(0, Number(event.target.value)) })} /></label>
             </div>
           </div>}
+          </section>}
 
+          {activeTool === "text" && <section className="editor-tool-section tool-text-panel">
           <div className="tool-heading layer-heading"><span>03</span><div><b>Camadas de texto</b><small>Cada texto tem seu próprio tempo</small></div></div>
           <div className="layer-actions">
             <button onClick={addLayer}>＋ Texto</button>
@@ -6172,7 +6199,21 @@ function ClipEditorV2({
               <div className="emoji-row">{["🔥", "😂", "🎙️", "✨", "💥", "👀"].map((emoji) => <button key={emoji} onClick={() => updateLayer(selected.id, { text: `${selected.text} ${emoji}`.trim() })}>{emoji}</button>)}</div>
             </div>
           )}
-          </>}
+          </section>}
+
+          {activeTool === "formats" && <section className="editor-tool-section tool-formats-panel">
+            <div className="current-format-card"><span>Formato atual</span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label} · {exportFps} FPS</small></div>
+            <div className="format-shortcuts">{(["tiktok", "instagram-reels", "youtube-shorts", "youtube-landscape"] as SocialPresetId[]).map((id) => { const preset = getSocialPreset(id); return <button key={id} type="button" className={selectedSocialPresetId === id ? "selected" : ""} onClick={() => applySocialPreset(preset)}><span>{preset.platform.slice(0, 2).toUpperCase()}</span><b>{preset.title}</b><small>{preset.aspectRatio.label}</small></button>; })}</div>
+            <button className="tool-primary-action" type="button" onClick={() => { setDraftSocialPresetId(selectedSocialPresetId); setStudioPanel("formats"); }}><span>▣</span><b>Todos os formatos</b></button>
+          </section>}
+
+          {activeTool === "radar" && <section className="editor-tool-section tool-radar-panel">
+            <div className="radar-tool-visual"><span>✦</span><b>{approvedCuts.length || radarSuggestions.length || "IA"}</b></div>
+            <b className="tool-feature-title">Encontre os melhores momentos</b>
+            <button className="tool-primary-action radar" type="button" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><span>◇</span><b>{radarSuggestions.length ? "Abrir resultados" : "Analisar vídeo"}</b></button>
+            {!!approvedCuts.length && <div className="tool-stat-row"><span>Na timeline</span><b>{approvedCuts.length} Klips</b></div>}
+          </section>}
+          </aside>
         </aside>
 
         <section className="editor-stage-wrap" id="klip-preview">
@@ -6306,12 +6347,19 @@ function ClipEditorV2({
         {!!radarSuggestions.length && <div className="radar-suggestions">
           <div className="radar-review-title"><b>Revise antes de aplicar</b><small>Desmarque o que não fizer sentido. Nada altera o arquivo original.</small></div>
           {radarSuggestions.map((item, index) => <article key={item.id} className={item.selected ? "selected" : ""}>
-            <label className="radar-check"><input type="checkbox" checked={item.selected} onChange={() => toggleRadarSuggestion(item.id)} /><span>Klip {index + 1}</span></label>
-            <strong>{item.title}</strong>
-            <div className="radar-score"><b>{item.score}</b><span>pontuação</span></div>
-            <time>{time(item.start)} → {time(item.end)} · {time(item.end - item.start)}</time>
-            <p>{item.reason}</p>
-            <div className="radar-item-actions"><button onClick={() => previewRadarSuggestion(item)}>▶ Conferir trecho</button><button className="radar-download-one" disabled={exporting} onClick={() => void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`)}>⇩ Salvar este Klip</button></div>
+            <div className="radar-thumbnail" aria-hidden="true">
+              {clip && <video src={clip.url} muted playsInline preload="metadata" onLoadedMetadata={(event) => { const preview = event.currentTarget; preview.currentTime = Math.min(Math.max(0, item.start), Math.max(0, preview.duration - .05)); }} />}
+              <span>{String(index + 1).padStart(2, "0")}</span>
+              <time>{time(item.end - item.start)}</time>
+            </div>
+            <div className="radar-item-copy">
+              <label className="radar-check"><input type="checkbox" checked={item.selected} onChange={() => toggleRadarSuggestion(item.id)} /><span>Klip {index + 1}</span></label>
+              <strong>{item.title}</strong>
+              <time>{time(item.start)} → {time(item.end)}</time>
+              <p>{item.reason}</p>
+              <div className="radar-item-actions"><button onClick={() => previewRadarSuggestion(item)}>▶ Prévia</button><button className="radar-download-one" disabled={exporting} onClick={() => void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`)}>⇩ Salvar</button></div>
+            </div>
+            <div className="radar-score"><b>{item.score}</b><span>score</span></div>
           </article>)}
         </div>}
         <footer><button onClick={() => setRadarOpen(false)}>Continuar editando</button><button className="radar-apply" disabled={!radarSuggestions.some((item) => item.selected)} onClick={applyRadarSuggestions}>Adicionar selecionados à timeline</button></footer>

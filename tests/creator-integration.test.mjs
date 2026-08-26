@@ -11,14 +11,17 @@ test("integrates creator formats, licensed audio and visual effects into the rea
   assert.match(page, /<EffectsGallery/);
   assert.match(page, /drawVisualEffectFrame/);
   assert.match(page, /payload\.revoke\(\)/);
-  assert.match(page, /Feed retrato 4:5/);
+  assert.match(page, /feed-portrait/);
   assert.match(page, /selectedSocialPreset\.safeArea\.insetPercent/);
   assert.match(page, /version: 6/);
   assert.match(page, /visualEffectIntensity/);
   assert.match(page, /editorTimelineDuration \|\| duration \|\| trackLength/);
   assert.match(page, /audioTimelineStart: montageItem\?\.timelineStart \|\| 0/);
   assert.match(page, /audioTimelineTime = activeRange\.audioTimelineStart \+ localTime/);
-  assert.match(page, /APP_VERSION = "v0\.18\.0"/);
+  assert.match(page, /APP_VERSION = "v0\.19\.0"/);
+  assert.match(page, /editor-tool-rail/);
+  assert.match(page, /export-settings-popover/);
+  assert.match(page, /radar-thumbnail/);
 });
 
 test("keeps the creator hub readable on desktop and mobile", async () => {
@@ -27,4 +30,8 @@ test("keeps the creator hub readable on desktop and mobile", async () => {
   assert.match(css, /\.studio-quick-actions/);
   assert.match(css, /max-height: 93dvh/);
   assert.match(css, /@media \(max-width: 430px\)/);
+  assert.match(css, /Klip Studio v0\.19/);
+  assert.match(css, /--studio-timeline-h: 340px/);
+  assert.match(css, /\.editor-tool-dock/);
+  assert.match(css, /\.timeline-panel\.multi-timeline/);
 });

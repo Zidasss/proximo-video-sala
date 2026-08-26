@@ -130,7 +130,7 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /document\.body\.appendChild\(link\)/);
   assert.match(page, /function advanceMontageRange/);
   assert.match(page, /fades automáticos/);
-  assert.match(page, /Exportar montagem/);
+  assert.match(page, /Exportar \$\{approvedCuts\.length\} Klips/);
   assert.match(page, /setEditorOpen\(true\)/);
   assert.match(page, /KLIP RADAR/);
   assert.match(page, /O original foi preservado/);

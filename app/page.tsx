@@ -2636,38 +2636,30 @@ export default function Home() {
         </nav>
         <section className="hero landing-hero-v2">
           <div className="landing-copy">
-            <div className="eyebrow">Klip Room · conversa que vira conteúdo</div>
-            <h1>Do seu papo<br />ao seu <em>próximo clipe.</em></h1>
-            <p>Converse com qualidade, compartilhe a tela, grave localmente e leve o melhor momento direto para o Klip Studio.</p>
+            <div className="eyebrow">✦ KLIP STUDIO · A PLATAFORMA PARA CRIADORES DE CONTEÚDO</div>
+            <h1>Grave conversas,<br />corte clipes e <em>domine as redes.</em></h1>
+            <p>Salas de gravação de alta qualidade, editor vertical integrado em 9:16 e publicação em 1 clique no YouTube, TikTok e Instagram.</p>
             <div className="landing-proof">
-              <span><b>1080p</b> vídeo Full HD</span><span><b>MP4</b> gravação local</span><span><b>9:16</b> pronto para Reels</span>
+              <span><b>Ultra HD</b> gravação local sem perda</span>
+              <span><b>Multi-Cam</b> podcasts & entrevistas</span>
+              <span><b>9:16</b> Reels, Shorts & TikTok</span>
             </div>
           </div>
           <div className="landing-entry-card">
-            <div className="entry-card-heading"><div><small>SALA KLIP</small><b>{mode === "host" ? "Abra sua sessão" : "Entre na sessão"}</b></div><span>● privado</span></div>
-            <p className="entry-card-description">{mode === "host" ? "Crie um link protegido e convide quem vai gravar com você." : `Você vai entrar na sala de ${owner || "seu amigo"}.`}</p>
+            <div className="entry-card-heading"><div><small>ESTÚDIO AO VIVO</small><b>{mode === "host" ? "Iniciar nova sessão" : "Entrar na sessão"}</b></div><span>● privado</span></div>
+            <p className="entry-card-description">{mode === "host" ? "Crie uma sala protegida para gravar com seus convidados." : `Você vai entrar na sala de ${owner || "seu convidado"}.`}</p>
             <div className="entry-tabs">
               <button className={mode === "host" ? "selected" : ""} onClick={() => setMode("host")}>Criar sala</button>
               <button className={mode === "guest" ? "selected" : ""} onClick={() => setMode("guest")}>Entrar</button>
             </div>
             <div className="join">
             <label>
-              SEU NOME
+              SEU NOME OU CANAL
               <input
                 value={name}
                 placeholder={currentUser?.name || "Digite seu nome"}
                 onChange={(event) => setName(event.target.value)}
               />
-            </label>
-            <label>
-              QUALIDADE
-              <select
-                value={quality}
-                onChange={(event) => setQuality(event.target.value as Quality)}
-              >
-                <option value="1080">Full HD · 1080p</option>
-                <option value="720">HD · 720p</option>
-              </select>
             </label>
             <label>
               SALA (6 NÚMEROS)
@@ -2681,7 +2673,7 @@ export default function Home() {
               />
             </label>
             <label>
-              SENHA DE CONFIRMAÇÃO
+              SENHA DE SEGURANÇA
               <input
                 value={pin}
                 inputMode="numeric"
@@ -2703,7 +2695,7 @@ export default function Home() {
               </button>
             )}
             <button onClick={() => void join()}>
-              {mode === "host" ? "Criar e entrar na sala" : "Entrar na sessão"}{" "}
+              {mode === "host" ? "Abrir sala de gravação" : "Entrar na sessão"}{" "}
               <b>→</b>
             </button>
             {notice && <p>{notice}</p>}
@@ -2711,7 +2703,7 @@ export default function Home() {
             {!currentUser ? (
               <div style={{ marginTop: "12px", padding: "10px 14px", background: "rgba(255, 113, 96, 0.08)", border: "1px solid rgba(255, 113, 96, 0.28)", borderRadius: "14px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px" }}>
                 <span style={{ fontSize: "11px", color: "#ffe0db" }}>
-                  🔐 <b>Fazer Login:</b> Conecte suas contas do YouTube Shorts, TikTok e Instagram Reels.
+                  🔐 <b>Fazer Login:</b> Conecte suas contas do YouTube, TikTok e Instagram.
                 </span>
                 <button
                   type="button"
@@ -2735,14 +2727,144 @@ export default function Home() {
               </div>
             )}
             </div>
-            <div className="entry-quality-note"><i>✓</i><span><b>{quality === "1080" ? "Full HD · 1080p" : "HD · 720p"}</b><small>Câmera, microfone e tela configuráveis antes de entrar.</small></span></div>
+            <div className="entry-quality-note"><i>✓</i><span><b>Estúdio Alta Definição</b><small>Câmera, microfone e compartilhamento de tela com gravação isolada.</small></span></div>
           </div>
           <div className="landing-showcase" aria-hidden="true">
-            <div className="showcase-top"><span>● AO VIVO</span><b>Qualidade adaptativa</b></div>
-            <div className="showcase-canvas"><div className="showcase-camera"><i>CAM 01</i><strong>Você</strong></div><div className="showcase-camera friend"><i>CAM 02</i><strong>Amigo</strong></div><div className="showcase-screen"><span>Compartilhamento de tela</span><b>Seu conteúdo, grande e nítido.</b></div></div>
-            <div className="showcase-footer"><span>● GRAVANDO LOCAL</span><b>00:24:18</b><i>MP4 · áudio incluso</i></div>
+            <div className="showcase-top"><span>● AO VIVO</span><b>Estúdio de Gravação</b></div>
+            <div className="showcase-canvas"><div className="showcase-camera"><i>CAM 01</i><strong>Você</strong></div><div className="showcase-camera friend"><i>CAM 02</i><strong>Convidado</strong></div><div className="showcase-screen"><span>Compartilhamento de tela</span><b>Seu conteúdo em destaque</b></div></div>
+            <div className="showcase-footer"><span>● GRAVANDO LOCAL</span><b>00:24:18</b><i>MP4 · áudio estéreo isolado</i></div>
           </div>
         </section>
+
+        {/* Seção de Funcionalidades SaaS - Produto para Venda */}
+        <section style={{ maxWidth: "1200px", margin: "60px auto 40px", padding: "0 20px" }}>
+          <div style={{ textAlign: "center", marginBottom: "40px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "1.5px", color: "#ff8879", textTransform: "uppercase" }}>
+              Tudo em um único lugar
+            </span>
+            <h2 style={{ fontSize: "28px", fontWeight: 900, color: "#fff8f5", marginTop: "6px" }}>
+              Do estúdio direto para o feed
+            </h2>
+            <p style={{ fontSize: "14px", color: "#bcb4ae", maxWidth: "600px", margin: "8px auto 0" }}>
+              Simplifique seu fluxo de criação: grave conversas, edite os melhores momentos e publique para milhões de seguidores.
+            </p>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "20px" }}>
+            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
+              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
+                🎙️
+              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Salas de Gravação HD</h3>
+              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
+                Crie salas privadas com gravação local sem perda de áudio ou vídeo. Convide parceiros e grave podcasts sem travamentos.
+              </p>
+            </div>
+
+            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
+              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
+                ✂️
+              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Editor Vertical (9:16)</h3>
+              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
+                Corte os destaques da sua live ou gravação direto no formato vertical ideal para Shorts, Reels e TikTok com ferramentas rápidas.
+              </p>
+            </div>
+
+            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
+              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
+                🚀
+              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Publicação Multi-Plataforma</h3>
+              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
+                Conecte suas contas do YouTube, TikTok e Instagram. Agende ou publique seus vídeos em 1 clique sem abrir cada app.
+              </p>
+            </div>
+
+            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
+              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
+                ⚡
+              </div>
+              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Ferramentas & GIFs</h3>
+              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
+                Gere GIFs animados para redes sociais, utilize o estúdio offline sem internet e sincronize seus arquivos com o banco Supabase.
+              </p>
+            </div>
+          </div>
+        </section>
+
+        {/* Seção de Planos do Produto (Futuro SaaS comercial) */}
+        <section style={{ maxWidth: "1200px", margin: "40px auto 60px", padding: "0 20px" }}>
+          <div style={{ textAlign: "center", marginBottom: "36px" }}>
+            <span style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "1.5px", color: "#ff8879", textTransform: "uppercase" }}>
+              Planos & Assinaturas
+            </span>
+            <h2 style={{ fontSize: "26px", fontWeight: 900, color: "#fff8f5", marginTop: "4px" }}>
+              Escolha o plano ideal para seu canal
+            </h2>
+          </div>
+
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px" }}>
+            {/* Plano Grátis */}
+            <div style={{ background: "#161818", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "24px", padding: "28px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "#9e9690", textTransform: "uppercase" }}>INICIANTE</span>
+                <h3 style={{ fontSize: "24px", fontWeight: 900, color: "#fff8f5", margin: "8px 0 4px" }}>Grátis</h3>
+                <p style={{ fontSize: "12px", color: "#9e9690", marginBottom: "20px" }}>Para quem está começando a gravar e editar clipes.</p>
+                <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: "12px", color: "#bcb4ae" }}>
+                  <li style={{ marginBottom: "8px" }}>✓ Gravação em salas privadas</li>
+                  <li style={{ marginBottom: "8px" }}>✓ Editor de clipes em 9:16</li>
+                  <li style={{ marginBottom: "8px" }}>✓ Até 1 conta social vinculada</li>
+                  <li>✓ Suporte básico</li>
+                </ul>
+              </div>
+              <button onClick={() => setAuthModalOpen(true)} className="nav-action-btn" style={{ width: "100%", justifyContent: "center" }}>
+                Começar Grátis
+              </button>
+            </div>
+
+            {/* Plano PRO (Destaque Comercial) */}
+            <div style={{ background: "linear-gradient(155deg, #2e1d1f, #181919)", border: "2px solid #ff7160", borderRadius: "24px", padding: "28px", display: "flex", flexDirection: "column", justifyContent: "space-between", position: "relative", boxShadow: "0 14px 40px rgba(255, 113, 96, 0.2)" }}>
+              <div style={{ position: "absolute", top: "-12px", right: "24px", background: "linear-gradient(135deg, #ff7564, #d84f41)", color: "#25100e", fontSize: "10px", fontWeight: 900, padding: "4px 12px", borderRadius: "20px", textTransform: "uppercase" }}>
+                Mais Popular
+              </div>
+              <div>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "#ff8879" }}>CRIADOR PRO</span>
+                <h3 style={{ fontSize: "28px", fontWeight: 900, color: "#fff8f5", margin: "8px 0 4px" }}>R$ 49 <span style={{ fontSize: "14px", color: "#bcb4ae", fontWeight: 500 }}>/mês</span></h3>
+                <p style={{ fontSize: "12px", color: "#bcb4ae", marginBottom: "20px" }}>Para podcasters e criadores focados em crescimento rápido.</p>
+                <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: "12px", color: "#fff8f5" }}>
+                  <li style={{ marginBottom: "8px" }}>✓ <b>Tudo do plano Grátis</b></li>
+                  <li style={{ marginBottom: "8px" }}>✓ <b>Contas ilimitadas</b> (YouTube, TikTok, Instagram)</li>
+                  <li style={{ marginBottom: "8px" }}>✓ Publicação e agendamento em 1 clique</li>
+                  <li style={{ marginBottom: "8px" }}>✓ Gravação em áudio e vídeo isolado</li>
+                  <li>✓ Renderização de alta velocidade</li>
+                </ul>
+              </div>
+              <button onClick={() => setAuthModalOpen(true)} className="nav-action-btn primary" style={{ width: "100%", justifyContent: "center", padding: "12px" }}>
+                Assinar Plano Pro
+              </button>
+            </div>
+
+            {/* Plano Studio / Business */}
+            <div style={{ background: "#161818", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "24px", padding: "28px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
+              <div>
+                <span style={{ fontSize: "12px", fontWeight: 800, color: "#9e9690" }}>ESTÚDIO & AGÊNCIAS</span>
+                <h3 style={{ fontSize: "28px", fontWeight: 900, color: "#fff8f5", margin: "8px 0 4px" }}>R$ 129 <span style={{ fontSize: "14px", color: "#bcb4ae", fontWeight: 500 }}>/mês</span></h3>
+                <p style={{ fontSize: "12px", color: "#9e9690", marginBottom: "20px" }}>Para produtoras, agências e equipes de mídia.</p>
+                <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: "12px", color: "#bcb4ae" }}>
+                  <li style={{ marginBottom: "8px" }}>✓ <b>Múltiplos membros de equipe</b></li>
+                  <li style={{ marginBottom: "8px" }}>✓ Gestão de múltiplos canais de clientes</li>
+                  <li style={{ marginBottom: "8px" }}>✓ Integração via API customizada</li>
+                  <li>✓ Suporte VIP prioritário 24/7</li>
+                </ul>
+              </div>
+              <button onClick={() => setAuthModalOpen(true)} className="nav-action-btn" style={{ width: "100%", justifyContent: "center" }}>
+                Falar com Vendas
+              </button>
+            </div>
+          </div>
+        </section>
+
         <div className="orb one" />
         <div className="orb two" />
 

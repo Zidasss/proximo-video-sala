@@ -85,7 +85,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.17.5";
+const APP_VERSION = "v0.17.6";
 const mimeForExport = (format: ExportFormat) => {
   if (typeof MediaRecorder === "undefined") return null;
   if (format === "mp4") {
@@ -3982,6 +3982,7 @@ function ClipEditorV2({
   const history = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; primaryTimelineStart: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
   const future = useRef<Array<{ layers: TextLayer[]; illustrations: IllustrationLayer[]; audioTracks: AudioTrack[]; start: number; end: number; primaryTimelineStart: number; videoFadeIn: number; videoFadeOut: number; videoFadeInAt: number; videoFadeOutAt: number; transitionColor: "black" | "white" }>>([]);
   const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
+  const exportInProgress = useRef(false);
   const selected = layers.find((layer) => layer.id === selectedId);
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
   const selectedAudio = audioTracks.find((track) => track.id === selectedAudioId);
@@ -4094,7 +4095,7 @@ function ClipEditorV2({
     let animation = 0;
     let callback = 0;
     const update = () => {
-      if (!player.paused && Number.isFinite(player.currentTime)) setCurrent(baseLoopOffset.current + player.currentTime);
+      if (!exportInProgress.current && !player.paused && Number.isFinite(player.currentTime)) setCurrent(baseLoopOffset.current + player.currentTime);
       const framePlayer = player as HTMLVideoElement & { requestVideoFrameCallback?: (handler: () => void) => number; cancelVideoFrameCallback?: (id: number) => void };
       if (framePlayer.requestVideoFrameCallback) callback = framePlayer.requestVideoFrameCallback(update);
       else animation = requestAnimationFrame(update);
@@ -5208,7 +5209,7 @@ function ClipEditorV2({
     return lines;
   }
   async function exportReel(andPublish: boolean = false, cutOverride: RadarSuggestion[] = [], outputLabel = "") {
-    if (exporting) return;
+    if (exportInProgress.current || exporting) return;
     const currentSource = video.current;
     if (!currentSource || !clip || end <= start) return;
     const source: HTMLVideoElement = currentSource;
@@ -5227,6 +5228,7 @@ function ClipEditorV2({
       (total, item) => total + item.end - item.start,
       0,
     );
+    exportInProgress.current = true;
     setExporting(true);
     setExportProgress(0);
     cancelExport.current = false;
@@ -5240,6 +5242,7 @@ function ClipEditorV2({
     const canvas = document.createElement("canvas"),
       context = canvas.getContext("2d");
     if (!context) {
+      exportInProgress.current = false;
       setExporting(false);
       return;
     }
@@ -5296,8 +5299,28 @@ function ClipEditorV2({
     let frame = 0,
       rangeIndex = 0,
       completedMontageDuration = 0,
-      switchingRange = false;
+      switchingRange = false,
+      exportWatchdog = 0,
+      lastSourceTime = -1,
+      lastProgressAt = performance.now(),
+      exportError = "";
     const montageFadeSeconds = 0.42;
+    const finishExportWithError = (message: string) => {
+      if (exportError) return;
+      exportError = message;
+      cancelAnimationFrame(frame);
+      window.clearTimeout(exportWatchdog);
+      exportTrackElements.forEach(({ element }) => element.pause());
+      source.pause();
+      setNotice(exportError);
+      if (recorder.state !== "inactive") recorder.stop();
+      else {
+        exportInProgress.current = false;
+        editorRecorder.current = null;
+        setExporting(false);
+        void exportAudio.close();
+      }
+    };
     const draw = () => {
       if (cancelExport.current) { if (recorder.state !== "inactive") recorder.stop(); return; }
       const activeRange = montageRanges[rangeIndex],
@@ -5309,6 +5332,13 @@ function ClipEditorV2({
         montageOpacity = fadeLength > 0
           ? 1 - Math.min(1, localTime / fadeLength, remaining / fadeLength)
           : 0;
+      if (sourceTime > lastSourceTime + .004) {
+        lastSourceTime = sourceTime;
+        lastProgressAt = performance.now();
+      } else if (!source.paused && performance.now() - lastProgressAt > 6500) {
+        finishExportWithError("A renderização perdeu o avanço do vídeo. Tente novamente; o editor já liberou a prévia.");
+        return;
+      }
       setExportProgress(Math.min(100, Math.round(((completedMontageDuration + localTime) / Math.max(.01, montageDuration)) * 100)));
       if (mainExportGain)
         mainExportGain.gain.value = (audioGain / 100) * (1 - montageOpacity);
@@ -5436,9 +5466,10 @@ function ClipEditorV2({
     async function seekExportSource(value: number) {
       source.currentTime = value;
       if (Math.abs(source.currentTime - value) < .025 && !source.seeking) return;
-      await new Promise<void>((resolve) =>
-        source.addEventListener("seeked", () => resolve(), { once: true }),
-      );
+      await new Promise<void>((resolve, reject) => {
+        const timeout = window.setTimeout(() => reject(new Error("seek-timeout")), 6000);
+        source.addEventListener("seeked", () => { window.clearTimeout(timeout); resolve(); }, { once: true });
+      });
     }
     async function advanceMontageRange() {
       if (switchingRange) return;
@@ -5456,17 +5487,32 @@ function ClipEditorV2({
       try {
         await source.play();
         switchingRange = false;
+        lastSourceTime = source.currentTime;
+        lastProgressAt = performance.now();
         draw();
       } catch {
-        if (recorder.state !== "inactive") recorder.stop();
+        finishExportWithError("O navegador interrompeu a reprodução durante a renderização. Clique em salvar novamente.");
       }
     }
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
+    recorder.onerror = () => finishExportWithError("Não foi possível concluir este Klip neste navegador. Tente WebM ou uma resolução menor.");
     recorder.onstop = () => {
       cancelAnimationFrame(frame);
+      window.clearTimeout(exportWatchdog);
       exportTrackElements.forEach(({ element }) => element.pause());
+      source.pause();
+      exportInProgress.current = false;
       if (cancelExport.current) { void exportAudio.close(); editorRecorder.current = null; setExportProgress(0); setExporting(false); setNotice("Renderização cancelada."); return; }
+      if (exportError) { void exportAudio.close(); editorRecorder.current = null; setExportProgress(0); setExporting(false); setNotice(exportError); return; }
       const blob = new Blob(chunks, { type: mime });
+      if (!blob.size) {
+        void exportAudio.close();
+        editorRecorder.current = null;
+        setExportProgress(0);
+        setExporting(false);
+        setNotice("A renderização terminou sem gerar arquivo. Tente WebM ou reduza a resolução.");
+        return;
+      }
       if (andPublish) {
         setPublishBlob(blob);
         setPublishModalOpen(true);
@@ -5477,7 +5523,10 @@ function ClipEditorV2({
         link.href = url;
         const safeLabel = outputLabel.trim().toLowerCase().replace(/[^a-z0-9-]+/g, "-").replace(/^-+|-+$/g, "");
         link.download = `${safeLabel || "klip-reel"}-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
+        link.style.display = "none";
+        document.body.appendChild(link);
         link.click();
+        link.remove();
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
         setNotice(
           montageRanges.length > 1
@@ -5492,10 +5541,17 @@ function ClipEditorV2({
       setExportProgress(100);
       setExporting(false);
     };
-    await seekExportSource(montageRanges[0].start);
-    recorder.start();
-    await source.play();
-    draw();
+    try {
+      await seekExportSource(montageRanges[0].start);
+      recorder.start(1000);
+      lastSourceTime = source.currentTime;
+      lastProgressAt = performance.now();
+      exportWatchdog = window.setTimeout(() => finishExportWithError("A renderização demorou além do esperado e foi interrompida com segurança."), Math.max(30_000, montageDuration * 4000 + 15_000));
+      await source.play();
+      draw();
+    } catch {
+      finishExportWithError("Não foi possível iniciar a renderização. Clique em salvar novamente ou escolha WebM.");
+    }
   }
 
   return (
@@ -5657,7 +5713,7 @@ function ClipEditorV2({
           {clip && <div className={`stage-meta ${exportAspect === "vertical" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "stage-meta-tall" : ""}`}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>}
           <div className={`editor-stage preset-${visualPreset} ${exportAspect === "vertical" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "editor-stage-tall" : ""}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scaleX}, ${videoTransform.scaleY})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd)} /><div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
+              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ transform: `translate(${videoTransform.x}%, ${videoTransform.y}%) scale(${videoTransform.scaleX}, ${videoTransform.scaleY})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} /><div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
             ) : (
               <div className="editor-empty"><small>Klip Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload">＋ Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}

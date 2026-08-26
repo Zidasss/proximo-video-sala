@@ -34,7 +34,7 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function togglePreviewPlayback/);
   assert.match(page, /function playTimelineAt/);
   assert.match(page, /const baseLoopOffset/);
-  assert.match(page, /onEnded=\{\(\) => void playTimelineAt/);
+  assert.match(page, /onEnded=\{\(\) => \{ if \(!exportInProgress\.current\) void playTimelineAt/);
   assert.match(page, /const hasFriendVideo/);
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
@@ -124,6 +124,10 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /Salvar este Klip/);
   assert.match(page, /exportReel\(false, \[item\]/);
   assert.match(page, /Os demais Klips continuam na montagem/);
+  assert.match(page, /const exportInProgress = useRef\(false\)/);
+  assert.match(page, /if \(exportInProgress\.current\) return/);
+  assert.match(page, /finishExportWithError/);
+  assert.match(page, /document\.body\.appendChild\(link\)/);
   assert.match(page, /function advanceMontageRange/);
   assert.match(page, /fades automáticos/);
   assert.match(page, /Exportar montagem/);
@@ -138,6 +142,8 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(css, /\.radar-cut/);
   assert.match(css, /\.radar-trigger/);
   assert.match(css, /Studio readability pass/);
+  assert.match(css, /Export\/Radar usability/);
+  assert.match(css, /height: min\(88dvh, 860px\)/);
 });
 
 test("Klip Radar finds separate speech blocks and keeps them inside the source", async () => {

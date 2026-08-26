@@ -2188,6 +2188,75 @@ body {
 .clip-editor-v2 .video-lane .scene-clip:active { cursor: grabbing; }
 .clip-editor-v2 .video-lane .scene-clip .timeline-clip-handle { opacity: .95; }
 
+/* Export/Radar usability: keep the review panel readable without crushing the canvas. */
+@media (min-width: 761px) and (max-width: 1240px) {
+  .clip-editor-v2 .radar-panel {
+    top: 82px;
+    right: 14px;
+    bottom: 24px;
+    width: min(500px, calc(100vw - 28px));
+    box-shadow: 0 30px 100px #000e, 0 0 0 9999px #0506066b;
+  }
+  .clip-editor-v2 .radar-suggestions article { padding: 14px; }
+  .clip-editor-v2 .radar-item-actions button { min-height: 44px; font-size: 13px; }
+}
+
+@media (max-width: 760px) {
+  .clip-editor-v2 { font-size: 16px; }
+  .clip-editor-v2 .editor-header { max-height: 154px; overflow: hidden; }
+  .clip-editor-v2 .editor-header-actions { scroll-snap-type: x proximity; }
+  .clip-editor-v2 .editor-header-actions > * { scroll-snap-align: start; }
+  .clip-editor-v2 .editor-header-actions button,
+  .clip-editor-v2 .editor-header-actions .export-format { min-height: 46px; font-size: 15px; }
+  .clip-editor-v2 .editor-stage,
+  .clip-editor-v2 .stage-meta { width: min(100%, 620px) !important; }
+  .clip-editor-v2 .editor-tools { padding: 18px 16px; }
+  .clip-editor-v2 .timeline-panel.multi-timeline { margin-inline: 8px; padding-inline: 10px; }
+
+  .clip-editor-v2 .radar-panel {
+    top: auto;
+    right: 0;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: min(88dvh, 860px);
+    border: 1px solid #ff8c7855;
+    border-width: 1px 0 0;
+    border-radius: 22px 22px 0 0;
+    box-shadow: 0 -28px 90px #000e, 0 0 0 9999px #05060680;
+  }
+  .clip-editor-v2 .radar-panel-header { padding: 18px 16px 14px; }
+  .clip-editor-v2 .radar-panel-header b { font-size: 22px; line-height: 1.08; }
+  .clip-editor-v2 .radar-panel-header small { font-size: 13px; }
+  .clip-editor-v2 .radar-panel-header > button { width: 42px; height: 42px; }
+  .clip-editor-v2 .radar-config { grid-template-columns: 1fr 1fr; padding: 13px 16px; }
+  .clip-editor-v2 .radar-config label { font-size: 13px; }
+  .clip-editor-v2 .radar-config select,
+  .clip-editor-v2 .radar-config .radar-analyze { min-height: 46px; font-size: 15px; }
+  .clip-editor-v2 .radar-config .radar-analyze { grid-column: 1 / -1; }
+  .clip-editor-v2 .radar-progress { padding-inline: 16px; }
+  .clip-editor-v2 .radar-progress span { font-size: 13px; }
+  .clip-editor-v2 .radar-suggestions { padding-inline: 12px; }
+  .clip-editor-v2 .radar-review-title b { font-size: 16px; }
+  .clip-editor-v2 .radar-review-title small { font-size: 13px; }
+  .clip-editor-v2 .radar-suggestions article { padding: 14px; border-radius: 14px; }
+  .clip-editor-v2 .radar-check,
+  .clip-editor-v2 .radar-suggestions time,
+  .clip-editor-v2 .radar-suggestions p { font-size: 13px; }
+  .clip-editor-v2 .radar-suggestions strong { font-size: 16px; }
+  .clip-editor-v2 .radar-item-actions { grid-template-columns: 1fr; }
+  .clip-editor-v2 .radar-item-actions button { width: 100%; min-height: 46px; font-size: 14px; }
+  .clip-editor-v2 .radar-panel > footer { grid-template-columns: 1fr 1.25fr; padding: 12px; }
+  .clip-editor-v2 .radar-panel > footer button { min-height: 50px; font-size: 14px; }
+}
+
+@media (max-width: 430px) {
+  .clip-editor-v2 .radar-config { grid-template-columns: 1fr; }
+  .clip-editor-v2 .radar-config .radar-analyze { grid-column: 1; }
+  .clip-editor-v2 .radar-panel > footer { grid-template-columns: 1fr; }
+  .clip-editor-v2 .radar-panel-header b { font-size: 20px; }
+}
+
 /* Keep all preview UI above the timeline dock at browser zoom levels too. */
 @media (min-width: 761px) {
   .clip-editor-v2 .editor-stage-wrap {

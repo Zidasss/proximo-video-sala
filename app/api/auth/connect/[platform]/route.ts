@@ -1,5 +1,29 @@
 import { NextRequest, NextResponse } from "next/server";
 
+function getDynamicBaseUrl(request: Request): string {
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host");
+
+  if (host && !host.includes("localhost")) {
+    const proto = request.headers.get("x-forwarded-proto") || "https";
+    return `${proto}://${host}`;
+  }
+
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl && !envUrl.includes("localhost")) {
+    return envUrl;
+  }
+
+  if (host) {
+    const proto = request.headers.get("x-forwarded-proto") || "http";
+    return `${proto}://${host}`;
+  }
+
+  const { origin } = new URL(request.url);
+  return origin;
+}
+
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ platform: string }> }
@@ -7,11 +31,7 @@ export async function GET(
   const { platform } = await context.params;
   const { searchParams } = new URL(req.url);
   const next = searchParams.get("next") || "/perfil";
-
-  // Obter domínio dinâmico (evita ficar preso em localhost em produção)
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`;
+  const baseUrl = getDynamicBaseUrl(req);
   const redirectUri = `${baseUrl}/api/auth/callback/${platform}`;
 
   const statePayload = Buffer.from(JSON.stringify({ platform, next })).toString("base64url");
@@ -20,11 +40,10 @@ export async function GET(
   if (platform === "youtube") {
     const clientId = process.env.GOOGLE_CLIENT_ID;
     if (!clientId || clientId.includes("your-google")) {
-      // Redireciona para o perfil com aviso claro para configurar a chave
       const setupUrl = new URL(next, baseUrl);
       setupUrl.searchParams.set(
         "auth_error",
-        "GOOGLE_CLIENT_ID não configurado no .env.local. Adicione suas credenciais do Google Cloud Console para conectar ao vivo."
+        "GOOGLE_CLIENT_ID não configurado. Adicione suas credenciais do Google Cloud Console para conectar ao vivo."
       );
       return NextResponse.redirect(setupUrl.toString());
     }
@@ -52,7 +71,7 @@ export async function GET(
       const setupUrl = new URL(next, baseUrl);
       setupUrl.searchParams.set(
         "auth_error",
-        "TIKTOK_CLIENT_KEY não configurado no .env.local. Adicione suas credenciais do TikTok for Developers para conectar ao vivo."
+        "TIKTOK_CLIENT_KEY não configurado. Adicione suas credenciais do TikTok for Developers para conectar ao vivo."
       );
       return NextResponse.redirect(setupUrl.toString());
     }
@@ -72,7 +91,7 @@ export async function GET(
       const setupUrl = new URL(next, baseUrl);
       setupUrl.searchParams.set(
         "auth_error",
-        "META_APP_ID não configurado no .env.local. Adicione o App ID do Meta for Developers para conectar ao vivo."
+        "META_APP_ID não configurado. Adicione o App ID do Meta for Developers para conectar ao vivo."
       );
       return NextResponse.redirect(setupUrl.toString());
     }

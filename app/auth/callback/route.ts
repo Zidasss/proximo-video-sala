@@ -1,10 +1,35 @@
 import { NextResponse } from "next/server";
 import { createClient } from "../../../lib/supabase/server";
 
+function getDynamicBaseUrl(request: Request): string {
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host");
+
+  if (host && !host.includes("localhost")) {
+    const proto = request.headers.get("x-forwarded-proto") || "https";
+    return `${proto}://${host}`;
+  }
+
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl && !envUrl.includes("localhost")) {
+    return envUrl;
+  }
+
+  if (host) {
+    const proto = request.headers.get("x-forwarded-proto") || "http";
+    return `${proto}://${host}`;
+  }
+
+  const { origin } = new URL(request.url);
+  return origin;
+}
+
 export async function GET(request: Request) {
-  const { searchParams, origin } = new URL(request.url);
+  const { searchParams } = new URL(request.url);
   const code = searchParams.get("code");
   const next = searchParams.get("next") ?? "/";
+  const baseUrl = getDynamicBaseUrl(request);
 
   if (code) {
     const supabase = await createClient();
@@ -37,17 +62,14 @@ export async function GET(request: Request) {
         console.error("Erro ao sincronizar perfil Supabase:", profileErr);
       }
 
-      // Redirect para a página principal — o onAuthStateChange no client 
-      // vai detectar a sessão e atualizar o estado automaticamente.
-      return NextResponse.redirect(`${origin}${next}`);
+      return NextResponse.redirect(`${baseUrl}${next}`);
     }
 
-    // Se teve erro, redirecionar com a mensagem
     const errorMsg = error?.message
       ? encodeURIComponent(error.message)
       : "oauth_exchange_failed";
-    return NextResponse.redirect(`${origin}/?auth_error=${errorMsg}`);
+    return NextResponse.redirect(`${baseUrl}/?auth_error=${errorMsg}`);
   }
 
-  return NextResponse.redirect(`${origin}/?auth_error=no_code_received`);
+  return NextResponse.redirect(`${baseUrl}/?auth_error=no_code_received`);
 }

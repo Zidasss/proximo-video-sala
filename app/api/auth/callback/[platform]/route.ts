@@ -1,6 +1,30 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, isSupabaseConfigured } from "../../../../../lib/supabase/server";
 
+function getDynamicBaseUrl(request: Request): string {
+  const host =
+    request.headers.get("x-forwarded-host") ||
+    request.headers.get("host");
+
+  if (host && !host.includes("localhost")) {
+    const proto = request.headers.get("x-forwarded-proto") || "https";
+    return `${proto}://${host}`;
+  }
+
+  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
+  if (envUrl && !envUrl.includes("localhost")) {
+    return envUrl;
+  }
+
+  if (host) {
+    const proto = request.headers.get("x-forwarded-proto") || "http";
+    return `${proto}://${host}`;
+  }
+
+  const { origin } = new URL(request.url);
+  return origin;
+}
+
 export async function GET(
   req: NextRequest,
   context: { params: Promise<{ platform: string }> }
@@ -12,10 +36,7 @@ export async function GET(
   const errorDescription = searchParams.get("error_description");
   const stateRaw = searchParams.get("state");
 
-  // Obter domínio dinâmico
-  const host = req.headers.get("x-forwarded-host") || req.headers.get("host") || "localhost:3000";
-  const proto = req.headers.get("x-forwarded-proto") || (host.includes("localhost") ? "http" : "https");
-  const baseUrl = process.env.NEXT_PUBLIC_APP_URL || `${proto}://${host}`;
+  const baseUrl = getDynamicBaseUrl(req);
   const redirectUri = `${baseUrl}/api/auth/callback/${platform}`;
 
   let returnPath = "/perfil";
@@ -60,7 +81,6 @@ export async function GET(
           accessToken = tokenData.access_token || accessToken;
           refreshToken = tokenData.refresh_token || null;
 
-          // Obter dados do canal do YouTube
           const channelRes = await fetch(
             "https://www.googleapis.com/youtube/v3/channels?part=snippet&mine=true",
             {
@@ -107,7 +127,6 @@ export async function GET(
           refreshToken = tokenData.data?.refresh_token || tokenData.refresh_token || null;
           platformUserId = tokenData.data?.open_id || platformUserId;
 
-          // Obter dados do usuário TikTok
           const userRes = await fetch(
             "https://open.tiktokapis.com/v2/user/info/?fields=open_id,display_name,avatar_url",
             {
@@ -166,7 +185,6 @@ export async function GET(
       }
     }
 
-    // Configuração de dados fallback caso a API não tenha retornado nome específico
     if (!accountName) {
       if (platform === "youtube") {
         accountName = "Canal YouTube Oficial";
@@ -190,7 +208,6 @@ export async function GET(
       } = await supabase.auth.getUser();
 
       if (user) {
-        // Upsert na tabela social_accounts vinculada ao usuário
         await supabase.from("social_accounts").upsert(
           {
             user_id: user.id,

@@ -384,20 +384,54 @@ export default function Home() {
 
     if (isSupabaseConfigured) {
       const supabase = createClient();
-      supabase.auth.getUser().then(({ data: { user } }) => {
-        if (user) {
-          const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Criador";
-          const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || undefined;
-          const userObj = {
-            id: user.id,
-            email: user.email || "",
-            name: userName,
-            avatarUrl,
-          };
-          setCurrentUser(userObj);
-          localStorage.setItem("klip_user", JSON.stringify(userObj));
-        }
-      }).catch(() => undefined);
+      const query = new URLSearchParams(window.location.search);
+      const authCode = query.get("code");
+
+      if (authCode) {
+        supabase.auth.exchangeCodeForSession(authCode).then(({ data, error }) => {
+          if (!error && data.user) {
+            const userName = data.user.user_metadata?.full_name || data.user.user_metadata?.name || data.user.email?.split("@")[0] || "Criador";
+            const avatarUrl = data.user.user_metadata?.avatar_url || data.user.user_metadata?.picture || undefined;
+            const userObj = {
+              id: data.user.id,
+              email: data.user.email || "",
+              name: userName,
+              avatarUrl,
+            };
+            setCurrentUser(userObj);
+            localStorage.setItem("klip_user", JSON.stringify(userObj));
+
+            // Sincroniza profile no banco
+            supabase.from("profiles").upsert(
+              {
+                id: data.user.id,
+                email: data.user.email || "",
+                name: userName,
+                avatar_url: avatarUrl || null,
+                updated_at: new Date().toISOString(),
+              },
+              { onConflict: "id" }
+            ).then(() => undefined);
+
+            window.history.replaceState({}, "", window.location.pathname);
+          }
+        }).catch(() => undefined);
+      } else {
+        supabase.auth.getUser().then(({ data: { user } }) => {
+          if (user) {
+            const userName = user.user_metadata?.full_name || user.user_metadata?.name || user.email?.split("@")[0] || "Criador";
+            const avatarUrl = user.user_metadata?.avatar_url || user.user_metadata?.picture || undefined;
+            const userObj = {
+              id: user.id,
+              email: user.email || "",
+              name: userName,
+              avatarUrl,
+            };
+            setCurrentUser(userObj);
+            localStorage.setItem("klip_user", JSON.stringify(userObj));
+          }
+        }).catch(() => undefined);
+      }
 
       const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {

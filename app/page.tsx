@@ -413,7 +413,7 @@ export default function Home() {
               { onConflict: "id" }
             ).then(() => undefined);
 
-            window.history.replaceState({}, "", window.location.pathname);
+            window.location.href = "/perfil";
           }
         }).catch(() => undefined);
       } else {

@@ -1,17 +1,15 @@
-﻿import { createBrowserClient } from "@supabase/ssr";
+import { createBrowserClient } from "@supabase/ssr";
 
-const supabaseUrl = process.env.NEXT_PUBLIC_SUPABASE_URL || "";
-const supabaseAnonKey = process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY || "";
+const supabaseUrl =
+  process.env.NEXT_PUBLIC_SUPABASE_URL ||
+  "https://kglzsruwwapvppkpcpaz.supabase.co";
+
+const supabaseAnonKey =
+  process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY ||
+  "sb_publishable_y7CNJG2X4H0HfShkjJeqFQ_p2aGWVUJ";
 
 export const isSupabaseConfigured = Boolean(supabaseUrl && supabaseAnonKey);
 
 export function createClient() {
-  if (!isSupabaseConfigured) {
-    // Return dummy client or configure fallback
-    return createBrowserClient(
-      "https://placeholder-project.supabase.co",
-      "placeholder-anon-key"
-    );
-  }
   return createBrowserClient(supabaseUrl, supabaseAnonKey);
 }

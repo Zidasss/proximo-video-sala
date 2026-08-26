@@ -1482,29 +1482,37 @@ body {
   color: #fffaf6;
 }
 .join {
-  background: #fff8f4;
-  box-shadow: 0 22px 60px #0006;
+  background: linear-gradient(145deg, #1f1819, #131414);
+  border: 1px solid rgba(255, 113, 96, 0.25);
+  box-shadow: 0 22px 60px rgba(0, 0, 0, 0.6);
 }
 .join input,
 .join select {
-  background: #f5e8e1;
-  color: #30211f;
+  background: #0f1010;
+  color: #fff8f5;
+  border: 1px solid rgba(255, 255, 255, 0.14);
 }
 .join label {
-  color: #785e59;
+  color: #cfc7c1;
+  font-weight: 700;
 }
 .join .secondary {
-  background: #ffe0d6;
-  color: #542820;
+  background: #281716;
+  border: 1px solid rgba(255, 113, 96, 0.35);
+  color: #ffaaa0;
 }
 .join > button {
   background: #1b2120;
 }
 .join > button:last-of-type {
-  background: #ff654f;
+  background: linear-gradient(135deg, #ff7564, #d84f41);
+  color: #24100e;
+  font-weight: 900;
+  border: 1px solid #ff7160;
 }
 .join input:focus {
   outline-color: #ff8c7e;
+  border-color: #ff7160;
 }
 .preview-slider input {
   accent-color: #ff654f;

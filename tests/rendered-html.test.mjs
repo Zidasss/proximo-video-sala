@@ -74,6 +74,10 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /montageAudioClips\.map/);
   assert.match(page, /\[5, 10, 15, 20, 30\]/);
   assert.match(page, /function dropTransitionOnRadarClip/);
+  assert.match(page, /application\/x-klip-transition", "flash"/);
+  assert.match(page, /application\/x-klip-transition", "dissolve"/);
+  assert.match(page, /application\/x-klip-transition", "wipe"/);
+  assert.match(page, /activeTransitionKind === "wipe"/);
   assert.match(page, /timeline-split-toggle/);
 });
 
@@ -105,6 +109,8 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.radar-clip-fade/);
   assert.match(css, /\.montage-audio-clip/);
   assert.match(css, /\.segmented-waveform/);
+  assert.match(css, /\.montage-audio-waveform::after/);
+  assert.match(css, /\.transition-shelf button:hover/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 

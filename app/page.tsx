@@ -40,6 +40,7 @@ import {
 type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
 type ExportAspect = "original" | "vertical" | "portrait" | "landscape" | "square";
+type TransitionKind = "fade-black" | "fade-white" | "flash" | "dissolve" | "wipe" | "none";
 type KlipTheme = "dark" | "light";
 type Msg = { name: string; text: string };
 type SavedCall = {
@@ -139,6 +140,7 @@ type EditorSnapshot = {
   videoFadeInAt: number;
   videoFadeOutAt: number;
   transitionColor: "black" | "white";
+  transitionKind: Exclude<TransitionKind, "none">;
   visualEffect: VisualEffectApplication | null;
   visualEffectIntensity: number;
   approvedCuts: RadarSuggestion[];
@@ -157,7 +159,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.20.3";
+const APP_VERSION = "v0.20.4";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",
@@ -4180,6 +4182,7 @@ function ClipEditorV2({
     [videoFadeInAt, setVideoFadeInAt] = useState(0),
     [videoFadeOutAt, setVideoFadeOutAt] = useState(0),
     [transitionColor, setTransitionColor] = useState<"black" | "white">("black"),
+    [transitionKind, setTransitionKind] = useState<Exclude<TransitionKind, "none">>("fade-black"),
     [visualPreset, setVisualPreset] = useState<VisualPreset>("clean"),
     [visualEffect, setVisualEffect] = useState<VisualEffectApplication | null>(null),
     [visualEffectPreview, setVisualEffectPreview] = useState<VisualEffectApplication | null>(null),
@@ -4479,9 +4482,9 @@ function ClipEditorV2({
     const factor = Math.exp(-deltaY * .0028);
     setTimelineZoomAnchored(timelineZoom * factor, anchorRatio);
   };
-  const snapshot = (): EditorSnapshot => ({ layers, illustrations, audioTracks, start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, visualEffect, visualEffectIntensity, approvedCuts });
+  const snapshot = (): EditorSnapshot => ({ layers, illustrations, audioTracks, start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, transitionKind, visualEffect, visualEffectIntensity, approvedCuts });
   const remember = () => { history.current = [...history.current.slice(-40), snapshot()]; future.current = []; };
-  const restoreSnapshot = (item: EditorSnapshot) => { setLayers(item.layers); setIllustrations(item.illustrations); setAudioTracks(item.audioTracks); setStart(item.start); setEnd(item.end); setPrimaryTimelineStart(item.primaryTimelineStart || 0); setVideoFadeIn(item.videoFadeIn); setVideoFadeOut(item.videoFadeOut); setVideoFadeInAt(item.videoFadeInAt); setVideoFadeOutAt(item.videoFadeOutAt); setTransitionColor(item.transitionColor); setVisualEffect(item.visualEffect || null); setVisualEffectIntensity(item.visualEffectIntensity || 1); setApprovedCuts(item.approvedCuts || []); };
+  const restoreSnapshot = (item: EditorSnapshot) => { setLayers(item.layers); setIllustrations(item.illustrations); setAudioTracks(item.audioTracks); setStart(item.start); setEnd(item.end); setPrimaryTimelineStart(item.primaryTimelineStart || 0); setVideoFadeIn(item.videoFadeIn); setVideoFadeOut(item.videoFadeOut); setVideoFadeInAt(item.videoFadeInAt); setVideoFadeOutAt(item.videoFadeOutAt); setTransitionColor(item.transitionColor); setTransitionKind(item.transitionKind || "fade-black"); setVisualEffect(item.visualEffect || null); setVisualEffectIntensity(item.visualEffectIntensity || 1); setApprovedCuts(item.approvedCuts || []); };
   const undo = () => { const previous = history.current.pop(); if (!previous) return; future.current.push(snapshot()); restoreSnapshot(previous); setNotice("Ação desfeita."); };
   const redo = () => { const next = future.current.pop(); if (!next) return; history.current.push(snapshot()); restoreSnapshot(next); setNotice("Ação refeita."); };
   const updateLayer = (id: string, patch: Partial<TextLayer>, record = true) => {
@@ -4520,7 +4523,7 @@ function ClipEditorV2({
   };
   const montageTransitionAt = (at: number) => {
     const item = montageTimelineClips.find((candidate) => candidate.timelineStart <= at && at < candidate.timelineEnd);
-    if (!item) return { opacity: 0, color: "black" as const };
+    if (!item) return { opacity: 0, color: "black" as const, kind: "fade-black" as const };
     const local = Math.max(0, at - item.timelineStart);
     const remaining = Math.max(0, item.timelineEnd - at);
     const fadeIn = Math.max(0, Math.min(item.fadeIn || 0, item.timelineEnd - item.timelineStart));
@@ -4528,12 +4531,19 @@ function ClipEditorV2({
     const inOpacity = fadeIn > 0 ? 1 - Math.min(1, local / fadeIn) : 0;
     const outOpacity = fadeOut > 0 ? 1 - Math.min(1, remaining / fadeOut) : 0;
     return inOpacity >= outOpacity
-      ? { opacity: inOpacity, color: item.fadeInColor || "black" }
-      : { opacity: outOpacity, color: item.fadeOutColor || "black" };
+      ? { opacity: inOpacity, color: item.fadeInColor || "black", kind: item.fadeInKind || (item.fadeInColor === "white" ? "fade-white" : "fade-black") }
+      : { opacity: outOpacity, color: item.fadeOutColor || "black", kind: item.fadeOutKind || (item.fadeOutColor === "white" ? "fade-white" : "fade-black") };
   };
   const previewTransition = hasMontageTimeline
     ? montageTransitionAt(current)
-    : { opacity: videoTransitionOpacity(current), color: transitionColor };
+    : { opacity: videoTransitionOpacity(current), color: transitionColor, kind: transitionKind };
+  const transitionLabel = (kind: TransitionKind) => ({ "fade-black": "Fade preto", "fade-white": "Fade branco", flash: "Flash", dissolve: "Dissolver", wipe: "Cortina", none: "Sem transição" })[kind];
+  const transitionDuration = (kind: TransitionKind) => kind === "none" ? 0 : kind === "flash" ? .42 : kind === "dissolve" ? .8 : kind === "wipe" ? .7 : 1;
+  const transitionOverlayStyle = (transition: { opacity: number; color: "black" | "white"; kind: Exclude<TransitionKind, "none"> }): React.CSSProperties => {
+    if (transition.kind === "wipe") return { opacity: 1, backgroundColor: "#05070b", clipPath: `inset(0 ${Math.max(0, (1 - transition.opacity) * 100)}% 0 0)` };
+    if (transition.kind === "dissolve") return { opacity: transition.opacity * .88, backgroundColor: "#05070b", backgroundImage: "radial-gradient(circle, #fff7 0 1px, transparent 1.5px)", backgroundSize: "7px 7px" };
+    return { opacity: Math.min(1, transition.opacity * (transition.kind === "flash" ? 1.22 : 1)), backgroundColor: transition.kind === "flash" || transition.color === "white" ? "#fff" : "#000" };
+  };
   const effectProgress = (layer: TextLayer, at: number) =>
     Math.max(0, Math.min(1, (at - layer.start) / 0.45));
   const visibleText = (layer: TextLayer, at: number) => {
@@ -4853,7 +4863,7 @@ function ClipEditorV2({
   }
   function exportProject() {
     const persistedAudioTracks = audioTracks.map((track) => ({ id: track.id, name: track.name, start: track.start, end: track.end, volume: track.volume, fadeIn: track.fadeIn, fadeOut: track.fadeOut, assetId: track.assetId, license: track.license }));
-    const project = { version: 6, clipName: clip?.name || "", start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, audioTracks: persistedAudioTracks, visualPreset, visualEffect, visualEffectIntensity, selectedSocialPresetId, layers, radarMode, approvedCuts, createdAt: new Date().toISOString() };
+    const project = { version: 6, clipName: clip?.name || "", start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, transitionKind, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, audioTracks: persistedAudioTracks, visualPreset, visualEffect, visualEffectIntensity, selectedSocialPresetId, layers, radarMode, approvedCuts, createdAt: new Date().toISOString() };
     const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Sons Klip Original serão restaurados; mídia própria precisa ser reimportada.");
   }
   async function importProject(file?: File) {
@@ -4929,6 +4939,7 @@ function ClipEditorV2({
       setVideoFadeInAt(Math.max(restoredStart, Number(project.videoFadeInAt) || restoredStart));
       setVideoFadeOutAt(Math.max(restoredStart, Number(project.videoFadeOutAt) || Math.max(restoredStart, restoredEnd - restoredOut)));
       setTransitionColor(project.transitionColor === "white" ? "white" : "black");
+      if (["fade-black", "fade-white", "flash", "dissolve", "wipe"].includes(project.transitionKind)) setTransitionKind(project.transitionKind);
       setVideoTransform({ x: Number(project.videoTransform?.x) || 0, y: Number(project.videoTransform?.y) || 0, scaleX: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleX) || legacyScale)), scaleY: Math.max(.25, Math.min(4, Number(project.videoTransform?.scaleY) || legacyScale)) });
       setExportAspect(restoredAspect);
       setExportResolution(["source", "1080", "720"].includes(project.exportResolution) ? project.exportResolution : "1080");
@@ -5495,22 +5506,22 @@ function ClipEditorV2({
     radarCutMove.current = null;
     event?.stopPropagation();
   }
-  function applyRadarTransition(id: string, kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
+  function applyRadarTransition(id: string, kind: TransitionKind, edge: "in" | "out") {
     remember();
-    const durationValue = kind === "none" ? 0 : 1;
-    const color = kind === "fade-white" ? "white" : "black";
+    const durationValue = transitionDuration(kind);
+    const color = kind === "fade-white" || kind === "flash" ? "white" : "black";
     setApprovedCuts((items) => items.map((item) => item.id === id
       ? edge === "in"
-        ? { ...item, fadeIn: durationValue, fadeInColor: color }
-        : { ...item, fadeOut: durationValue, fadeOutColor: color }
+        ? { ...item, fadeIn: durationValue, fadeInColor: color, fadeInKind: kind === "none" ? undefined : kind }
+        : { ...item, fadeOut: durationValue, fadeOutColor: color, fadeOutKind: kind === "none" ? undefined : kind }
       : item));
     setActiveRadarCutId(id);
-    setNotice(kind === "none" ? "Fade removido deste Klip." : `${kind === "fade-white" ? "Fade branco" : "Fade preto"} aplicado somente neste Klip.`);
+    setNotice(kind === "none" ? "Transição removida deste Klip." : `${transitionLabel(kind)} aplicado somente neste Klip.`);
   }
   function dropTransitionOnRadarClip(event: React.DragEvent<HTMLButtonElement>, item: RadarSuggestion) {
     event.preventDefault();
     event.stopPropagation();
-    const kind = event.dataTransfer.getData("application/x-klip-transition") as "fade-black" | "fade-white" | "none";
+    const kind = event.dataTransfer.getData("application/x-klip-transition") as TransitionKind;
     if (!kind) return;
     const bounds = event.currentTarget.getBoundingClientRect();
     applyRadarTransition(item.id, kind, event.clientX - bounds.left < bounds.width / 2 ? "in" : "out");
@@ -5835,25 +5846,25 @@ function ClipEditorV2({
       scaleY: clamp(resize.scaleY + (resize.edge === "top" ? -deltaY : resize.edge === "bottom" || resize.edge === "corner" ? deltaY : 0)),
     }));
   }
-  function applyTransition(kind: "fade-black" | "fade-white" | "none", edge: "in" | "out") {
+  function applyTransition(kind: TransitionKind, edge: "in" | "out") {
     if (hasMontageTimeline && activeRadarCutId) {
       applyRadarTransition(activeRadarCutId, kind, edge);
       return;
     }
-    const fadeDuration = kind === "none" ? 0 : 1;
-    if (kind !== "none") setTransitionColor(kind === "fade-white" ? "white" : "black");
+    const fadeDuration = transitionDuration(kind);
+    if (kind !== "none") { setTransitionKind(kind); setTransitionColor(kind === "fade-white" || kind === "flash" ? "white" : "black"); }
     if (edge === "in") { setVideoFadeIn(fadeDuration); setVideoFadeInAt(start); }
     else { setVideoFadeOut(fadeDuration); setVideoFadeOutAt(Math.max(start, end - fadeDuration)); }
-    setNotice(kind === "none" ? `Transição de ${edge === "in" ? "entrada" : "saída"} removida.` : `${kind === "fade-white" ? "Fade branco" : "Fade preto"} aplicado na ${edge === "in" ? "entrada" : "saída"}.`);
+    setNotice(kind === "none" ? `Transição de ${edge === "in" ? "entrada" : "saída"} removida.` : `${transitionLabel(kind)} aplicado na ${edge === "in" ? "entrada" : "saída"}.`);
   }
   function dropTransition(event: React.DragEvent<HTMLDivElement>, edge: "in" | "out") {
     event.preventDefault();
-    const kind = event.dataTransfer.getData("application/x-klip-transition") as "fade-black" | "fade-white" | "none";
+    const kind = event.dataTransfer.getData("application/x-klip-transition") as TransitionKind;
     if (kind) applyTransition(kind, edge);
   }
   function dropTransitionOnTimeline(event: React.DragEvent<HTMLDivElement>) {
     event.preventDefault();
-    const kind = event.dataTransfer.getData("application/x-klip-transition") as "fade-black" | "fade-white" | "none";
+    const kind = event.dataTransfer.getData("application/x-klip-transition") as TransitionKind;
     if (!kind || !duration) return;
     if (hasMontageTimeline && activeRadarCutId) {
       applyRadarTransition(activeRadarCutId, kind, "in");
@@ -5903,7 +5914,7 @@ function ClipEditorV2({
     if (!currentSource || !clip || end <= start) return;
     const source: HTMLVideoElement = currentSource;
     const requestedCuts = cutOverride.length ? cutOverride : approvedCuts;
-    const montageRanges: Array<{ start: number; end: number; audioTimelineStart: number; timelinePosition: number; fadeIn?: number; fadeOut?: number; fadeInColor?: "black" | "white"; fadeOutColor?: "black" | "white" }> = (
+    const montageRanges: Array<{ start: number; end: number; audioTimelineStart: number; timelinePosition: number; fadeIn?: number; fadeOut?: number; fadeInColor?: "black" | "white"; fadeOutColor?: "black" | "white"; fadeInKind?: Exclude<TransitionKind, "none">; fadeOutKind?: Exclude<TransitionKind, "none"> }> = (
       requestedCuts.length ? requestedCuts : [{ start, end }]
     )
       .map((item) => {
@@ -5921,6 +5932,8 @@ function ClipEditorV2({
           fadeOut: "fadeOut" in item ? item.fadeOut : undefined,
           fadeInColor: "fadeInColor" in item ? item.fadeInColor : undefined,
           fadeOutColor: "fadeOutColor" in item ? item.fadeOutColor : undefined,
+          fadeInKind: "fadeInKind" in item ? item.fadeInKind : undefined,
+          fadeOutKind: "fadeOutKind" in item ? item.fadeOutKind : undefined,
         };
       })
       .filter((item) => item.end - item.start > 0.08)
@@ -6048,7 +6061,8 @@ function ClipEditorV2({
         fadeInOpacity = fadeInLength > 0 ? 1 - Math.min(1, localTime / fadeInLength) : 0,
         fadeOutOpacity = fadeOutLength > 0 ? 1 - Math.min(1, remaining / fadeOutLength) : 0,
         montageOpacity = Math.max(fadeInOpacity, fadeOutOpacity),
-        montageColor = fadeInOpacity >= fadeOutOpacity ? activeRange.fadeInColor || "black" : activeRange.fadeOutColor || "black";
+        montageColor = fadeInOpacity >= fadeOutOpacity ? activeRange.fadeInColor || "black" : activeRange.fadeOutColor || "black",
+        montageKind = fadeInOpacity >= fadeOutOpacity ? activeRange.fadeInKind || (activeRange.fadeInColor === "white" ? "fade-white" : "fade-black") : activeRange.fadeOutKind || (activeRange.fadeOutColor === "white" ? "fade-white" : "fade-black");
       if (sourceTime > lastSourceTime + .004) {
         lastSourceTime = sourceTime;
         lastProgressAt = performance.now();
@@ -6107,11 +6121,18 @@ function ClipEditorV2({
         montageRanges.length === 1 ? videoTransitionOpacity(sourceTime) : 0,
       );
       if (videoTransition > 0) {
+        const montageWins = montageOpacity >= (montageRanges.length === 1 ? videoTransitionOpacity(sourceTime) : 0);
+        const activeTransitionKind = montageWins ? montageKind : transitionKind;
         context.fillStyle = montageOpacity >= (montageRanges.length === 1 ? videoTransitionOpacity(sourceTime) : 0)
           ? montageColor === "black" ? "#000000" : "#ffffff"
           : transitionColor === "black" ? "#000000" : "#ffffff";
-        context.globalAlpha = videoTransition;
-        context.fillRect(0, 0, canvas.width, canvas.height);
+        context.globalAlpha = activeTransitionKind === "dissolve" ? videoTransition * .86 : videoTransition;
+        context.fillRect(0, 0, activeTransitionKind === "wipe" ? canvas.width * videoTransition : canvas.width, canvas.height);
+        if (activeTransitionKind === "dissolve") {
+          context.fillStyle = "#ffffff";
+          context.globalAlpha = videoTransition * .18;
+          for (let y = 3; y < canvas.height; y += 14) for (let x = (y % 28) / 2; x < canvas.width; x += 14) context.fillRect(x, y, 2, 2);
+        }
         context.globalAlpha = 1;
       }
       illustrations.forEach((item) => {
@@ -6405,11 +6426,14 @@ function ClipEditorV2({
             <div className="transition-shelf">
               <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-black")} onClick={() => applyTransition("fade-black", "in")}>◐ Fade preto</button>
               <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-white")} onClick={() => applyTransition("fade-white", "in")}>◐ Fade branco</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "flash")} onClick={() => applyTransition("flash", "in")}>⚡ Flash</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "dissolve")} onClick={() => applyTransition("dissolve", "in")}>✣ Dissolver</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "wipe")} onClick={() => applyTransition("wipe", "in")}>▰ Cortina</button>
               <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "none")} onClick={() => applyTransition("none", "in")}>⊘ Sem transição</button>
             </div>
             <div className="transition-drops">
-              <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "in")}><b>Entrada</b><span>{videoFadeIn ? `${transitionColor === "white" ? "Fade branco" : "Fade preto"} · ${videoFadeIn.toFixed(1)}s` : "Solte aqui"}</span></div>
-              <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "out")}><b>Saída</b><span>{videoFadeOut ? `${transitionColor === "white" ? "Fade branco" : "Fade preto"} · ${videoFadeOut.toFixed(1)}s` : "Solte aqui"}</span></div>
+              <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "in")}><b>Entrada</b><span>{videoFadeIn ? `${transitionLabel(transitionKind)} · ${videoFadeIn.toFixed(1)}s` : "Solte aqui"}</span></div>
+              <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "out")}><b>Saída</b><span>{videoFadeOut ? `${transitionLabel(transitionKind)} · ${videoFadeOut.toFixed(1)}s` : "Solte aqui"}</span></div>
             </div>
           </div>}
           </section>}
@@ -6502,7 +6526,7 @@ function ClipEditorV2({
               <div className="editor-empty"><small>Klip Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload">＋ Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}
             {audioTracks.map((track) => <audio key={track.id} ref={(element) => { if (element) audioElements.current.set(track.id, element); else audioElements.current.delete(track.id); }} src={track.url} preload="auto" />)}
-            {clip && previewTransition.opacity > 0 && <div className="video-transition-overlay" style={{ opacity: previewTransition.opacity, backgroundColor: previewTransition.color === "black" ? "#000" : "#fff" }} />}
+            {clip && previewTransition.opacity > 0 && <div className={`video-transition-overlay transition-${previewTransition.kind}`} style={transitionOverlayStyle(previewTransition)} />}
             {clip && illustrations.map((item) => {
               if (item.role !== "scene" && layerOpacity(item, current) <= 0) return null;
               const common = {

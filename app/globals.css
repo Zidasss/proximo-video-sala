@@ -2185,11 +2185,12 @@ body {
 .clip-editor-v2 .montage-cut .montage-remove { right: 5px; }
 .clip-editor-v2 .montage-audio-boundary { position: absolute; top: 0; bottom: 0; width: 2px; height: 100% !important; background: #ff8b78; box-shadow: 0 0 7px #ff6d5d; }
 .clip-editor-v2 .waveform-track.segmented-waveform { display: block; padding: 0; overflow: visible; background: #171b1a; cursor: crosshair; }
-.clip-editor-v2 .montage-audio-clip { position: absolute; top: 3px; bottom: 3px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; min-width: 18px; overflow: hidden; padding: 3px 7px; border: 1px solid #67d6cf73; border-radius: 6px; background: linear-gradient(135deg, #164d4b, #103534); color: #eafffd; cursor: pointer; }
-.clip-editor-v2 .montage-audio-clip.active { border-color: #b9fff9; box-shadow: 0 0 0 2px #67d6cf30; }
-.clip-editor-v2 .montage-audio-clip > span { z-index: 2; color: #b9fff9; font-size: 10px; font-weight: 900; white-space: nowrap; }
-.clip-editor-v2 .montage-audio-waveform { display: flex; align-items: center; align-self: stretch; gap: 1px; min-width: 0; overflow: hidden; }
-.clip-editor-v2 .montage-audio-waveform > i { flex: 1 1 1px; min-width: 1px; max-width: 4px; border-radius: 999px; background: linear-gradient(#c8fff9, #51bbb6); opacity: .88; pointer-events: none; }
+.clip-editor-v2 .montage-audio-clip { position: absolute; top: 3px; bottom: 3px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 7px; min-width: 18px; overflow: hidden; padding: 3px 7px; border: 1px solid #43d9e9; border-radius: 6px; background: linear-gradient(180deg, #10293a, #091923); color: #f2ffff; box-shadow: inset 0 0 0 1px #ffffff0d; cursor: pointer; }
+.clip-editor-v2 .montage-audio-clip.active { border-color: #e9ffff; box-shadow: 0 0 0 2px #29d9ea55, inset 0 0 18px #21c8d51b; }
+.clip-editor-v2 .montage-audio-clip > span { z-index: 2; padding-right: 6px; border-right: 1px solid #d8ffff3b; color: #e6ffff; font-size: 10px; font-weight: 950; letter-spacing: .02em; white-space: nowrap; }
+.clip-editor-v2 .montage-audio-waveform { position: relative; display: flex; align-items: center; align-self: stretch; gap: 1px; min-width: 0; overflow: hidden; background: transparent !important; }
+.clip-editor-v2 .montage-audio-waveform::after { position: absolute; z-index: 0; right: 0; left: 0; top: 50%; height: 1px; background: #b9ffff42; content: ""; }
+.clip-editor-v2 .montage-audio-waveform > i { z-index: 1; flex: 1 1 1px; min-width: 1px; max-width: 4px; border-radius: 999px; background: linear-gradient(#f1ffff, #48e7ee) !important; box-shadow: 0 0 2px #51f7ff88; opacity: .96; pointer-events: none; }
 .clip-editor-v2 .radar-item-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; margin-top: 8px; }
 .clip-editor-v2 .radar-item-actions button { min-height: 38px; }
 .clip-editor-v2 .radar-download-one { border-color: #ff8b78 !important; background: #ff6d5d !important; color: #180b09 !important; font-weight: 900 !important; }
@@ -2551,9 +2552,15 @@ html[data-klip-theme] .clip-editor-v2 .illustration-clip {
 }
 
 html[data-klip-theme] .clip-editor-v2 .audio-clip,
-html[data-klip-theme] .clip-editor-v2 .waveform-track i {
+html[data-klip-theme] .clip-editor-v2 .waveform-track > i:not(.montage-audio-waveform) {
   background-color: var(--klip-cyan) !important;
 }
+
+.clip-editor-v2 .transition-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.clip-editor-v2 .transition-shelf button { min-height: 44px; border-color: #8e78ff55; background: linear-gradient(145deg, #20243a, #151827); color: #f5f2ff; font-weight: 850; }
+.clip-editor-v2 .transition-shelf button:hover { border-color: #a895ff; box-shadow: inset 0 0 20px #7659ff22; transform: translateY(-1px); }
+.clip-editor-v2 .video-transition-overlay.transition-dissolve { mix-blend-mode: normal; }
+.clip-editor-v2 .video-transition-overlay.transition-wipe { transition: clip-path 40ms linear; }
 
 html[data-klip-theme] .clip-editor-v2 .timeline-transition {
   border-color: #c084fc !important;

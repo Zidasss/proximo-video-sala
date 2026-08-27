@@ -18,7 +18,7 @@ test("integrates creator formats, licensed audio and visual effects into the rea
   assert.match(page, /editorTimelineDuration \|\| duration \|\| trackLength/);
   assert.match(page, /audioTimelineStart: montageItem\?\.timelineStart \|\| 0/);
   assert.match(page, /audioTimelineTime = activeRange\.audioTimelineStart \+ localTime/);
-  assert.match(page, /APP_VERSION = "v0\.20\.3"/);
+  assert.match(page, /APP_VERSION = "v0\.20\.4"/);
   assert.match(page, /editor-tool-rail/);
   assert.match(page, /export-settings-popover/);
   assert.match(page, /radar-thumbnail/);

@@ -15,6 +15,8 @@ export type RadarSuggestion = {
   fadeOut?: number;
   fadeInColor?: "black" | "white";
   fadeOutColor?: "black" | "white";
+  fadeInKind?: "fade-black" | "fade-white" | "flash" | "dissolve" | "wipe";
+  fadeOutKind?: "fade-black" | "fade-white" | "flash" | "dissolve" | "wipe";
 };
 
 type VoiceRun = { start: number; end: number; energy: number };

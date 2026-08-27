@@ -91,6 +91,10 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /timelineWaveform/);
   assert.match(page, /audio-clip-waveform/);
   assert.match(page, /function splitActiveRadarCutAtPlayhead/);
+  assert.match(page, /function splitPrimaryVideoAtPlayhead/);
+  assert.match(page, /setApprovedCuts\(\[first, second\]\)/);
+  assert.match(page, /As duas partes e seus áudios foram preservados/);
+  assert.match(page, /Excluir somente este clipe/);
   assert.match(page, /function beginRadarCutTrim/);
   assert.match(page, /function beginRadarCutMove/);
   assert.match(page, /timelineStart: timelineCursor/);
@@ -103,6 +107,7 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /application\/x-klip-transition", "wipe"/);
   assert.match(page, /activeTransitionKind === "wipe"/);
   assert.match(page, /timeline-split-toggle/);
+  assert.match(page, /Dividir clipe/);
 });
 
 test("ships direct-manipulation styling for desktop and mobile timelines", async () => {

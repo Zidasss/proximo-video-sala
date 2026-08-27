@@ -8605,6 +8605,67 @@ function ClipEditorV2({
     );
     return true;
   }
+  function splitPrimaryVideoAtPlayhead() {
+    if (!clip || !baseDuration) return false;
+    const timelineAt = snapTime(current);
+    const minimum = timelineZoom >= 16 ? 0.001 : 0.05;
+    if (
+      timelineAt <= primaryClipStart + minimum ||
+      timelineAt >= primaryClipEnd - minimum
+    ) {
+      setNotice("Mova a linha branca para dentro do clipe antes de dividir.");
+      return true;
+    }
+    const sourceAt = Math.max(
+      primarySourceStart,
+      Math.min(
+        primarySourceEnd,
+        primarySourceStart + timelineAt - primaryClipStart,
+      ),
+    );
+    const common = {
+      score: 100,
+      reason: "Divisão manual preservando o vídeo e o áudio originais.",
+      selected: true,
+      source: "fallback" as const,
+    };
+    const first: RadarSuggestion = {
+      ...common,
+      id: crypto.randomUUID(),
+      start: primarySourceStart,
+      end: sourceAt,
+      timelineStart: primaryClipStart,
+      title: `${clip.name} · parte 1`,
+      fadeOut: 0,
+    };
+    const second: RadarSuggestion = {
+      ...common,
+      id: crypto.randomUUID(),
+      start: sourceAt,
+      end: primarySourceEnd,
+      timelineStart: timelineAt,
+      title: `${clip.name} · parte 2`,
+      fadeIn: 0,
+    };
+    remember();
+    setApprovedCuts([first, second]);
+    setActiveRadarCutId(second.id);
+    setSelectedId("");
+    setSelectedIllustrationId("");
+    setSelectedAudioId("");
+    setNotice(
+      `Clipe dividido em ${time(timelineAt)}. As duas partes e seus áudios foram preservados; exclua somente a parte que não quiser.`,
+    );
+    return true;
+  }
+  function splitVideoAtPlayhead() {
+    if (hasMontageTimeline) {
+      if (!splitActiveRadarCutAtPlayhead())
+        setNotice("Selecione um clipe e posicione a linha branca dentro dele.");
+      return;
+    }
+    splitPrimaryVideoAtPlayhead();
+  }
   useEffect(() => {
     const previewEnd = radarPreviewEnd.current;
     if (previewEnd === null || current < previewEnd - 0.03) return;
@@ -8735,7 +8796,7 @@ function ClipEditorV2({
       setNotice(`Texto dividido em ${time(at)}.`);
       return;
     }
-    trimAtPlayhead();
+    splitPrimaryVideoAtPlayhead();
   }
   function addMarker() {
     if (!duration) return;
@@ -12760,10 +12821,10 @@ function ClipEditorV2({
             <button
               className="timeline-split-toggle"
               disabled={!clip}
-              onClick={splitSelectedAtPlayhead}
-              title="Divide o clipe selecionado exatamente na linha branca"
+              onClick={splitVideoAtPlayhead}
+              title="Separa o clipe na linha branca e preserva as duas partes"
             >
-              <Scissors aria-hidden="true" size={14} /> Cortar clipe
+              <Scissors aria-hidden="true" size={14} /> Dividir clipe
             </button>
             <button
               className={snapEnabled ? "selected" : ""}
@@ -13276,7 +13337,8 @@ function ClipEditorV2({
                                 removeRadarCut(item.id);
                               }
                             }}
-                            aria-label="Remover clipe"
+                            aria-label="Excluir somente este clipe"
+                            title="Excluir somente este clipe; os demais permanecem"
                           >
                             <X aria-hidden="true" size={12} />
                           </i>
@@ -14224,13 +14286,28 @@ function ClipEditorV2({
           )}
           <button
             onClick={() => {
-              trimAtPlayhead();
+              splitVideoAtPlayhead();
               closeContextMenu();
             }}
           >
-            <Scissors aria-hidden="true" size={14} /> Ajustar corte do vídeo
-            base
+            <Scissors aria-hidden="true" size={14} /> Dividir clipe no cursor
           </button>
+          {contextMenu.kind === "video" &&
+            hasMontageTimeline &&
+            activeRadarCutId && (
+              <button
+                className="danger"
+                onClick={() => {
+                  removeRadarCut(activeRadarCutId);
+                  closeContextMenu();
+                  setNotice(
+                    "Clipe selecionado excluído. Os outros clipes permanecem intactos.",
+                  );
+                }}
+              >
+                <Trash2 aria-hidden="true" size={14} /> Excluir clipe selecionado
+              </button>
+            )}
           <button
             onClick={() => {
               addMarker();

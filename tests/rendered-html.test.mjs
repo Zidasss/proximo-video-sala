@@ -68,6 +68,11 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /audio-clip-waveform/);
   assert.match(page, /function splitActiveRadarCutAtPlayhead/);
   assert.match(page, /function beginRadarCutTrim/);
+  assert.match(page, /function beginRadarCutMove/);
+  assert.match(page, /timelineStart: timelineCursor/);
+  assert.match(page, /A linha branca permaneceu onde estava/);
+  assert.match(page, /montageAudioClips\.map/);
+  assert.match(page, /\[5, 10, 15, 20, 30\]/);
   assert.match(page, /function dropTransitionOnRadarClip/);
   assert.match(page, /timeline-split-toggle/);
 });
@@ -98,6 +103,8 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.audio-clip-waveform/);
   assert.match(css, /\.radar-trim-handle/);
   assert.match(css, /\.radar-clip-fade/);
+  assert.match(css, /\.montage-audio-clip/);
+  assert.match(css, /\.segmented-waveform/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 
@@ -128,9 +135,9 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /const montageRanges/);
   assert.match(page, /const montageTimelineClips/);
   assert.match(page, /const editorTimelineDuration/);
-  assert.match(page, /Montagem contínua/);
-  assert.match(page, /ÁUDIO RECORTADO/);
-  assert.match(page, /vídeo e áudio contínuos/);
+  assert.match(page, /Montagem livre/);
+  assert.match(page, /\? "ÁUDIOS" : "ÁUDIO"/);
+  assert.match(page, /vídeo e áudio independentes/);
   assert.match(page, /Salvar este Klip/);
   assert.match(page, /exportReel\(false, \[item\]/);
   assert.match(page, /Os demais Klips continuam na montagem/);
@@ -143,7 +150,7 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /Exportar \$\{approvedCuts\.length\} Klips/);
   assert.match(page, /setEditorOpen\(true\)/);
   assert.match(page, /KLIP RADAR/);
-  assert.match(page, /O original foi preservado/);
+  assert.match(page, /Nada altera o arquivo original/);
   assert.match(radar, /export async function analyzeClipForRadar/);
   assert.match(radar, /Mapeando ritmo e intensidade/);
   assert.match(radar, /decodeAudioData/);

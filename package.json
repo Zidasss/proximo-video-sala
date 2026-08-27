@@ -1,6 +1,6 @@
 {
   "name": "site-creator-vinext-starter",
-  "version": "0.20.2",
+  "version": "0.20.3",
   "private": true,
   "license": "GPL-3.0-only",
   "packageManager": "npm@11.11.0",

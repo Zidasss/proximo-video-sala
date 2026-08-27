@@ -4,6 +4,8 @@ export type RadarSuggestion = {
   id: string;
   start: number;
   end: number;
+  /** Free position in the editor timeline. Source time remains in start/end. */
+  timelineStart?: number;
   score: number;
   title: string;
   reason: string;

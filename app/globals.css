@@ -2176,12 +2176,20 @@ body {
 .clip-editor-v2 .montage-video-lane .lane-track { overflow: visible; background: #211816; }
 .clip-editor-v2 .montage-video-lane > b { color: #ffb7aa !important; line-height: 1.05; white-space: normal; }
 .clip-editor-v2 .montage-cut { top: 3px; bottom: 3px; min-width: 0; border-radius: 5px; background: linear-gradient(135deg, #a94e43, #71342d); }
+.clip-editor-v2 .montage-cut { cursor: grab; touch-action: none; }
+.clip-editor-v2 .montage-cut:active { cursor: grabbing; }
 .clip-editor-v2 .montage-cut + .montage-cut { border-left-color: #ffd3ca; }
 .clip-editor-v2 .montage-cut span { padding-right: 4px; font-size: 12px; }
 .clip-editor-v2 .montage-cut small { display: block; overflow: hidden; color: #ffd6ce; font-size: 9px; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
 .clip-editor-v2 .montage-cut .montage-download { right: 27px; background: #ffd0c7; color: #31120e; }
 .clip-editor-v2 .montage-cut .montage-remove { right: 5px; }
 .clip-editor-v2 .montage-audio-boundary { position: absolute; top: 0; bottom: 0; width: 2px; height: 100% !important; background: #ff8b78; box-shadow: 0 0 7px #ff6d5d; }
+.clip-editor-v2 .waveform-track.segmented-waveform { display: block; padding: 0; overflow: visible; background: #171b1a; cursor: crosshair; }
+.clip-editor-v2 .montage-audio-clip { position: absolute; top: 3px; bottom: 3px; display: grid; grid-template-columns: auto minmax(0, 1fr); align-items: center; gap: 6px; min-width: 18px; overflow: hidden; padding: 3px 7px; border: 1px solid #67d6cf73; border-radius: 6px; background: linear-gradient(135deg, #164d4b, #103534); color: #eafffd; cursor: pointer; }
+.clip-editor-v2 .montage-audio-clip.active { border-color: #b9fff9; box-shadow: 0 0 0 2px #67d6cf30; }
+.clip-editor-v2 .montage-audio-clip > span { z-index: 2; color: #b9fff9; font-size: 10px; font-weight: 900; white-space: nowrap; }
+.clip-editor-v2 .montage-audio-waveform { display: flex; align-items: center; align-self: stretch; gap: 1px; min-width: 0; overflow: hidden; }
+.clip-editor-v2 .montage-audio-waveform > i { flex: 1 1 1px; min-width: 1px; max-width: 4px; border-radius: 999px; background: linear-gradient(#c8fff9, #51bbb6); opacity: .88; pointer-events: none; }
 .clip-editor-v2 .radar-item-actions { display: grid; grid-template-columns: 1fr 1.25fr; gap: 8px; margin-top: 8px; }
 .clip-editor-v2 .radar-item-actions button { min-height: 38px; }
 .clip-editor-v2 .radar-download-one { border-color: #ff8b78 !important; background: #ff6d5d !important; color: #180b09 !important; font-weight: 900 !important; }
@@ -3049,7 +3057,7 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
   --studio-header-h: 68px;
   --studio-timeline-h: 340px;
   --studio-rail-w: 78px;
-  --studio-panel-w: 344px;
+  --studio-panel-w: 390px;
   --studio-coral: #ff6d5f;
   --studio-coral-bright: #ff887b;
   --studio-purple: #a878ff;
@@ -3329,7 +3337,7 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
   width: auto;
   max-height: none;
   height: 100%;
-  padding: 0 15px 24px;
+  padding: 0 20px 32px;
   overflow: auto;
   border: 0;
   border-radius: 0;
@@ -3347,8 +3355,8 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
   align-items: center;
   justify-content: space-between;
   min-height: 68px;
-  margin: 0 -15px 15px;
-  padding: 13px 16px;
+  margin: 0 -20px 20px;
+  padding: 15px 20px;
   border-bottom: 1px solid #ffffff10;
   background: #141716f4;
   backdrop-filter: blur(16px);
@@ -3358,7 +3366,7 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
 .clip-editor-v2 .editor-tool-panel-header b { font-size: 21px; font-weight: 850; letter-spacing: -.035em; }
 .clip-editor-v2 .editor-tool-panel-header > button { display: none; width: 34px; height: 34px; border: 1px solid #ffffff18; border-radius: 9px; background: #ffffff07; color: #fff; font-size: 20px; cursor: pointer; }
 
-.clip-editor-v2 .editor-tool-section { display: grid; gap: 13px; min-width: 0; }
+.clip-editor-v2 .editor-tool-section { display: grid; gap: 18px; min-width: 0; }
 .clip-editor-v2 .tool-heading { margin: 7px 0 2px; }
 .clip-editor-v2 .tool-media-panel > .tool-heading:first-child { display: none; }
 .clip-editor-v2 .tool-heading > span { display: none; }
@@ -3608,7 +3616,7 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
   top: calc(var(--studio-header-h) + 14px);
   right: 16px;
   bottom: calc(var(--studio-timeline-h) + 14px);
-  width: min(500px, calc(100vw - 32px));
+  width: min(590px, calc(100vw - 32px));
   max-height: none;
   border: 1px solid #a878ff35;
   border-radius: 18px;
@@ -3663,12 +3671,12 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
 
 @media (min-width: 1800px) {
   .clip-editor-v2 {
-    --studio-rail-w: 84px;
-    --studio-panel-w: 380px;
+    --studio-rail-w: 90px;
+    --studio-panel-w: 470px;
     --studio-timeline-h: 370px;
     font-size: 16px;
   }
-  .clip-editor-v2 .editor-workspace { gap: 24px; padding: 20px 28px; }
+  .clip-editor-v2 .editor-workspace { gap: 30px; padding: 22px 34px; }
   .clip-editor-v2 .editor-tool-rail button { min-height: 68px; }
   .clip-editor-v2 .editor-tool-rail button b { font-size: 12px; }
   .clip-editor-v2 .editor-stage { max-width: 1400px !important; }

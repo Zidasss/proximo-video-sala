@@ -1,6 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState } from "react";
+import { ArrowLeft, Download, Plus, Sparkles, Trash2 } from "lucide-react";
+
+import { KlipAppLogo } from "../components/brand/KlipAppLogo";
 
 type MotionFrame = {
   id: string;
@@ -428,14 +431,14 @@ export default function GifStudio({
   return (
     <main className="motion-studio">
       <header className="motion-header">
-        <div className="brand">Klip <em>Motion</em></div>
+        <div className="brand"><KlipAppLogo variant="full" width={136} height={28} /><em>Motion</em></div>
         <div><b>{frames.length} imagens</b><span>{totalDuration.toFixed(1)}s · GIF em loop</span></div>
-        <button onClick={onBack}>← Voltar</button>
+        <button onClick={onBack}><ArrowLeft aria-hidden="true" /> Voltar</button>
       </header>
       <section className="motion-workspace">
         <aside className="motion-controls">
           <div className="motion-intro"><small>CRIADOR DE GIF</small><h1>Imagem vira movimento.</h1><p>Monte quadros, anime a cena e crie um letreiro para usar na câmera.</p></div>
-          <label className="motion-upload">＋ Adicionar imagens<input type="file" accept="image/*" multiple onChange={(event) => void addImages(event.target.files)} /></label>
+          <label className="motion-upload"><Plus aria-hidden="true" /> Adicionar imagens<input type="file" accept="image/*" multiple onChange={(event) => void addImages(event.target.files)} /></label>
           <label>Formato<select value={format} onChange={(event) => setFormat(event.target.value as MotionFormat)}><option value="landscape">Fundo 16:9</option><option value="vertical">Stories / Reels 9:16</option><option value="square">Quadrado 1:1</option></select></label>
           <label>Movimento da imagem<select value={imageMotion} onChange={(event) => setImageMotion(event.target.value as ImageMotion)}><option value="zoom-in">Zoom suave</option><option value="zoom-out">Afastar</option><option value="pan-left">Passeio para esquerda</option><option value="pan-right">Passeio para direita</option><option value="float">Flutuar</option></select></label>
           <label>Tempo por imagem <b>{secondsPerImage.toFixed(1)}s</b><input type="range" min="0.6" max="3" step="0.1" value={secondsPerImage} onChange={(event) => setSecondsPerImage(Number(event.target.value))} /></label>
@@ -444,12 +447,26 @@ export default function GifStudio({
         </aside>
         <section className="motion-preview-area">
           <div className={`motion-canvas-shell motion-${format}`}><canvas ref={canvas} />{!frames.length && <div className="motion-empty"><b>Adicione suas imagens</b><span>A animação e o letreiro aparecerão aqui.</span></div>}</div>
-          <div className="motion-actions"><button disabled={!frames.length || exporting} onClick={() => void makeGif(false)}>↓ Baixar GIF</button><button className="primary" disabled={!frames.length || exporting} onClick={() => void makeGif(true)}>✦ Usar como fundo</button></div>
+          <div className="motion-actions"><button disabled={!frames.length || exporting} onClick={() => void makeGif(false)}><Download aria-hidden="true" /> Baixar GIF</button><button className="primary" disabled={!frames.length || exporting} onClick={() => void makeGif(true)}><Sparkles aria-hidden="true" /> Usar como fundo</button></div>
           <p>{notice}</p>
         </section>
       </section>
-      <section className="motion-timeline"><div><b>Quadros</b><span>Arraste para reorganizar · o GIF repete automaticamente</span></div><div className="motion-frame-list">{frames.map((frame, index) => <div key={frame.id} role="button" tabIndex={0} draggable onDragStart={() => { draggedFrame.current = frame.id; }} onDragOver={(event) => event.preventDefault()} onDrop={() => reorderFrame(frame.id)} className={`motion-frame-card ${selected === frame.id ? "selected" : ""}`} onClick={() => setSelected(frame.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelected(frame.id); }}><span>{index + 1}</span><img src={frame.url} alt="" /><small>{frame.name}</small><button onClick={(event) => { event.stopPropagation(); removeFrame(frame.id); }} aria-label="Remover quadro">×</button></div>)}</div></section>
-      {exporting && <div className="motion-exporting" role="status"><div><span>{exportProgress}%</span><b>Criando seu GIF…</b><i><em style={{ width: `${exportProgress}%` }} /></i><small>O Klip está animando os quadros e o letreiro.</small></div></div>}
+      <section className="motion-timeline">
+        <div><b>Quadros</b><span>Arraste para reorganizar · o GIF repete automaticamente</span></div>
+        <div className="motion-frame-list">
+          {frames.map((frame, index) => (
+            <div key={frame.id} role="button" tabIndex={0} draggable onDragStart={() => { draggedFrame.current = frame.id; }} onDragOver={(event) => event.preventDefault()} onDrop={() => reorderFrame(frame.id)} className={`motion-frame-card ${selected === frame.id ? "selected" : ""}`} onClick={() => setSelected(frame.id)} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") setSelected(frame.id); }}>
+              <span>{index + 1}</span>
+              {/* Object URLs are generated client-side for temporary previews and cannot benefit from Next/Image optimization. */}
+              {/* eslint-disable-next-line @next/next/no-img-element */}
+              <img src={frame.url} alt="" />
+              <small>{frame.name}</small>
+              <button onClick={(event) => { event.stopPropagation(); removeFrame(frame.id); }} aria-label="Remover quadro"><Trash2 aria-hidden="true" /></button>
+            </div>
+          ))}
+        </div>
+      </section>
+      {exporting && <div className="motion-exporting" role="status"><div><span>{exportProgress}%</span><b>Criando seu GIF…</b><i><em style={{ width: `${exportProgress}%` }} /></i><small>A KLIPAPP está animando os quadros e o letreiro.</small></div></div>}
     </main>
   );
 }

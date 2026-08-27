@@ -18,20 +18,23 @@ test("integrates creator formats, licensed audio and visual effects into the rea
   assert.match(page, /editorTimelineDuration \|\| duration \|\| trackLength/);
   assert.match(page, /audioTimelineStart: montageItem\?\.timelineStart \|\| 0/);
   assert.match(page, /audioTimelineTime = activeRange\.audioTimelineStart \+ localTime/);
-  assert.match(page, /APP_VERSION = "v0\.20\.5"/);
+  assert.match(page, /APP_VERSION = "v0\.21\.0"/);
   assert.match(page, /editor-tool-rail/);
   assert.match(page, /export-settings-popover/);
   assert.match(page, /radar-thumbnail/);
 });
 
-test("keeps the creator hub readable on desktop and mobile", async () => {
+test("keeps the KLIPAPP creator hub readable on desktop and mobile", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const css = await readFile(new URL("app/globals.css", root), "utf8");
+  const designSystem = await readFile(new URL("app/styles/klipapp.css", root), "utf8");
   assert.match(css, /\.studio-hub-backdrop/);
   assert.match(css, /\.studio-quick-actions/);
   assert.match(css, /max-height: 93dvh/);
   assert.match(css, /@media \(max-width: 430px\)/);
-  assert.match(css, /Klip Studio v0\.19/);
+  assert.match(page, /KLIPAPP Studio/);
+  assert.match(designSystem, /html\[data-klip-theme="dark"\]/);
+  assert.match(designSystem, /html\[data-klip-theme="light"\]/);
   assert.match(css, /--studio-timeline-h: 340px/);
   assert.match(css, /\.editor-tool-dock/);
   assert.match(css, /\.timeline-panel\.multi-timeline/);

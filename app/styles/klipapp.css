@@ -1,0 +1,1778 @@
+/* KLIPAPP — Signal Splice design system
+   This file is intentionally imported after globals.css and is the single
+   authoritative theme layer while legacy feature CSS is being decomposed. */
+
+:root,
+html[data-klip-theme="dark"] {
+  color-scheme: dark;
+  --ka-bg: #080b12;
+  --ka-canvas: #0b0f18;
+  --ka-surface: #101622;
+  --ka-surface-2: #161e2c;
+  --ka-surface-3: #1d2738;
+  --ka-overlay: rgba(3, 6, 12, 0.76);
+  --ka-border: #273247;
+  --ka-border-subtle: #1b2535;
+  --ka-text: #f7f8fc;
+  --ka-text-secondary: #b7c0d1;
+  --ka-text-muted: #7f8ba1;
+  --ka-brand: #7868ff;
+  --ka-brand-hover: #8e80ff;
+  --ka-brand-soft: rgba(120, 104, 255, 0.14);
+  --ka-signal: #24c7df;
+  --ka-signal-soft: rgba(36, 199, 223, 0.13);
+  --ka-live: #ff675f;
+  --ka-live-soft: rgba(255, 103, 95, 0.14);
+  --ka-success: #35d5a2;
+  --ka-warning: #f2b84b;
+  --ka-danger: #f35f78;
+  --ka-focus: #9c91ff;
+  --ka-shadow-xs: 0 1px 2px rgba(0, 0, 0, .22);
+  --ka-shadow-sm: 0 8px 24px rgba(0, 0, 0, .22);
+  --ka-shadow-md: 0 20px 56px rgba(0, 0, 0, .34);
+  --ka-shadow-lg: 0 36px 96px rgba(0, 0, 0, .48);
+  --ka-glow: 0 14px 42px rgba(120, 104, 255, .22);
+
+  /* Public component-kit aliases. Keeping these mapped to the product tokens
+     means every primitive follows the active theme instead of falling back to
+     its light-mode safety values. */
+  --ka-color-bg: var(--ka-bg);
+  --ka-color-canvas: var(--ka-canvas);
+  --ka-color-surface: var(--ka-surface);
+  --ka-color-surface-subtle: var(--ka-surface-2);
+  --ka-color-surface-muted: var(--ka-surface-3);
+  --ka-color-surface-hover: color-mix(in srgb, var(--ka-brand) 12%, var(--ka-surface));
+  --ka-color-input: var(--ka-surface-2);
+  --ka-color-border: var(--ka-border-subtle);
+  --ka-color-border-strong: var(--ka-border);
+  --ka-color-text: var(--ka-text);
+  --ka-color-text-muted: var(--ka-text-secondary);
+  --ka-color-text-subtle: var(--ka-text-muted);
+  --ka-color-accent: var(--ka-brand);
+  --ka-color-accent-strong: var(--ka-brand-hover);
+  --ka-color-accent-soft: var(--ka-brand-soft);
+  --ka-color-on-accent: #ffffff;
+  --ka-color-info: var(--ka-signal);
+  --ka-color-info-soft: var(--ka-signal-soft);
+  --ka-color-success: var(--ka-success);
+  --ka-color-success-soft: color-mix(in srgb, var(--ka-success) 14%, transparent);
+  --ka-color-warning: var(--ka-warning);
+  --ka-color-warning-soft: color-mix(in srgb, var(--ka-warning) 14%, transparent);
+  --ka-color-danger: var(--ka-danger);
+  --ka-color-danger-soft: color-mix(in srgb, var(--ka-danger) 14%, transparent);
+  --ka-color-on-danger: #ffffff;
+  --ka-color-focus: var(--ka-focus);
+  --ka-color-focus-soft: color-mix(in srgb, var(--ka-focus) 20%, transparent);
+  --ka-color-overlay: var(--ka-overlay);
+  --ka-color-tooltip: #eef2ff;
+  --ka-color-on-tooltip: #111727;
+  --ka-color-skeleton: var(--ka-surface-2);
+  --ka-color-skeleton-highlight: var(--ka-surface-3);
+
+  /* Compatibility bridge for the existing functional UI. */
+  --klip-bg: var(--ka-bg);
+  --klip-bg-elevated: var(--ka-canvas);
+  --klip-panel: var(--ka-surface);
+  --klip-panel-strong: var(--ka-surface-2);
+  --klip-border: var(--ka-border);
+  --klip-border-soft: var(--ka-border-subtle);
+  --klip-text: var(--ka-text);
+  --klip-muted: var(--ka-text-muted);
+  --klip-accent: var(--ka-brand);
+  --klip-accent-strong: #6254e8;
+  --klip-cyan: var(--ka-signal);
+  --klip-success: var(--ka-success);
+  --klip-danger: var(--ka-danger);
+  --klip-shadow: rgba(0, 0, 0, .52);
+}
+
+html[data-klip-theme="light"] {
+  color-scheme: light;
+  --ka-bg: #f4f6fb;
+  --ka-canvas: #eef2f8;
+  --ka-surface: #ffffff;
+  --ka-surface-2: #f7f8fc;
+  --ka-surface-3: #e9edf5;
+  --ka-overlay: rgba(20, 25, 38, 0.42);
+  --ka-border: #d5dce8;
+  --ka-border-subtle: #e5e9f1;
+  --ka-text: #141927;
+  --ka-text-secondary: #47536a;
+  --ka-text-muted: #6f7b91;
+  --ka-brand: #6254e8;
+  --ka-brand-hover: #5144d4;
+  --ka-brand-soft: rgba(98, 84, 232, 0.1);
+  --ka-signal: #058aa3;
+  --ka-signal-soft: rgba(5, 138, 163, 0.1);
+  --ka-live: #d94d48;
+  --ka-live-soft: rgba(217, 77, 72, 0.1);
+  --ka-success: #087a5e;
+  --ka-warning: #9a6400;
+  --ka-danger: #c93e59;
+  --ka-focus: #6254e8;
+  --ka-shadow-xs: 0 1px 2px rgba(28, 38, 61, .08);
+  --ka-shadow-sm: 0 8px 24px rgba(28, 38, 61, .08);
+  --ka-shadow-md: 0 20px 56px rgba(28, 38, 61, .12);
+  --ka-shadow-lg: 0 36px 96px rgba(28, 38, 61, .16);
+  --ka-glow: 0 14px 42px rgba(98, 84, 232, .14);
+
+  --ka-color-bg: var(--ka-bg);
+  --ka-color-canvas: var(--ka-canvas);
+  --ka-color-surface: var(--ka-surface);
+  --ka-color-surface-subtle: var(--ka-surface-2);
+  --ka-color-surface-muted: var(--ka-surface-3);
+  --ka-color-surface-hover: color-mix(in srgb, var(--ka-brand) 8%, var(--ka-surface));
+  --ka-color-input: var(--ka-surface);
+  --ka-color-border: var(--ka-border-subtle);
+  --ka-color-border-strong: var(--ka-border);
+  --ka-color-text: var(--ka-text);
+  --ka-color-text-muted: var(--ka-text-secondary);
+  --ka-color-text-subtle: var(--ka-text-muted);
+  --ka-color-accent: var(--ka-brand);
+  --ka-color-accent-strong: var(--ka-brand-hover);
+  --ka-color-accent-soft: var(--ka-brand-soft);
+  --ka-color-on-accent: #ffffff;
+  --ka-color-info: var(--ka-signal);
+  --ka-color-info-soft: var(--ka-signal-soft);
+  --ka-color-success: var(--ka-success);
+  --ka-color-success-soft: color-mix(in srgb, var(--ka-success) 11%, transparent);
+  --ka-color-warning: var(--ka-warning);
+  --ka-color-warning-soft: color-mix(in srgb, var(--ka-warning) 11%, transparent);
+  --ka-color-danger: var(--ka-danger);
+  --ka-color-danger-soft: color-mix(in srgb, var(--ka-danger) 11%, transparent);
+  --ka-color-on-danger: #ffffff;
+  --ka-color-focus: var(--ka-focus);
+  --ka-color-focus-soft: color-mix(in srgb, var(--ka-focus) 16%, transparent);
+  --ka-color-overlay: var(--ka-overlay);
+  --ka-color-tooltip: #141927;
+  --ka-color-on-tooltip: #ffffff;
+  --ka-color-skeleton: var(--ka-surface-3);
+  --ka-color-skeleton-highlight: #ffffff;
+
+  --klip-bg: var(--ka-bg);
+  --klip-bg-elevated: var(--ka-canvas);
+  --klip-panel: var(--ka-surface);
+  --klip-panel-strong: var(--ka-surface-2);
+  --klip-border: var(--ka-border);
+  --klip-border-soft: var(--ka-border-subtle);
+  --klip-text: var(--ka-text);
+  --klip-muted: var(--ka-text-muted);
+  --klip-accent: var(--ka-brand);
+  --klip-accent-strong: #5144d4;
+  --klip-cyan: var(--ka-signal);
+  --klip-success: var(--ka-success);
+  --klip-danger: var(--ka-danger);
+  --klip-shadow: rgba(28, 38, 61, .14);
+}
+
+:root {
+  --ka-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ka-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
+  --ka-font-family: var(--ka-font-sans);
+  --ka-font-size-xs: .8125rem;
+  --ka-font-size-sm: .9375rem;
+  --ka-font-size-md: 1rem;
+  --ka-font-size-lg: 1.125rem;
+  --ka-space-1: 4px;
+  --ka-space-2: 8px;
+  --ka-space-3: 12px;
+  --ka-space-4: 16px;
+  --ka-space-5: 20px;
+  --ka-space-6: 24px;
+  --ka-space-7: 28px;
+  --ka-space-8: 32px;
+  --ka-space-10: 40px;
+  --ka-space-12: 48px;
+  --ka-radius-xs: 6px;
+  --ka-radius-sm: 10px;
+  --ka-radius-md: 14px;
+  --ka-radius-lg: 20px;
+  --ka-radius-xl: 28px;
+  --ka-radius-full: 999px;
+  --ka-radius-pill: var(--ka-radius-full);
+  --ka-control-sm: 36px;
+  --ka-control-md: 44px;
+  --ka-control-lg: 52px;
+  --ka-motion-fast: 120ms;
+  --ka-motion: 180ms;
+  --ka-motion-slow: 240ms;
+  --ka-duration-fast: var(--ka-motion-fast);
+  --ka-duration-normal: var(--ka-motion);
+  --ka-duration-slow: var(--ka-motion-slow);
+  --ka-ease: cubic-bezier(.2, .8, .2, 1);
+  --ka-opacity-disabled: .48;
+  --ka-shadow-accent: var(--ka-glow);
+  --ka-shadow-xl: var(--ka-shadow-lg);
+  --ka-z-dropdown: 200;
+  --ka-z-sticky: 300;
+  --ka-z-modal: 1000;
+  --ka-z-toast: 1200;
+}
+
+*, *::before, *::after { box-sizing: border-box; }
+
+html {
+  min-width: 320px;
+  background: var(--ka-bg);
+  color: var(--ka-text);
+  font-family: var(--ka-font-sans);
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  min-height: 100dvh;
+  margin: 0;
+  background: var(--ka-bg);
+  color: var(--ka-text);
+  font-family: var(--ka-font-sans);
+  transition: background-color var(--ka-motion-slow) var(--ka-ease), color var(--ka-motion) var(--ka-ease);
+}
+
+::selection { background: var(--ka-brand); color: white; }
+
+:where(button, a, input, select, textarea, summary, [tabindex]):focus-visible {
+  outline: 3px solid color-mix(in srgb, var(--ka-focus) 42%, transparent);
+  outline-offset: 2px;
+}
+
+:where(button, input, select, textarea) { font: inherit; }
+:where(button, a, summary) { -webkit-tap-highlight-color: transparent; }
+:where(button:not(:disabled), summary) { cursor: pointer; }
+:where(button:disabled, input:disabled, select:disabled, textarea:disabled) { cursor: not-allowed; opacity: .48; }
+
+/* Shared native-control baseline, including legacy screens. */
+html[data-klip-theme] :where(input:not([type="range"]):not([type="checkbox"]):not([type="radio"]):not([type="color"]), select, textarea) {
+  min-height: var(--ka-control-md);
+  border: 1px solid var(--ka-border) !important;
+  border-radius: var(--ka-radius-sm) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-xs);
+  transition: border-color var(--ka-motion-fast) var(--ka-ease), box-shadow var(--ka-motion-fast) var(--ka-ease), background-color var(--ka-motion-fast) var(--ka-ease);
+}
+
+html[data-klip-theme] :where(input, select, textarea):focus {
+  border-color: var(--ka-brand) !important;
+  box-shadow: 0 0 0 3px var(--ka-brand-soft) !important;
+}
+
+html[data-klip-theme] :where(input, textarea)::placeholder { color: var(--ka-text-muted); opacity: .78; }
+
+/* Product surfaces: one canvas and one hierarchy across every route. */
+html[data-klip-theme] :where(.landing, .call, .loading-screen, .offline-studio, .motion-studio, .clip-editor-v2) {
+  background:
+    radial-gradient(circle at 16% -8%, color-mix(in srgb, var(--ka-brand) 12%, transparent), transparent 32%),
+    radial-gradient(circle at 92% 18%, color-mix(in srgb, var(--ka-signal) 7%, transparent), transparent 26%),
+    var(--ka-bg) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] :where(.landing nav, .call > header, .editor-header, .motion-header) {
+  border-color: var(--ka-border-subtle) !important;
+  background: color-mix(in srgb, var(--ka-bg) 88%, transparent) !important;
+  color: var(--ka-text) !important;
+  box-shadow: 0 1px 0 color-mix(in srgb, var(--ka-border) 45%, transparent);
+  backdrop-filter: blur(18px) saturate(130%);
+}
+
+html[data-klip-theme] :where(.landing-entry-card, .settings-panel, .connection-panel, .chat, .offline-controls, .motion-controls, .motion-timeline, .editor-tools, .timeline-panel, .radar-panel, .studio-hub) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-md) !important;
+}
+
+/* Old coral remains semantic only: live/record/destructive. Creation is violet. */
+html[data-klip-theme] :where(.join > button, .entry-tabs .selected, .nav-action-btn.primary, .open-editor, .editor-export, .timeline-play-toggle, .tool-primary-action, .radar-analyze, .radar-apply, .editor-empty-upload, .motion-actions .primary, .offline-record) {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+  box-shadow: var(--ka-glow) !important;
+}
+
+html[data-klip-theme] :where(.offline-stop, .call footer .leave, .danger) {
+  border-color: var(--ka-live) !important;
+  background: var(--ka-live) !important;
+  color: #fff !important;
+}
+
+html[data-klip-theme] :where(.brand em, .eyebrow, .entry-card-heading small) { color: var(--ka-brand) !important; }
+html[data-klip-theme] :where(.studio-status .live, .recording-badge, .record-dot) { color: var(--ka-live) !important; }
+
+/* Legibility floor: no critical UI copy below 11px. */
+html[data-klip-theme] :where(.clip-editor-v2, .offline-studio, .motion-studio, .call, .landing) :where(button, input, select, textarea, label, small) {
+  font-size: max(11px, 0.6875rem);
+}
+
+html[data-klip-theme] :where(.app-version, .timeline-ruler, .timeline-clip-meta, .layer-list small) {
+  font-size: 11px !important;
+}
+
+/* Theme-aware scrollbar kept quiet until interaction. */
+html { scrollbar-color: color-mix(in srgb, var(--ka-text-muted) 45%, transparent) transparent; scrollbar-width: thin; }
+*::-webkit-scrollbar { width: 10px; height: 10px; }
+*::-webkit-scrollbar-track { background: transparent; }
+*::-webkit-scrollbar-thumb { border: 3px solid transparent; border-radius: 999px; background: color-mix(in srgb, var(--ka-text-muted) 42%, transparent); background-clip: padding-box; }
+*::-webkit-scrollbar-thumb:hover { background: color-mix(in srgb, var(--ka-text-muted) 66%, transparent); background-clip: padding-box; }
+
+@media (max-width: 760px) {
+  :root { --ka-control-md: 46px; }
+  html[data-klip-theme] :where(.landing, .call, .offline-studio, .motion-studio, .clip-editor-v2) button { min-height: 44px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after {
+    scroll-behavior: auto !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: .01ms !important;
+  }
+}
+
+/* Route-level loading, error and 404 states. */
+.ka-system-state {
+  min-height: 100dvh;
+  display: grid;
+  place-items: center;
+  padding: var(--ka-space-6);
+  background:
+    radial-gradient(circle at 50% 0%, var(--ka-brand-soft), transparent 34%),
+    var(--ka-bg);
+  color: var(--ka-text);
+}
+
+.ka-system-state__card {
+  width: min(100%, 480px);
+  display: grid;
+  justify-items: start;
+  gap: var(--ka-space-4);
+  padding: clamp(28px, 6vw, 48px);
+  border: 1px solid var(--ka-border);
+  border-radius: var(--ka-radius-xl);
+  background: var(--ka-surface);
+  box-shadow: var(--ka-shadow-lg);
+}
+
+.ka-system-state__mark {
+  width: 48px;
+  height: 48px;
+  display: grid;
+  place-items: center;
+  border-radius: var(--ka-radius-md);
+  background: var(--ka-brand-soft);
+  color: var(--ka-brand);
+}
+
+.ka-system-state h1 { margin: 0; font-size: clamp(28px, 5vw, 42px); letter-spacing: -.04em; }
+.ka-system-state p { margin: 0; color: var(--ka-text-secondary); line-height: 1.55; }
+.ka-system-state__actions { display: flex; flex-wrap: wrap; gap: var(--ka-space-3); }
+.ka-system-state__actions :where(button, a) {
+  min-height: var(--ka-control-md);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--ka-space-2);
+  padding: 0 18px;
+  border: 1px solid var(--ka-border);
+  border-radius: var(--ka-radius-sm);
+  background: var(--ka-surface-2);
+  color: var(--ka-text);
+  font-weight: 750;
+  text-decoration: none;
+}
+.ka-system-state__actions .primary { border-color: var(--ka-brand); background: var(--ka-brand); color: white; }
+
+.ka-loader {
+  width: 42px;
+  height: 42px;
+  border: 3px solid var(--ka-border);
+  border-top-color: var(--ka-brand);
+  border-radius: 50%;
+  animation: ka-spin .8s linear infinite;
+}
+@keyframes ka-spin { to { transform: rotate(1turn); } }
+
+/* --------------------------------------------------------------------------
+   Product shell and landing
+   -------------------------------------------------------------------------- */
+
+html[data-klip-theme] .brand {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--ka-space-3);
+  color: var(--ka-text) !important;
+  text-decoration: none;
+}
+
+html[data-klip-theme] .brand > em {
+  padding-left: var(--ka-space-3);
+  border-left: 1px solid var(--ka-border);
+  font-size: 12px;
+  font-style: normal;
+  font-weight: 750;
+  letter-spacing: .02em;
+}
+
+.landing {
+  min-height: 100dvh;
+  overflow-x: clip;
+  padding: 0 0 var(--ka-space-6);
+}
+
+.landing-nav {
+  position: relative;
+  z-index: 20;
+  width: min(1240px, calc(100% - 40px));
+  min-height: 72px;
+  display: flex !important;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--ka-space-4);
+  margin: 0 auto;
+  padding: 12px 0 !important;
+  border: 0 !important;
+  box-shadow: none !important;
+}
+
+.landing-nav-actions {
+  display: flex;
+  align-items: center;
+  justify-content: flex-end;
+  gap: var(--ka-space-2);
+  flex-wrap: wrap;
+}
+
+html[data-klip-theme] :where(.landing-nav-actions, .call .header-actions, .editor-header-actions, .motion-header) > button,
+html[data-klip-theme] :where(.landing-nav-actions, .call .header-actions) > a {
+  min-height: 40px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  padding: 0 13px;
+  border: 1px solid var(--ka-border) !important;
+  border-radius: var(--ka-radius-sm) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text-secondary) !important;
+  box-shadow: var(--ka-shadow-xs) !important;
+  font-size: 13px !important;
+  font-weight: 720 !important;
+  line-height: 1;
+  text-decoration: none;
+  transition: transform var(--ka-motion-fast) var(--ka-ease), border-color var(--ka-motion-fast) var(--ka-ease), background-color var(--ka-motion-fast) var(--ka-ease), color var(--ka-motion-fast) var(--ka-ease);
+}
+
+html[data-klip-theme] :where(.landing-nav-actions, .call .header-actions, .editor-header-actions) > button:hover,
+html[data-klip-theme] :where(.landing-nav-actions, .call .header-actions) > a:hover {
+  border-color: color-mix(in srgb, var(--ka-brand) 48%, var(--ka-border)) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+  transform: translateY(-1px);
+}
+
+html[data-klip-theme] :where(.landing-nav-actions, .call .header-actions) svg,
+html[data-klip-theme] .landing-proof svg,
+html[data-klip-theme] .call-timer svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  stroke-width: 1.9;
+}
+
+html[data-klip-theme] .landing-nav-actions > .nav-action-btn.primary {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+  box-shadow: var(--ka-glow) !important;
+}
+
+.theme-toggle {
+  width: 40px;
+  padding: 0 !important;
+  aspect-ratio: 1;
+}
+
+.landing-profile-link {
+  max-width: 200px;
+  padding: 4px 10px 4px 4px !important;
+}
+
+.landing-profile-link > img,
+.landing-profile-fallback {
+  width: 30px;
+  height: 30px;
+  flex: 0 0 30px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+
+.landing-profile-link > img { border: 1px solid var(--ka-border); }
+.landing-profile-fallback { display: grid; place-items: center; background: var(--ka-brand-soft); color: var(--ka-brand); }
+.landing-profile-fallback svg { width: 16px; height: 16px; }
+.landing-profile-link > span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+
+.landing-hero-v2 {
+  position: relative;
+  z-index: 2;
+  width: min(1160px, calc(100% - 40px));
+  min-height: min(680px, calc(100dvh - 110px));
+  display: grid !important;
+  grid-template-columns: minmax(0, 1.15fr) minmax(340px, .72fr) !important;
+  align-items: center;
+  gap: clamp(52px, 8vw, 124px) !important;
+  margin: 0 auto !important;
+  padding: clamp(64px, 9vh, 112px) 0 !important;
+}
+
+.landing-copy { display: grid; align-content: center; gap: 22px; max-width: 700px; }
+.landing-copy .eyebrow {
+  width: fit-content;
+  padding: 7px 10px;
+  border: 1px solid color-mix(in srgb, var(--ka-brand) 34%, var(--ka-border));
+  border-radius: var(--ka-radius-full);
+  background: var(--ka-brand-soft);
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: .13em;
+}
+
+.landing-copy h1 {
+  max-width: 760px;
+  margin: 0 !important;
+  color: var(--ka-text) !important;
+  font-size: clamp(52px, 7.3vw, 92px) !important;
+  font-weight: 760 !important;
+  line-height: .94 !important;
+  letter-spacing: -.072em !important;
+}
+
+.landing-copy h1 em {
+  color: var(--ka-brand) !important;
+  font-family: inherit !important;
+  font-style: normal !important;
+  font-weight: inherit;
+}
+
+.landing-copy > p {
+  max-width: 600px;
+  margin: 0;
+  color: var(--ka-text-secondary) !important;
+  font-size: clamp(17px, 1.6vw, 21px) !important;
+  line-height: 1.5 !important;
+  letter-spacing: -.018em;
+}
+
+.landing-proof {
+  display: flex !important;
+  align-items: center;
+  gap: 10px !important;
+  flex-wrap: wrap;
+  margin-top: 6px;
+}
+
+.landing-proof > span {
+  min-height: 38px;
+  display: inline-flex !important;
+  align-items: center;
+  gap: 8px;
+  padding: 0 11px;
+  border: 1px solid var(--ka-border);
+  border-radius: var(--ka-radius-full);
+  background: color-mix(in srgb, var(--ka-surface) 88%, transparent);
+  color: var(--ka-text-secondary) !important;
+  font-size: 12px !important;
+}
+.landing-proof > span svg { color: var(--ka-signal); }
+.landing-proof > span b { color: var(--ka-text); font-weight: 720; }
+
+html[data-klip-theme] .landing-entry-card {
+  width: 100% !important;
+  max-width: 440px !important;
+  justify-self: end;
+  padding: 10px !important;
+  border-radius: var(--ka-radius-xl) !important;
+  background: color-mix(in srgb, var(--ka-surface) 94%, transparent) !important;
+}
+
+.entry-card-heading { padding: 16px 16px 10px !important; }
+.entry-card-heading > div { display: grid; gap: 5px; }
+.entry-card-heading small { font-size: 10px !important; letter-spacing: .14em; }
+.entry-card-heading b { color: var(--ka-text) !important; font-size: 23px !important; letter-spacing: -.035em; }
+.entry-card-heading > span { display: inline-flex; align-items: center; gap: 6px; color: var(--ka-text-muted) !important; font-size: 11px !important; }
+.entry-card-heading > span i { width: 7px; height: 7px; border-radius: 50%; background: var(--ka-success); box-shadow: 0 0 0 4px color-mix(in srgb, var(--ka-success) 12%, transparent); }
+
+.entry-tabs {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 4px !important;
+  margin: 4px 8px 8px !important;
+  padding: 4px;
+  border: 1px solid var(--ka-border-subtle);
+  border-radius: var(--ka-radius-md);
+  background: var(--ka-surface-2);
+}
+.entry-tabs button { min-height: 38px; border: 0 !important; border-radius: 9px !important; background: transparent !important; color: var(--ka-text-secondary) !important; font-weight: 720; }
+.entry-tabs button.selected { background: var(--ka-surface) !important; color: var(--ka-text) !important; box-shadow: var(--ka-shadow-xs) !important; }
+
+.landing-entry-card .join {
+  display: grid !important;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px !important;
+  padding: 14px !important;
+  border: 1px solid var(--ka-border-subtle) !important;
+  border-radius: var(--ka-radius-lg) !important;
+  background: var(--ka-surface) !important;
+}
+.landing-entry-card .join > label:first-child,
+.landing-entry-card .join > button,
+.landing-entry-card .join > p { grid-column: 1 / -1; }
+.landing-entry-card .join label { display: grid; gap: 7px; color: var(--ka-text-secondary) !important; font-size: 11px !important; font-weight: 780; letter-spacing: .035em; text-transform: none !important; }
+.landing-entry-card .join input { width: 100%; padding-inline: 13px !important; }
+.landing-entry-card .join > button { min-height: 48px; border-radius: var(--ka-radius-sm) !important; font-size: 14px !important; font-weight: 780 !important; }
+.landing-entry-card .join > button.secondary { min-height: 42px; border: 1px solid var(--ka-border) !important; background: var(--ka-surface-2) !important; color: var(--ka-text-secondary) !important; box-shadow: none !important; }
+.landing-entry-card .join > p { margin: 0; padding: 9px 11px; border-radius: 9px; background: var(--ka-signal-soft); color: var(--ka-signal) !important; font-size: 12px !important; line-height: 1.4; }
+
+.landing-legal-footer {
+  position: relative;
+  z-index: 2;
+  width: min(1160px, calc(100% - 40px));
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 auto;
+  padding: 22px 0 4px;
+  border-top: 1px solid var(--ka-border-subtle);
+  color: var(--ka-text-muted);
+  font-size: 12px;
+}
+.landing-legal-footer nav { display: flex !important; gap: 18px; min-height: auto !important; padding: 0 !important; border: 0 !important; background: none !important; box-shadow: none !important; backdrop-filter: none !important; }
+.landing-legal-footer a { color: var(--ka-text-secondary); text-decoration: none; }
+.landing-legal-footer a:hover { color: var(--ka-text); }
+
+/* --------------------------------------------------------------------------
+   Call, studios and editor: shared hierarchy over the preserved feature logic
+   -------------------------------------------------------------------------- */
+
+html[data-klip-theme] .call > header,
+html[data-klip-theme] .editor-header,
+html[data-klip-theme] .motion-header {
+  min-height: 64px;
+  padding: 10px clamp(14px, 2vw, 26px) !important;
+}
+
+.call .room { display: inline-flex; align-items: center; gap: 8px; color: var(--ka-text-secondary) !important; font-size: 12px !important; }
+.call .room > i { background: var(--ka-success) !important; }
+.call-timer { display: inline-flex !important; align-items: center; gap: 6px; padding-left: 10px; border-left: 1px solid var(--ka-border); color: var(--ka-text) !important; font-family: var(--ka-font-mono); }
+
+html[data-klip-theme] .call .header-actions > button { min-height: 38px; }
+html[data-klip-theme] .call .header-actions > :where(.settings-open, .connection-open) { border-color: var(--ka-brand) !important; background: var(--ka-brand-soft) !important; color: var(--ka-brand) !important; }
+
+html[data-klip-theme] :where(.settings-panel, .connection-panel, .chat) {
+  border-radius: var(--ka-radius-lg) !important;
+  overflow: auto;
+}
+
+html[data-klip-theme] .settings-title { border-color: var(--ka-border-subtle) !important; background: var(--ka-surface) !important; }
+html[data-klip-theme] .settings-panel :where(h2, h3, b, label),
+html[data-klip-theme] .connection-panel :where(h2, h3, b),
+html[data-klip-theme] .chat :where(h2, h3, b) { color: var(--ka-text) !important; }
+html[data-klip-theme] .settings-panel :where(p, small, span),
+html[data-klip-theme] .connection-panel :where(p, small, span),
+html[data-klip-theme] .chat :where(p, small, span) { color: var(--ka-text-secondary); }
+
+html[data-klip-theme] :where(.clip-editor-v2, .offline-studio, .motion-studio) {
+  min-height: 100dvh;
+}
+
+html[data-klip-theme] .editor-header-pro {
+  position: sticky;
+  top: 0;
+  z-index: var(--ka-z-sticky);
+  border-bottom: 1px solid var(--ka-border-subtle) !important;
+}
+
+html[data-klip-theme] .editor-project-status,
+html[data-klip-theme] .editor-tool-dock,
+html[data-klip-theme] .editor-stage-shell,
+html[data-klip-theme] .timeline-panel {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(h1, h2, h3, h4, b, strong) { color: var(--ka-text); }
+html[data-klip-theme] .clip-editor-v2 :where(p, small, .editor-file, .media-import-help, .timeline-trim-help span) { color: var(--ka-text-secondary); }
+html[data-klip-theme] .clip-editor-v2 :where(.editor-tools, .editor-tool-rail, .editor-tool-panel-header, .editor-time-controls, .timeline-top, .timeline-lanes) { border-color: var(--ka-border-subtle) !important; }
+
+html[data-klip-theme] .editor-tool-rail button {
+  color: var(--ka-text-muted) !important;
+  border-color: transparent !important;
+  background: transparent !important;
+}
+html[data-klip-theme] .editor-tool-rail button.active { color: var(--ka-brand) !important; background: var(--ka-brand-soft) !important; }
+html[data-klip-theme] .editor-tool-rail button > b { color: inherit !important; font-size: 11px !important; }
+
+html[data-klip-theme] :where(.editor-export, .editor-publish-btn, .timeline-play-toggle) { min-height: 42px; border-radius: var(--ka-radius-sm) !important; }
+html[data-klip-theme] .editor-publish-btn { border-color: var(--ka-signal) !important; background: var(--ka-signal) !important; color: #05191d !important; }
+
+html[data-klip-theme] .timeline-panel { box-shadow: 0 -10px 40px color-mix(in srgb, var(--ka-bg) 32%, transparent) !important; }
+html[data-klip-theme] .timeline-ruler { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .timeline-lane > b { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .lane-track { border-color: var(--ka-border-subtle) !important; background: var(--ka-canvas) !important; }
+/* Clip, transition and waveform colours encode media types. Do not recolour
+   them with the active theme; theme only their lane and selection chrome. */
+html[data-klip-theme] .timeline-lane.selected {
+  background: color-mix(in srgb, var(--ka-brand) 9%, transparent) !important;
+}
+html[data-klip-theme] .timeline-lane.selected > b { color: var(--ka-brand) !important; }
+
+html[data-klip-theme] .offline-controls,
+html[data-klip-theme] .motion-controls { border-radius: var(--ka-radius-lg) !important; }
+html[data-klip-theme] :where(.offline-preview, .motion-preview-area) { color: var(--ka-text-secondary); }
+html[data-klip-theme] :where(.offline-cameras, .motion-canvas-shell) { border-color: var(--ka-border) !important; background: var(--ka-canvas) !important; box-shadow: var(--ka-shadow-md); }
+
+/* Legacy orbs no longer compete with content. */
+.landing .orb { opacity: .12 !important; filter: blur(3px) saturate(.6) !important; pointer-events: none; }
+
+@media (max-width: 980px) {
+  .landing-nav { align-items: flex-start; }
+  .landing-nav-actions { max-width: 70%; }
+  .landing-hero-v2 { grid-template-columns: 1fr !important; min-height: auto; gap: 42px !important; padding-top: 52px !important; }
+  .landing-copy { text-align: center; justify-items: center; margin-inline: auto; }
+  .landing-copy > p { margin-inline: auto; }
+  .landing-proof { justify-content: center; }
+  html[data-klip-theme] .landing-entry-card { justify-self: center; max-width: 520px !important; }
+}
+
+@media (max-width: 720px) {
+  .landing-nav { width: min(100% - 24px, 560px); min-height: 64px; align-items: center; }
+  .landing-nav .brand svg { width: 122px; }
+  .landing-nav-actions { max-width: none; flex-wrap: nowrap; overflow-x: auto; padding: 4px 1px 8px; scrollbar-width: none; }
+  .landing-nav-actions::-webkit-scrollbar { display: none; }
+  .landing-nav-actions > button:not(.theme-toggle):not(.primary) { padding-inline: 10px; }
+  .landing-nav-actions > button:not(.theme-toggle):not(.primary) svg + * { display: none; }
+  .landing-profile-link > span { display: none; }
+  .landing-profile-link { padding-right: 4px !important; }
+  .landing-hero-v2 { width: min(100% - 28px, 560px); padding-block: 44px 32px !important; }
+  .landing-copy h1 { font-size: clamp(46px, 15vw, 68px) !important; }
+  .landing-copy > p { font-size: 17px !important; }
+  .landing-proof { align-items: stretch; width: 100%; }
+  .landing-proof > span { flex: 1 1 145px; justify-content: center; }
+  .landing-entry-card .join { grid-template-columns: 1fr; }
+  .landing-entry-card .join > * { grid-column: 1 !important; }
+  .landing-legal-footer { width: min(100% - 28px, 560px); align-items: flex-start; flex-direction: column; }
+
+  html[data-klip-theme] .call > header { align-items: center; }
+  .call > header .brand svg { width: 108px; }
+  .call .header-actions { display: flex; max-width: 100%; overflow-x: auto; scrollbar-width: none; }
+  .call .header-actions::-webkit-scrollbar { display: none; }
+  html[data-klip-theme] .call .header-actions > button { flex: 0 0 auto; min-height: 42px; }
+
+  html[data-klip-theme] .settings-panel,
+  html[data-klip-theme] .connection-panel,
+  html[data-klip-theme] .chat { max-width: calc(100vw - 20px) !important; max-height: calc(100dvh - 92px) !important; }
+}
+
+@media (max-width: 440px) {
+  .landing-nav-actions > .open-editor { display: none !important; }
+  .landing-copy .eyebrow { font-size: 9px; }
+  .landing-copy h1 { font-size: 44px !important; }
+  .landing-proof { display: grid !important; grid-template-columns: 1fr; }
+  .landing-proof > span { justify-content: flex-start; }
+}
+
+/* --------------------------------------------------------------------------
+   Cross-surface theme audit
+
+   globals.css still owns interaction and media geometry. This compatibility
+   layer owns every visible shell so dark/light mode cannot leak the legacy
+   olive, charcoal or coral palette into functional UI.
+   -------------------------------------------------------------------------- */
+
+/* Call shell, stage and persistent controls. */
+html[data-klip-theme] .call {
+  background: var(--ka-bg) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .call > header {
+  border-bottom: 1px solid var(--ka-border-subtle) !important;
+  background: color-mix(in srgb, var(--ka-surface) 94%, transparent) !important;
+  box-shadow: var(--ka-shadow-xs);
+}
+
+html[data-klip-theme] :where(
+  .settings,
+  .connection-toggle,
+  .chat-toggle,
+  .invite,
+  .refresh,
+  .session-background,
+  .session-refresh,
+  .refresh-connection,
+  .format,
+  .open-preview,
+  .stage-meta button
+) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text-secondary) !important;
+  box-shadow: var(--ka-shadow-xs);
+}
+
+html[data-klip-theme] :where(
+  .settings,
+  .connection-toggle,
+  .chat-toggle,
+  .invite,
+  .refresh,
+  .session-background,
+  .session-refresh,
+  .refresh-connection,
+  .format,
+  .open-preview,
+  .stage-meta button
+):hover {
+  border-color: color-mix(in srgb, var(--ka-brand) 44%, var(--ka-border)) !important;
+  background: var(--ka-surface-3) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] :where(.settings-open, .connection-open, .format.on, .open-preview.active-resenha) {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+  box-shadow: var(--ka-glow) !important;
+}
+
+html[data-klip-theme] .setting-actions .format.premium {
+  border-color: color-mix(in srgb, var(--ka-brand) 55%, var(--ka-border)) !important;
+  color: var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .setting-actions .format.premium.on {
+  border-color: var(--ka-brand) !important;
+  background: linear-gradient(135deg, var(--ka-brand), color-mix(in srgb, var(--ka-signal) 55%, var(--ka-brand))) !important;
+  color: #fff !important;
+}
+
+html[data-klip-theme] .stage {
+  background: var(--ka-bg);
+}
+
+html[data-klip-theme] .tile {
+  border: 1px solid var(--ka-border-subtle);
+  background: var(--ka-surface-2) !important;
+  box-shadow: var(--ka-shadow-sm);
+}
+
+html[data-klip-theme] :where(.mine, .waiting) {
+  background: linear-gradient(145deg, var(--ka-surface-2), var(--ka-canvas)) !important;
+}
+
+/* Black is intentional for decoded media and screen-share letterboxing. */
+html[data-klip-theme] :where(.shared, .shared video, .stage.resenha-with-screen .shared video) {
+  background: #03060b !important;
+}
+
+html[data-klip-theme] .tile.speaking {
+  box-shadow: 0 0 0 3px var(--ka-signal), 0 0 28px var(--ka-signal-soft) !important;
+}
+
+html[data-klip-theme] .avatar {
+  border: 1px solid color-mix(in srgb, var(--ka-brand) 52%, var(--ka-border));
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .tile label {
+  color: #fff !important;
+  text-shadow: 0 1px 6px rgba(0, 0, 0, .78) !important;
+}
+
+html[data-klip-theme] .tile label b { color: var(--ka-signal) !important; }
+html[data-klip-theme] .waiting :where(p, label) { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] :where(.stage-meta, .stage-help, .resenha-note, .matting-note) { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .stage-meta b { color: var(--ka-brand) !important; }
+
+html[data-klip-theme] .call footer {
+  border-top: 1px solid var(--ka-border-subtle);
+  background: color-mix(in srgb, var(--ka-surface) 90%, transparent);
+  box-shadow: 0 -14px 42px color-mix(in srgb, var(--ka-bg) 48%, transparent);
+}
+
+html[data-klip-theme] .call footer button {
+  border: 1px solid var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text-secondary) !important;
+  box-shadow: var(--ka-shadow-xs);
+}
+
+html[data-klip-theme] .call footer button:hover {
+  background: var(--ka-surface-3) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .call footer .active {
+  border-color: var(--ka-signal) !important;
+  background: var(--ka-signal-soft) !important;
+  color: var(--ka-signal) !important;
+}
+
+html[data-klip-theme] .call footer .off {
+  border-color: color-mix(in srgb, var(--ka-danger) 35%, var(--ka-border)) !important;
+  background: color-mix(in srgb, var(--ka-danger) 10%, var(--ka-surface-2)) !important;
+  color: var(--ka-danger) !important;
+}
+
+html[data-klip-theme] .call footer :where(.recording, .leave) {
+  border-color: var(--ka-live) !important;
+  background: var(--ka-live) !important;
+  color: #fff !important;
+}
+
+html[data-klip-theme] .call footer :where(.clip, .edit-recording) {
+  border-color: color-mix(in srgb, var(--ka-brand) 46%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .call footer > i { background: var(--ka-border) !important; }
+
+/* Call settings, connection status and chat. */
+html[data-klip-theme] :where(.settings-panel, .connection-panel, .chat-panel, .tiktok-preview) {
+  border: 1px solid var(--ka-border) !important;
+  background: color-mix(in srgb, var(--ka-surface) 97%, transparent) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-lg) !important;
+  backdrop-filter: blur(20px);
+}
+
+html[data-klip-theme] :where(.settings-title, .connection-title, .chat-title, .preview-title) {
+  border-color: var(--ka-border-subtle) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] :where(.settings-title, .connection-title, .chat-title, .preview-title) button {
+  color: var(--ka-text-secondary) !important;
+}
+
+html[data-klip-theme] :where(.settings-title, .connection-title) small,
+html[data-klip-theme] .connection-panel p,
+html[data-klip-theme] .tiktok-preview small,
+html[data-klip-theme] .preview-slider,
+html[data-klip-theme] .preview-screen {
+  color: var(--ka-text-secondary) !important;
+}
+
+html[data-klip-theme] :where(.settings-grid label > select, .menu-content select) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .settings-menu details {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+}
+
+html[data-klip-theme] .settings-menu summary {
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .settings-menu summary:hover { background: var(--ka-surface-3); }
+html[data-klip-theme] .settings-menu details[open] summary { border-bottom: 1px solid var(--ka-border-subtle); }
+html[data-klip-theme] .settings-menu summary > span,
+html[data-klip-theme] .settings-menu summary::after { color: var(--ka-brand) !important; }
+html[data-klip-theme] .settings-menu summary small { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] :where(.menu-field, .layout-selects label, .menu-switch) { color: var(--ka-text-secondary) !important; }
+
+html[data-klip-theme] .mic-tuning {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .mic-tuning .menu-field input,
+html[data-klip-theme] .preview-slider input { accent-color: var(--ka-brand) !important; }
+html[data-klip-theme] .mic-meter { background: var(--ka-canvas) !important; }
+html[data-klip-theme] .mic-meter i {
+  background: linear-gradient(90deg, var(--ka-success), var(--ka-warning) 72%, var(--ka-danger)) !important;
+}
+html[data-klip-theme] .mic-tuning small { color: var(--ka-text-muted) !important; }
+
+html[data-klip-theme] .audio-profile-warning {
+  border-color: color-mix(in srgb, var(--ka-warning) 52%, var(--ka-border)) !important;
+  background: color-mix(in srgb, var(--ka-warning) 10%, var(--ka-surface-2)) !important;
+  color: var(--ka-warning) !important;
+}
+html[data-klip-theme] .audio-profile-warning p { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .audio-profile-warning button {
+  border-color: var(--ka-warning) !important;
+  background: var(--ka-warning) !important;
+  color: var(--ka-bg) !important;
+}
+
+html[data-klip-theme] .connection-grid > div {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .connection-grid :where(small, em) { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .connection-grid b { color: var(--ka-text) !important; }
+html[data-klip-theme] .connection-grid .warning { color: var(--ka-warning) !important; }
+
+html[data-klip-theme] .chat-title,
+html[data-klip-theme] .chat-compose { border-color: var(--ka-border-subtle) !important; }
+html[data-klip-theme] .chat-messages p {
+  border: 1px solid color-mix(in srgb, var(--ka-brand) 22%, var(--ka-border-subtle));
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .chat-messages p b { color: var(--ka-brand) !important; }
+html[data-klip-theme] .chat-messages > span { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .chat-compose input {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .chat-compose button {
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+
+html[data-klip-theme] .preview-canvas { background: #03060b !important; }
+html[data-klip-theme] .preview-top video { background: var(--ka-surface-3) !important; }
+html[data-klip-theme] .preview-screen { border-color: var(--ka-border-subtle) !important; }
+
+html[data-klip-theme] .settings-panel,
+html[data-klip-theme] .settings-menu,
+html[data-klip-theme] .chat-messages,
+html[data-klip-theme] .radar-suggestions,
+html[data-klip-theme] .studio-hub-content,
+html[data-klip-theme] .motion-controls,
+html[data-klip-theme] .editor-tools {
+  scrollbar-color: var(--ka-brand) var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .settings-panel::-webkit-scrollbar-track { background: var(--ka-surface-2) !important; }
+html[data-klip-theme] .settings-panel::-webkit-scrollbar-thumb {
+  border-color: var(--ka-surface-2) !important;
+  background: var(--ka-brand) !important;
+}
+
+/* Transient dialogs and status overlays. */
+html[data-klip-theme] .toast,
+html[data-klip-theme] .virtual-effect-loading {
+  border: 1px solid var(--ka-border) !important;
+  background: color-mix(in srgb, var(--ka-surface) 96%, transparent) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-lg) !important;
+}
+html[data-klip-theme] .toast button { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .virtual-effect-loading { border-color: color-mix(in srgb, var(--ka-brand) 42%, var(--ka-border)) !important; }
+html[data-klip-theme] .virtual-effect-loading > span {
+  border-color: var(--ka-border) !important;
+  border-top-color: var(--ka-brand) !important;
+}
+html[data-klip-theme] .virtual-effect-loading small { color: var(--ka-text-secondary) !important; }
+
+html[data-klip-theme] .screen-share-backdrop,
+html[data-klip-theme] .studio-hub-backdrop { background: var(--ka-overlay) !important; }
+html[data-klip-theme] .screen-share-dialog {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-lg) !important;
+}
+html[data-klip-theme] .screen-share-dialog > header small { color: var(--ka-brand) !important; }
+html[data-klip-theme] .screen-share-dialog > header button,
+html[data-klip-theme] .screen-share-choice {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .screen-share-dialog > p,
+html[data-klip-theme] .screen-share-choice small,
+html[data-klip-theme] .screen-share-hint { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .screen-share-choice:hover {
+  border-color: color-mix(in srgb, var(--ka-brand) 48%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+}
+html[data-klip-theme] .screen-share-choice.with-audio {
+  border-color: color-mix(in srgb, var(--ka-signal) 54%, var(--ka-border)) !important;
+  background: var(--ka-signal-soft) !important;
+}
+html[data-klip-theme] .screen-share-choice > span { background: var(--ka-canvas) !important; }
+html[data-klip-theme] .screen-share-choice i { background: var(--ka-signal) !important; color: var(--ka-bg) !important; }
+
+/* Offline recording studio. Media tiles remain black by design. */
+html[data-klip-theme] .offline-studio {
+  background: var(--ka-bg) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .offline-studio .editor-header > button,
+html[data-klip-theme] .studio-layouts button {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text-secondary) !important;
+}
+html[data-klip-theme] .offline-studio .editor-header em { color: var(--ka-brand) !important; }
+html[data-klip-theme] .offline-controls,
+html[data-klip-theme] .studio-camera-control {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-sm);
+}
+html[data-klip-theme] .offline-controls :where(p, label, small) { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .offline-controls select {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .offline-record {
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+html[data-klip-theme] .offline-stop { background: var(--ka-live) !important; color: #fff !important; }
+html[data-klip-theme] .offline-cameras,
+html[data-klip-theme] .offline-camera-tile { border-color: var(--ka-border) !important; background: #03060b !important; }
+html[data-klip-theme] .offline-preview p,
+html[data-klip-theme] .studio-status,
+html[data-klip-theme] .studio-status small { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .studio-status .live { color: var(--ka-live) !important; }
+html[data-klip-theme] .studio-layouts button.selected {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+html[data-klip-theme] .offline-controls meter { accent-color: var(--ka-signal) !important; }
+
+/* Motion studio. */
+html[data-klip-theme] .motion-studio {
+  background: var(--ka-bg) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .motion-header {
+  border-bottom-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface) !important;
+}
+html[data-klip-theme] .motion-header .brand em,
+html[data-klip-theme] .motion-intro small,
+html[data-klip-theme] .motion-controls label > b { color: var(--ka-brand) !important; }
+html[data-klip-theme] .motion-header > div:nth-child(2) span,
+html[data-klip-theme] .motion-intro p,
+html[data-klip-theme] .motion-empty span,
+html[data-klip-theme] .motion-preview-area > p,
+html[data-klip-theme] .motion-timeline span { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .motion-controls,
+html[data-klip-theme] .motion-caption-box,
+html[data-klip-theme] .motion-frame-card {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .motion-caption-box { background: var(--ka-surface-2) !important; }
+html[data-klip-theme] .motion-controls > label,
+html[data-klip-theme] .motion-caption-box label { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .motion-controls :where(select, input[type="text"], input[type="color"]),
+html[data-klip-theme] .motion-caption-box > input {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .motion-controls input[type="range"] { accent-color: var(--ka-brand) !important; }
+html[data-klip-theme] .motion-upload {
+  border-color: color-mix(in srgb, var(--ka-brand) 55%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+html[data-klip-theme] .motion-canvas-shell { background: #03060b !important; }
+html[data-klip-theme] .motion-actions button {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .motion-actions button.primary {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+html[data-klip-theme] .motion-timeline {
+  border-top-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface) !important;
+}
+html[data-klip-theme] .motion-frame-card.selected {
+  border-color: var(--ka-brand) !important;
+  box-shadow: inset 0 0 0 1px var(--ka-brand) !important;
+}
+html[data-klip-theme] .motion-frame-card > span { background: var(--ka-brand) !important; color: #fff !important; }
+html[data-klip-theme] .motion-frame-list small { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .motion-frame-card button { color: var(--ka-danger) !important; }
+html[data-klip-theme] .motion-exporting { background: var(--ka-overlay) !important; }
+html[data-klip-theme] .motion-exporting > div {
+  border-color: color-mix(in srgb, var(--ka-brand) 44%, var(--ka-border)) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-lg) !important;
+}
+html[data-klip-theme] .motion-exporting span { color: var(--ka-brand) !important; }
+html[data-klip-theme] .motion-exporting i { background: var(--ka-canvas) !important; }
+html[data-klip-theme] .motion-exporting em { background: var(--ka-brand) !important; }
+html[data-klip-theme] .motion-exporting small { color: var(--ka-text-muted) !important; }
+
+/* Clip editor chrome. Semantic clip and waveform fills are deliberately not
+   included in these selectors. */
+html[data-klip-theme] .clip-editor-v2 {
+  --studio-bg: var(--ka-bg);
+  --studio-panel: var(--ka-surface);
+  --studio-panel-2: var(--ka-surface-2);
+  --studio-border: var(--ka-border);
+  --studio-text: var(--ka-text);
+  --studio-muted: var(--ka-text-muted);
+  --studio-coral: var(--ka-brand);
+  --studio-coral-bright: var(--ka-brand-hover);
+  background: var(--ka-bg) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-workspace {
+  background: var(--ka-bg) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tool-rail {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-canvas) !important;
+  color: var(--ka-text-muted) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button {
+  border-color: transparent !important;
+  background: transparent !important;
+  color: var(--ka-text-muted) !important;
+  box-shadow: none !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button:hover {
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button.active {
+  border-color: color-mix(in srgb, var(--ka-brand) 26%, transparent) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+  box-shadow: inset 3px 0 0 var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .header-format-action small,
+html[data-klip-theme] .clip-editor-v2 .export-settings-menu header span,
+html[data-klip-theme] .clip-editor-v2 .export-settings-menu label,
+html[data-klip-theme] .clip-editor-v2 .audio-track-inspector > small,
+html[data-klip-theme] .clip-editor-v2 .timeline-zoom {
+  color: var(--ka-text-secondary) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .export-settings-popover[open] > summary {
+  border-color: color-mix(in srgb, var(--ka-brand) 44%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .editor-header-pro,
+  .editor-tool-dock,
+  .editor-tools,
+  .editor-tool-panel-header,
+  .editor-file,
+  .current-format-card,
+  .layer-inspector,
+  .audio-track-inspector,
+  .video-properties-grid,
+  .video-transition-controls,
+  .tool-disclosure,
+  .tool-stat-row,
+  .timeline-panel,
+  .timeline-more > div,
+  .export-settings-menu,
+  .radar-panel,
+  .studio-hub
+) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .editor-tool-panel-header,
+  .timeline-top,
+  .radar-panel-header,
+  .radar-panel > footer,
+  .studio-hub-header,
+  .studio-hub-tabs,
+  .export-settings-menu header,
+  .tool-disclosure[open] summary
+) { border-color: var(--ka-border-subtle) !important; }
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .editor-tools textarea,
+  .editor-tools select,
+  .caption-controls input,
+  .radar-config select,
+  .export-settings-menu select
+) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .editor-tools button,
+  .project-actions button,
+  .layer-actions button,
+  .format-shortcuts button,
+  .timeline-top button,
+  .timeline-more summary,
+  .timeline-more > div button,
+  .radar-suggestions article > button,
+  .radar-panel > footer button,
+  .studio-hub-tabs button,
+  .studio-hub-header > button
+) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text-secondary) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .editor-tools button,
+  .project-actions button,
+  .layer-actions button,
+  .format-shortcuts button,
+  .timeline-top button,
+  .timeline-more summary,
+  .timeline-more > div button,
+  .radar-suggestions article > button,
+  .radar-panel > footer button,
+  .studio-hub-tabs button,
+  .studio-hub-header > button
+):hover {
+  border-color: color-mix(in srgb, var(--ka-brand) 42%, var(--ka-border)) !important;
+  background: var(--ka-surface-3) !important;
+  color: var(--ka-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(.tool-primary-action, .editor-upload, .radar-analyze, .radar-apply) {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-primary-action.radar {
+  border-color: color-mix(in srgb, var(--ka-brand) 58%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-tool-visual {
+  border-color: color-mix(in srgb, var(--ka-brand) 28%, var(--ka-border)) !important;
+  background: radial-gradient(circle, var(--ka-brand-soft), transparent 68%) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-tool-visual span { color: var(--ka-brand) !important; }
+
+html[data-klip-theme] .clip-editor-v2 :where(.tool-heading span, .editor-tool-panel-header span, .current-format-card small) {
+  color: var(--ka-brand) !important;
+}
+html[data-klip-theme] .clip-editor-v2 :where(.tool-heading small, .current-format-card span, .format-shortcuts button small) {
+  color: var(--ka-text-muted) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .format-shortcuts button.selected,
+html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs button.selected {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-stage-wrap { background: var(--ka-canvas) !important; }
+html[data-klip-theme] .clip-editor-v2 .editor-stage-shell {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .editor-stage { border-color: var(--ka-border) !important; background: #03060b !important; }
+html[data-klip-theme] .clip-editor-v2 .editor-empty {
+  background: radial-gradient(circle at 50% 24%, var(--ka-brand-soft), transparent 34%), var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .editor-empty small { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .editor-empty span,
+html[data-klip-theme] .clip-editor-v2 .editor-empty i,
+html[data-klip-theme] .clip-editor-v2 .editor-notice { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .clip-editor-v2 .editor-empty-upload {
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+html[data-klip-theme] .clip-editor-v2 .reset-video-frame {
+  border-color: var(--ka-border) !important;
+  background: color-mix(in srgb, var(--ka-surface) 88%, transparent) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .clip-editor-v2 :where(.video-frame-resize, .illustration-resize-handle) {
+  border-color: var(--ka-bg) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport,
+html[data-klip-theme] .clip-editor-v2 .timeline-lanes { background: var(--ka-canvas) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-ruler { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-lane > b { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-lane.selected > b { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-lane .lane-track {
+  border-color: var(--ka-border-subtle) !important;
+  background-color: var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .timeline-playhead {
+  background: var(--ka-text) !important;
+  box-shadow: 0 0 0 1px var(--ka-bg), 0 0 10px color-mix(in srgb, var(--ka-text) 45%, transparent) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .timeline-item-clip.selected,
+html[data-klip-theme] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip {
+  box-shadow: 0 0 0 2px var(--ka-surface), 0 0 0 4px var(--ka-focus) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .timeline-clip-handle { background: var(--ka-text) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-context-menu {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  box-shadow: var(--ka-shadow-lg) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .timeline-context-menu button { color: var(--ka-text) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-context-menu button:hover { background: var(--ka-brand-soft) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-context-menu button.danger { color: var(--ka-danger) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-trim-help {
+  border-color: color-mix(in srgb, var(--ka-brand) 28%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-text-secondary) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .timeline-trim-help b { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-shortcuts { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .clip-editor-v2 .timeline-shortcuts kbd {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-3) !important;
+  color: var(--ka-text) !important;
+}
+
+/* Radar and editor hub use brand colour for selection only. Cut colours and
+   their waveform relationship stay semantic. */
+html[data-klip-theme] .clip-editor-v2 .radar-panel,
+html[data-klip-theme] .clip-editor-v2 .studio-hub {
+  border-color: var(--ka-border) !important;
+  background: color-mix(in srgb, var(--ka-surface) 97%, transparent) !important;
+  color: var(--ka-text) !important;
+  box-shadow: var(--ka-shadow-lg) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-panel-header span,
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header span { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 :where(.radar-panel-header small, .radar-review-title small, .radar-progress span, .studio-hub-header small) {
+  color: var(--ka-text-muted) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-config label { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .clip-editor-v2 .radar-progress > div { background: var(--ka-canvas) !important; }
+html[data-klip-theme] .clip-editor-v2 .radar-progress i {
+  background: linear-gradient(90deg, var(--ka-brand), var(--ka-signal)) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-suggestions article {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-suggestions article.selected {
+  border-color: color-mix(in srgb, var(--ka-brand) 58%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-check,
+html[data-klip-theme] .clip-editor-v2 .radar-score b { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .radar-check input { accent-color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .radar-score {
+  border-color: color-mix(in srgb, var(--ka-brand) 38%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .radar-score span,
+html[data-klip-theme] .clip-editor-v2 .radar-suggestions p { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .clip-editor-v2 .radar-suggestions time { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .clip-editor-v2 .radar-panel > footer { background: var(--ka-surface) !important; }
+
+html[data-klip-theme] .clip-editor-v2 .studio-quick-actions {
+  border-color: var(--ka-border-subtle) !important;
+  background: color-mix(in srgb, var(--ka-surface) 94%, transparent) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .studio-quick-actions span { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .studio-quick-actions small { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls span { color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls input { accent-color: var(--ka-brand) !important; }
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls button {
+  border-color: color-mix(in srgb, var(--ka-brand) 36%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
+}
+
+/* Responsive functional surfaces. */
+@media (max-width: 980px) {
+  .offline-grid,
+  .offline-grid-pro,
+  .motion-workspace {
+    grid-template-columns: 1fr !important;
+  }
+
+  .offline-controls,
+  .motion-controls {
+    width: min(100%, 720px);
+    max-height: none !important;
+    justify-self: center;
+  }
+
+  .offline-cameras { width: min(100%, 880px) !important; }
+  .motion-canvas-shell.motion-landscape { width: min(100%, 880px); }
+}
+
+@media (max-width: 720px) {
+  html[data-klip-theme] .call { min-height: 100dvh; height: 100dvh; }
+  html[data-klip-theme] .call > header { gap: 8px; overflow: visible; }
+  .call .room { min-width: max-content; }
+  .call .stage { gap: 10px; padding: 10px; }
+  .call .tile { border-radius: var(--ka-radius-md); }
+  .call footer {
+    min-height: 92px;
+    height: auto !important;
+    justify-content: flex-start !important;
+    overflow-x: auto;
+    padding: 10px max(12px, env(safe-area-inset-left)) calc(10px + env(safe-area-inset-bottom));
+    scroll-snap-type: x proximity;
+  }
+  .call footer button { flex: 0 0 68px; min-width: 68px; height: 58px; scroll-snap-align: center; }
+  .call footer > i { flex: 0 0 1px; }
+
+  html[data-klip-theme] .settings-panel,
+  html[data-klip-theme] .connection-panel,
+  html[data-klip-theme] .chat-panel,
+  html[data-klip-theme] .tiktok-preview {
+    inset-inline: 10px !important;
+    width: auto !important;
+    min-width: 0 !important;
+    resize: none !important;
+  }
+  html[data-klip-theme] .settings-panel,
+  html[data-klip-theme] .connection-panel { top: 74px !important; }
+  html[data-klip-theme] .chat-panel { top: 74px !important; bottom: 10px !important; }
+  html[data-klip-theme] .tiktok-preview { top: 74px !important; max-width: 300px; margin-left: auto; }
+  .settings-grid { grid-template-columns: 1fr !important; }
+  .menu-content { padding-left: 13px !important; }
+  .layout-selects { padding-left: 0 !important; }
+
+  .offline-grid,
+  .offline-grid-pro,
+  .motion-workspace { gap: 18px !important; padding: 16px !important; }
+  .offline-cameras.offline-vertical,
+  .motion-canvas-shell.motion-vertical { width: min(82vw, 420px) !important; }
+  .offline-cameras.offline-square,
+  .motion-canvas-shell.motion-square { width: min(92vw, 620px) !important; }
+  .motion-actions { width: 100%; flex-wrap: wrap; }
+  .motion-actions button { flex: 1 1 150px; }
+  .motion-timeline { padding-inline: 14px; }
+
+  html[data-klip-theme] .clip-editor-v2 .radar-panel { inset: 64px 0 0 !important; width: 100% !important; border-radius: 0 !important; }
+  html[data-klip-theme] .clip-editor-v2 .studio-hub { width: calc(100vw - 20px); max-height: calc(100dvh - 20px); }
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs { overflow-x: auto; }
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs button { flex: 0 0 auto; }
+}
+
+@media (max-width: 480px) {
+  .call .header-actions { margin-inline: -2px; }
+  .call .stage { padding: 7px; }
+  .call .avatar { width: 68px; height: 68px; font-size: 36px; }
+  .call .mine > .avatar { top: calc(50% - 34px); left: calc(50% - 34px); }
+  .call footer button { flex-basis: 64px; min-width: 64px; }
+  .screen-share-backdrop { align-items: end; padding: 8px !important; }
+  .screen-share-dialog { border-radius: var(--ka-radius-lg) var(--ka-radius-lg) 10px 10px !important; }
+  .offline-grid,
+  .offline-grid-pro,
+  .motion-workspace { padding: 10px !important; }
+  .offline-controls,
+  .motion-controls { padding: 14px !important; }
+  .motion-caption-box > div { grid-template-columns: 1fr !important; }
+  .motion-frame-card { flex-basis: 132px; }
+  html[data-klip-theme] .clip-editor-v2 .radar-config { grid-template-columns: 1fr !important; }
+  html[data-klip-theme] .clip-editor-v2 .radar-config .radar-analyze { grid-column: 1 !important; }
+}
+
+/* --------------------------------------------------------------------------
+   Post-QA readability and first-fold polish
+   -------------------------------------------------------------------------- */
+
+/* Keep the desktop tool rail wide enough for complete labels and reliable
+   pointer targets. The empty editor intentionally stays focused on import. */
+html[data-klip-theme] .clip-editor-v2 .editor-workspace-empty .editor-tool-dock {
+  display: none !important;
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --studio-rail-w: 96px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail {
+    width: 96px;
+    min-width: 96px;
+    gap: 6px;
+    padding: 10px 8px;
+    overflow-x: hidden;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button {
+    width: 100%;
+    min-width: 0;
+    min-height: 64px;
+    padding: 8px 6px;
+    line-height: 1.12;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button > b {
+    display: block;
+    width: 100%;
+    font-size: 12px !important;
+    line-height: 1.15;
+    overflow-wrap: normal;
+    word-break: normal;
+    white-space: normal;
+  }
+}
+
+/* Light mode should lift the import canvas, not cast a large black halo. */
+html[data-klip-theme="light"] .clip-editor-v2 .editor-workspace-empty .editor-stage {
+  box-shadow: 0 14px 34px rgba(38, 55, 82, .13), 0 0 0 1px rgba(109, 127, 157, .18) !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .editor-workspace-empty .editor-empty {
+  box-shadow: none !important;
+}
+
+@media (max-width: 720px) {
+  /* Bring the room card into the first viewport without shrinking body copy. */
+  .landing-hero-v2 {
+    gap: 24px !important;
+    padding-block: 26px 26px !important;
+  }
+
+  .landing-copy {
+    gap: 14px;
+  }
+
+  .landing-copy .eyebrow {
+    padding: 6px 9px;
+    font-size: 11px !important;
+  }
+
+  .landing-copy h1 {
+    font-size: clamp(40px, 11.5vw, 54px) !important;
+    line-height: .98 !important;
+  }
+
+  .landing-copy > p {
+    font-size: 16px !important;
+    line-height: 1.45 !important;
+  }
+
+  .landing-proof {
+    width: 100%;
+    display: flex !important;
+    flex-wrap: nowrap;
+    justify-content: flex-start !important;
+    gap: 8px !important;
+    margin-top: 0;
+    padding: 1px 0 4px;
+    overflow-x: auto;
+    scroll-snap-type: x proximity;
+    scrollbar-width: none;
+  }
+
+  .landing-proof::-webkit-scrollbar { display: none; }
+
+  .landing-proof > span {
+    flex: 0 0 auto;
+    min-height: 36px;
+    justify-content: center !important;
+    padding-inline: 10px;
+    font-size: 12px !important;
+    scroll-snap-align: start;
+  }
+
+  html[data-klip-theme] .landing-entry-card {
+    max-width: 100% !important;
+  }
+
+  .entry-card-heading {
+    padding: 12px 12px 8px !important;
+  }
+
+  .entry-card-heading small,
+  .entry-card-heading > span {
+    font-size: 12px !important;
+  }
+
+  .landing-entry-card .join {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr) !important;
+    gap: 10px !important;
+    padding: 12px !important;
+  }
+
+  .landing-entry-card .join > label:first-child,
+  .landing-entry-card .join > button,
+  .landing-entry-card .join > p {
+    grid-column: 1 / -1 !important;
+  }
+
+  .landing-entry-card .join > label:not(:first-child) {
+    grid-column: auto !important;
+  }
+
+  .landing-entry-card .join label {
+    font-size: 12px !important;
+  }
+
+  /* Mobile uses a bottom tool rail. Keep five comfortable, readable targets
+     and allow horizontal scrolling if localized labels become longer. */
+  html[data-klip-theme] .clip-editor-v2 .mobile-editor-nav {
+    grid-template-columns: repeat(5, minmax(68px, 1fr)) !important;
+    gap: 4px !important;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .mobile-editor-nav::-webkit-scrollbar {
+    display: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .mobile-editor-nav :where(a, button) {
+    min-width: 68px;
+    min-height: 52px;
+    gap: 3px;
+    padding: 6px 4px;
+    font-size: 11px;
+    line-height: 1.15;
+    white-space: normal;
+  }
+}
+
+@media (max-width: 440px) {
+  .landing-proof {
+    display: flex !important;
+    grid-template-columns: none;
+  }
+}

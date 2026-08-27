@@ -39,7 +39,7 @@ test("TikTok publisher handles caption and privacy settings in mock mode", async
 test("Instagram Reels publisher simulates media container and publishing", async () => {
   const result = await publishToInstagramReels({
     accessToken: "mock-token",
-    title: "Novidades do Klip",
+    title: "Novidades do KLIPAPP",
     hashtags: ["reels", "novidade"],
     videoUrl: "https://example.com/video.mp4",
   });

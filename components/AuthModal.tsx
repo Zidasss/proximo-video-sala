@@ -1,8 +1,10 @@
 "use client";
 
-import React, { useState } from "react";
+import React, { useEffect, useRef, useState } from "react";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
-import { X, Mail, Lock, User, LogIn, Sparkles, CheckCircle2, AlertCircle } from "lucide-react";
+import { X, Mail, Lock, User, LogIn, CheckCircle2, AlertCircle, ArrowLeft } from "lucide-react";
+import { KlipAppLogo } from "./brand/KlipAppLogo";
+import styles from "./AuthModal.module.css";
 
 interface AuthModalProps {
   isOpen: boolean;
@@ -12,13 +14,80 @@ interface AuthModalProps {
 
 export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   const [isSignUp, setIsSignUp] = useState(false);
+  const [isRecovering, setIsRecovering] = useState(false);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [name, setName] = useState("");
   const [loading, setLoading] = useState(false);
+  const [recoveryLoading, setRecoveryLoading] = useState(false);
   const [googleLoading, setGoogleLoading] = useState(false);
   const [errorMsg, setErrorMsg] = useState("");
   const [successMsg, setSuccessMsg] = useState("");
+  const dialogRef = useRef<HTMLDivElement>(null);
+  const emailInputRef = useRef<HTMLInputElement>(null);
+  const previousFocusRef = useRef<HTMLElement | null>(null);
+  const onCloseRef = useRef(onClose);
+  const confirmationCloseTimerRef = useRef<number | null>(null);
+
+  useEffect(() => {
+    onCloseRef.current = onClose;
+  }, [onClose]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+
+    previousFocusRef.current =
+      document.activeElement instanceof HTMLElement ? document.activeElement : null;
+
+    const focusTimer = window.setTimeout(() => {
+      setIsRecovering(false);
+      setRecoveryLoading(false);
+      setErrorMsg("");
+      setSuccessMsg("");
+      emailInputRef.current?.focus();
+    }, 0);
+
+    const handleDialogKeyDown = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        event.preventDefault();
+        onCloseRef.current();
+        return;
+      }
+
+      if (event.key !== "Tab" || !dialogRef.current) return;
+
+      const focusable = Array.from(
+        dialogRef.current.querySelectorAll<HTMLElement>(
+          'button:not([disabled]), input:not([disabled]), [href], [tabindex]:not([tabindex="-1"])'
+        )
+      ).filter((element) => element.offsetParent !== null);
+
+      if (!focusable.length) return;
+
+      const first = focusable[0];
+      const last = focusable[focusable.length - 1];
+
+      if (event.shiftKey && document.activeElement === first) {
+        event.preventDefault();
+        last.focus();
+      } else if (!event.shiftKey && document.activeElement === last) {
+        event.preventDefault();
+        first.focus();
+      }
+    };
+
+    document.addEventListener("keydown", handleDialogKeyDown);
+
+    return () => {
+      window.clearTimeout(focusTimer);
+      if (confirmationCloseTimerRef.current !== null) {
+        window.clearTimeout(confirmationCloseTimerRef.current);
+        confirmationCloseTimerRef.current = null;
+      }
+      document.removeEventListener("keydown", handleDialogKeyDown);
+      previousFocusRef.current?.focus();
+    };
+  }, [isOpen]);
 
   if (!isOpen) return null;
 
@@ -80,15 +149,16 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
             name: userName,
             avatarUrl,
           };
-          localStorage.setItem("klip_user", JSON.stringify(userObj));
-
           if (!data.session) {
             setSuccessMsg(
               "Conta criada! Verifique seu e-mail para confirmar o cadastro."
             );
-            onSuccess(userObj);
-            setTimeout(onClose, 2500);
+            confirmationCloseTimerRef.current = window.setTimeout(
+              () => onCloseRef.current(),
+              3000
+            );
           } else {
+            localStorage.setItem("klip_user", JSON.stringify(userObj));
             onSuccess(userObj);
             onClose();
           }
@@ -119,7 +189,9 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
             if (profile?.name) displayName = profile.name;
             if (profile?.avatar_url) avatarUrl = profile.avatar_url;
-          } catch {}
+          } catch (profileError) {
+            console.warn("Não foi possível carregar os dados extras do perfil:", profileError);
+          }
 
           const userObj = {
             id: data.user.id,
@@ -132,9 +204,9 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
           onClose();
         }
       }
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Erro auth:", err);
-      let message = err.message || "Erro na autenticação.";
+      let message = err instanceof Error ? err.message : "Erro na autenticação.";
       if (message.includes("Invalid login credentials")) {
         message = "E-mail ou senha incorretos.";
       } else if (message.includes("User already registered")) {
@@ -148,6 +220,50 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
     } finally {
       setLoading(false);
     }
+  };
+
+  const handlePasswordReset = async (event: React.FormEvent) => {
+    event.preventDefault();
+    setRecoveryLoading(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+
+    if (!isSupabaseConfigured) {
+      setErrorMsg("A recuperação de acesso está indisponível agora. Tente novamente mais tarde.");
+      setRecoveryLoading(false);
+      return;
+    }
+
+    try {
+      const supabase = createClient();
+      const redirectTo = new URL("/auth/callback?next=/perfil", window.location.origin).toString();
+      const { error } = await supabase.auth.resetPasswordForEmail(email.trim(), { redirectTo });
+
+      if (error) throw error;
+
+      setSuccessMsg("Enviamos um link para o seu e-mail. Verifique também a caixa de spam.");
+    } catch (error: unknown) {
+      console.error("Erro ao solicitar recuperação de acesso:", error);
+      setErrorMsg("Não foi possível enviar o link agora. Aguarde um momento e tente novamente.");
+    } finally {
+      setRecoveryLoading(false);
+    }
+  };
+
+  const openRecovery = () => {
+    setIsRecovering(true);
+    setErrorMsg("");
+    setSuccessMsg("");
+    window.setTimeout(() => emailInputRef.current?.focus(), 0);
+  };
+
+  const returnToLogin = () => {
+    setIsRecovering(false);
+    setIsSignUp(false);
+    setRecoveryLoading(false);
+    setErrorMsg("");
+    setSuccessMsg("");
+    window.setTimeout(() => emailInputRef.current?.focus(), 0);
   };
 
   const handleGoogleSignIn = async () => {
@@ -190,9 +306,9 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
 
       // Redirecionar para o Google OAuth
       window.location.href = data.url;
-    } catch (err: any) {
+    } catch (err: unknown) {
       console.error("Erro Google OAuth:", err);
-      let message = err.message || "Erro ao iniciar login com Google.";
+      let message = err instanceof Error ? err.message : "Erro ao iniciar login com Google.";
       if (
         message.includes("provider") ||
         message.includes("Provider")
@@ -206,268 +322,232 @@ export function AuthModal({ isOpen, onClose, onSuccess }: AuthModalProps) {
   };
 
   return (
-    <div
-      className="fixed inset-0 z-50 flex items-center justify-center p-4"
-      style={{
-        background: "rgba(10, 11, 11, 0.85)",
-        backdropFilter: "blur(12px)",
-      }}
-      onClick={(e) => { if (e.target === e.currentTarget) onClose(); }}
-    >
+    <div className={styles.overlay}>
+      <button
+        type="button"
+        className={styles.backdropDismiss}
+        onClick={onClose}
+        tabIndex={-1}
+        aria-label="Fechar autenticação"
+      />
       <div
-        className="relative w-full max-w-md p-6 rounded-3xl text-[#fff8f5] shadow-2xl"
-        style={{
-          background: "linear-gradient(145deg, #241b1be8, #151717f5)",
-          border: "1px solid rgba(255, 113, 96, 0.28)",
-          boxShadow: "0 28px 70px rgba(0, 0, 0, 0.7)",
-        }}
+        ref={dialogRef}
+        className={styles.dialog}
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="klipapp-auth-title"
+        aria-describedby="klipapp-auth-description"
+        tabIndex={-1}
       >
-        <button
-          onClick={onClose}
-          className="absolute top-4 right-4 p-1 rounded-lg text-[#9e9791] hover:text-white transition cursor-pointer"
-          style={{ background: "rgba(255,255,255,0.06)" }}
-          aria-label="Fechar"
-        >
-          <X className="w-5 h-5" />
+        <div className={styles.ambientGlow} aria-hidden="true" />
+
+        <button type="button" onClick={onClose} className={styles.closeButton} aria-label="Fechar autenticação">
+          <X aria-hidden="true" />
         </button>
 
-        <div className="text-center mb-5">
-          <div
-            className="inline-flex items-center justify-center w-12 h-12 rounded-2xl mb-2.5 shadow-lg"
-            style={{
-              background: "linear-gradient(135deg, #ff7564, #d84f41)",
-              boxShadow: "0 8px 24px rgba(255, 107, 92, 0.35)",
-            }}
-          >
-            <Sparkles className="w-6 h-6 text-[#24100e]" />
+        <header className={styles.header}>
+          <div className={styles.brandMark}>
+            <KlipAppLogo variant="symbol" width={40} height={40} label="KLIPAPP" />
           </div>
-          <h2 className="text-xl font-extrabold tracking-tight text-[#fff8f5]">
-            {isSignUp ? "Criar Conta no Klip" : "Entrar no Klip"}
+          <p className={styles.eyebrow}>KLIPAPP ID</p>
+          <h2 id="klipapp-auth-title">
+            {isRecovering ? "Recupere seu acesso" : isSignUp ? "Crie sua conta" : "Que bom ter você de volta"}
           </h2>
-          <p className="text-xs text-[#bcb4ae] mt-1">
-            Autenticação segura via Supabase
+          <p id="klipapp-auth-description">
+            {isRecovering
+              ? "Digite seu e-mail e enviaremos um link seguro para você voltar."
+              : isSignUp
+              ? "Um acesso para criar, editar e publicar seus melhores momentos."
+              : "Entre para continuar criando com a KLIPAPP."}
           </p>
-        </div>
+        </header>
 
-        {/* Google OAuth - Destaque no topo */}
-        <button
-          onClick={handleGoogleSignIn}
-          type="button"
-          disabled={googleLoading}
-          className="w-full py-3 px-4 rounded-xl text-sm font-bold text-[#fff8f5] hover:brightness-110 transition flex items-center justify-center gap-3 cursor-pointer disabled:opacity-50 mb-4"
-          style={{
-            background: "#1c1b1b",
-            border: "1px solid rgba(255, 255, 255, 0.2)",
-          }}
-        >
-          {googleLoading ? (
-            <span className="text-xs text-[#bcb4ae]">Redirecionando para o Google...</span>
-          ) : (
-            <>
-              <svg className="w-5 h-5 shrink-0" viewBox="0 0 24 24">
-                <path
-                  fill="#EA4335"
-                  d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.4 9 5 12 5z"
-                />
-                <path
-                  fill="#4285F4"
-                  d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z"
-                />
-                <path
-                  fill="#FBBC05"
-                  d="M5.6 14.7c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.2C.7 9.6 0 12.2 0 15s.7 5.4 1.9 7.8l3.7-2.9z"
-                />
-                <path
-                  fill="#34A853"
-                  d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2-6.4-4.8L1.9 16.4C3.7 20.2 7.5 23 12 23z"
-                />
-              </svg>
-              Entrar com Google
-            </>
+        {!isRecovering && (
+          <>
+            <button
+              onClick={handleGoogleSignIn}
+              type="button"
+              disabled={googleLoading || loading}
+              className={styles.googleButton}
+              aria-busy={googleLoading}
+            >
+              {googleLoading ? (
+                <>
+                  <span className={styles.spinner} aria-hidden="true" />
+                  <span>Conectando ao Google…</span>
+                </>
+              ) : (
+                <>
+                  <svg className={styles.googleIcon} viewBox="0 0 24 24" aria-hidden="true">
+                    <path fill="#EA4335" d="M12 5c1.6 0 3 .6 4.1 1.6l3.1-3.1C17.3 1.7 14.8 1 12 1 7.5 1 3.7 3.6 1.9 7.4l3.7 2.9C6.5 7.4 9 5 12 5z" />
+                    <path fill="#4285F4" d="M23.5 12.3c0-.8-.1-1.6-.2-2.3H12v4.5h6.5c-.3 1.5-1.1 2.8-2.4 3.7l3.7 2.9c2.2-2 3.7-5 3.7-8.8z" />
+                    <path fill="#FBBC05" d="M5.6 14.7c-.2-.7-.4-1.5-.4-2.3s.2-1.6.4-2.3L1.9 7.2C.7 9.6 0 12.2 0 15s.7 5.4 1.9 7.8l3.7-2.9z" />
+                    <path fill="#34A853" d="M12 23c3.2 0 6-1.1 8-3l-3.7-2.9c-1.1.7-2.5 1.2-4.3 1.2-3 0-5.5-2-6.4-4.8L1.9 16.4C3.7 20.2 7.5 23 12 23z" />
+                  </svg>
+                  <span>Continuar com Google</span>
+                </>
+              )}
+            </button>
+
+            <div className={styles.divider}><span>ou use seu e-mail</span></div>
+
+            <div className={styles.modeSwitch} role="group" aria-label="Escolha o tipo de acesso">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(false);
+                  setErrorMsg("");
+                  setSuccessMsg("");
+                }}
+                className={!isSignUp ? styles.modeActive : undefined}
+                aria-pressed={!isSignUp}
+              >
+                Entrar
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSignUp(true);
+                  setErrorMsg("");
+                  setSuccessMsg("");
+                }}
+                className={isSignUp ? styles.modeActive : undefined}
+                aria-pressed={isSignUp}
+              >
+                Criar conta
+              </button>
+            </div>
+          </>
+        )}
+
+        <div className={styles.messageRegion} aria-live="polite" aria-atomic="true">
+          {errorMsg && (
+            <div id="klipapp-auth-error" className={`${styles.message} ${styles.errorMessage}`} role="alert">
+              <AlertCircle aria-hidden="true" />
+              <span>{errorMsg}</span>
+            </div>
           )}
-        </button>
 
-        <div className="relative mb-4">
-          <div className="absolute inset-0 flex items-center">
-            <div className="w-full border-t border-[#ffffff18]" />
-          </div>
-          <div className="relative flex justify-center text-[11px]">
-            <span className="px-2 text-[#857e79]" style={{ background: "#1d1819" }}>
-              ou com e-mail e senha
-            </span>
-          </div>
+          {successMsg && (
+            <div id="klipapp-auth-success" className={`${styles.message} ${styles.successMessage}`} role="status">
+              <CheckCircle2 aria-hidden="true" />
+              <span>{successMsg}</span>
+            </div>
+          )}
         </div>
 
-        {/* Tab Switcher */}
-        <div
-          className="flex p-1 rounded-xl mb-4"
-          style={{
-            background: "#101111",
-            border: "1px solid rgba(255,255,255,0.12)",
-          }}
+        <form
+          onSubmit={isRecovering ? handlePasswordReset : handleSubmit}
+          className={styles.form}
+          aria-describedby={errorMsg ? "klipapp-auth-error" : successMsg ? "klipapp-auth-success" : undefined}
         >
-          <button
-            type="button"
-            onClick={() => {
-              setIsSignUp(false);
-              setErrorMsg("");
-              setSuccessMsg("");
-            }}
-            className="flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer"
-            style={{
-              background: !isSignUp ? "#ff6b5c" : "transparent",
-              color: !isSignUp ? "#25100e" : "#a8a09a",
-            }}
-          >
-            Entrar
-          </button>
-          <button
-            type="button"
-            onClick={() => {
-              setIsSignUp(true);
-              setErrorMsg("");
-              setSuccessMsg("");
-            }}
-            className="flex-1 py-1.5 text-xs font-bold rounded-lg transition cursor-pointer"
-            style={{
-              background: isSignUp ? "#ff6b5c" : "transparent",
-              color: isSignUp ? "#25100e" : "#a8a09a",
-            }}
-          >
-            Criar Conta
-          </button>
-        </div>
-
-        {errorMsg && (
-          <div
-            className="mb-3.5 p-3 rounded-xl text-xs flex items-start gap-2"
-            style={{
-              background: "rgba(220, 38, 38, 0.12)",
-              border: "1px solid rgba(220, 38, 38, 0.35)",
-              color: "#ff9990",
-            }}
-          >
-            <AlertCircle className="w-4 h-4 shrink-0 text-[#ff7160] mt-0.5" />
-            <span>{errorMsg}</span>
-          </div>
-        )}
-
-        {successMsg && (
-          <div
-            className="mb-3.5 p-3 rounded-xl text-xs flex items-center gap-2"
-            style={{
-              background: "rgba(16, 185, 129, 0.12)",
-              border: "1px solid rgba(16, 185, 129, 0.35)",
-              color: "#6ee7b7",
-            }}
-          >
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-[#10b981]" />
-            <span>{successMsg}</span>
-          </div>
-        )}
-
-        <form onSubmit={handleSubmit} className="space-y-3">
-          {isSignUp && (
-            <div>
-              <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
-                Nome
-              </label>
-              <div className="relative">
-                <User className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
+          {isSignUp && !isRecovering && (
+            <div className={styles.field}>
+              <label htmlFor="klipapp-auth-name">Nome</label>
+              <div className={styles.inputShell}>
+                <User aria-hidden="true" />
                 <input
+                  id="klipapp-auth-name"
                   type="text"
-                  required={isSignUp}
+                  required
+                  autoComplete="name"
                   value={name}
-                  onChange={(e) => setName(e.target.value)}
-                  placeholder="Ex.: Rafael Santos"
-                  className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs text-[#fff8f5] placeholder-[#6e6863] focus:outline-none transition"
-                  style={{
-                    background: "#0f1010",
-                    border: "1px solid rgba(255, 255, 255, 0.16)",
-                  }}
+                  onChange={(event) => setName(event.target.value)}
+                  placeholder="Como podemos chamar você?"
                 />
               </div>
             </div>
           )}
 
-          <div>
-            <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
-              E-mail
-            </label>
-            <div className="relative">
-              <Mail className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
+          <div className={styles.field}>
+            <label htmlFor="klipapp-auth-email">E-mail</label>
+            <div className={styles.inputShell}>
+              <Mail aria-hidden="true" />
               <input
+                ref={emailInputRef}
+                id="klipapp-auth-email"
                 type="email"
                 required
+                autoComplete="email"
+                inputMode="email"
                 value={email}
-                onChange={(e) => setEmail(e.target.value)}
-                placeholder="seu.email@exemplo.com"
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs text-[#fff8f5] placeholder-[#6e6863] focus:outline-none transition"
-                style={{
-                  background: "#0f1010",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
-                }}
+                onChange={(event) => setEmail(event.target.value)}
+                placeholder="voce@exemplo.com"
               />
             </div>
           </div>
 
-          <div>
-            <label className="block text-[11px] font-bold text-[#cfc7c1] mb-1 uppercase tracking-wider">
-              Senha
-            </label>
-            <div className="relative">
-              <Lock className="absolute left-3 top-3 w-4 h-4 text-[#8a827c]" />
-              <input
-                type="password"
-                required
-                minLength={6}
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
-                placeholder="Mínimo 6 caracteres"
-                className="w-full pl-9 pr-3 py-2.5 rounded-xl text-xs text-[#fff8f5] placeholder-[#6e6863] focus:outline-none transition"
-                style={{
-                  background: "#0f1010",
-                  border: "1px solid rgba(255, 255, 255, 0.16)",
-                }}
-              />
+          {!isRecovering && (
+            <div className={styles.field}>
+              <div className={styles.passwordLabelRow}>
+                <label htmlFor="klipapp-auth-password">Senha</label>
+                {!isSignUp && (
+                  <button type="button" className={styles.forgotButton} onClick={openRecovery}>
+                    Esqueci minha senha
+                  </button>
+                )}
+              </div>
+              <div className={styles.inputShell}>
+                <Lock aria-hidden="true" />
+                <input
+                  id="klipapp-auth-password"
+                  type="password"
+                  required
+                  minLength={6}
+                  autoComplete={isSignUp ? "new-password" : "current-password"}
+                  value={password}
+                  onChange={(event) => setPassword(event.target.value)}
+                  placeholder={isSignUp ? "Crie uma senha com 6+ caracteres" : "Digite sua senha"}
+                />
+              </div>
             </div>
-          </div>
+          )}
 
           <button
             type="submit"
-            disabled={loading}
-            className="w-full py-3 px-4 rounded-xl text-xs font-black shadow-lg transition flex items-center justify-center gap-2 mt-3 cursor-pointer disabled:opacity-50"
-            style={{
-              background: "linear-gradient(135deg, #ff7564, #d84f41)",
-              border: "1px solid #ff7160",
-              color: "#25100e",
-              boxShadow: "0 6px 18px rgba(255, 107, 92, 0.35)",
-            }}
+            disabled={isRecovering ? recoveryLoading : loading || googleLoading}
+            className={styles.primaryButton}
+            aria-busy={isRecovering ? recoveryLoading : loading}
           >
-            <LogIn className="w-4 h-4" />
-            {loading
-              ? "Processando..."
-              : isSignUp
-                ? "Cadastrar e Entrar"
-                : "Entrar com E-mail"}
+            {(isRecovering ? recoveryLoading : loading) ? (
+              <>
+                <span className={styles.spinner} aria-hidden="true" />
+                <span>{isRecovering ? "Enviando…" : "Processando…"}</span>
+              </>
+            ) : (
+              <>
+                {isRecovering ? <Mail aria-hidden="true" /> : <LogIn aria-hidden="true" />}
+                <span>{isRecovering ? "Enviar link de acesso" : isSignUp ? "Criar conta KLIPAPP" : "Entrar na KLIPAPP"}</span>
+              </>
+            )}
           </button>
         </form>
 
-        {!isSupabaseConfigured && (
-          <div
-            className="mt-4 p-3 rounded-xl text-[11px]"
-            style={{
-              background: "rgba(255, 171, 64, 0.1)",
-              border: "1px solid rgba(255, 171, 64, 0.3)",
-              color: "#ffd49a",
-            }}
+        {isRecovering && (
+          <button
+            type="button"
+            className={styles.recoveryBackButton}
+            onClick={returnToLogin}
+            disabled={recoveryLoading}
           >
-            <strong>⚠ Supabase não detectado.</strong> Configure as variáveis{" "}
-            <code className="text-[#ff9789]">NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
-            <code className="text-[#ff9789]">NEXT_PUBLIC_SUPABASE_ANON_KEY</code>{" "}
-            no arquivo <code>.env.local</code> para habilitar autenticação real.
+            <ArrowLeft aria-hidden="true" />
+            Voltar ao login
+          </button>
+        )}
+
+        {!isSupabaseConfigured && (
+          <div className={styles.setupWarning} role="status">
+            <strong>Supabase não detectado.</strong>
+            <span>
+              Configure <code>NEXT_PUBLIC_SUPABASE_URL</code> e{" "}
+              <code>NEXT_PUBLIC_SUPABASE_ANON_KEY</code> no arquivo <code>.env.local</code>.
+            </span>
           </div>
         )}
+
+        <p className={styles.legalNote}>
+          Ao continuar, você concorda com os termos e a política de privacidade da KLIPAPP.
+        </p>
       </div>
     </div>
   );

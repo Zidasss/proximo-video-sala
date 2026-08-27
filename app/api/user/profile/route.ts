@@ -1,12 +1,23 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, isSupabaseConfigured } from "../../../../lib/supabase/server";
 
+type SocialAccountRow = {
+  id: string;
+  platform: string;
+  platform_user_id: string | null;
+  account_name: string | null;
+  account_handle: string | null;
+  avatar_url: string | null;
+  status: string | null;
+  created_at: string;
+};
+
 export async function GET() {
   if (!isSupabaseConfigured) {
     return NextResponse.json({
       user: {
         id: "creator-demo-id",
-        email: "criador@klip.app",
+        email: "criador@klipapp.com.br",
         name: "Criador de Conteúdo",
         avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=KlipCreator",
         createdAt: new Date().toISOString(),
@@ -15,24 +26,24 @@ export async function GET() {
         {
           id: "yt-1",
           platform: "youtube",
-          accountName: "Meu Canal Klip",
-          accountHandle: "@KlipShortsOfficial",
+          accountName: "Meu Canal KLIPAPP",
+          accountHandle: "@KLIPAPPShorts",
           avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=YouTube",
           status: "connected",
         },
         {
           id: "tt-1",
           platform: "tiktok",
-          accountName: "Klip Creators",
-          accountHandle: "@klip_creators",
+          accountName: "KLIPAPP Creators",
+          accountHandle: "@klipapp_creators",
           avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=TikTok",
           status: "connected",
         },
         {
           id: "ig-1",
           platform: "instagram",
-          accountName: "Klip Studio Brasil",
-          accountHandle: "@klip.studio",
+          accountName: "KLIPAPP Studio Brasil",
+          accountHandle: "@klipapp.studio",
           avatarUrl: "https://api.dicebear.com/7.x/bottts/svg?seed=Instagram",
           status: "connected",
         },
@@ -75,7 +86,7 @@ export async function GET() {
   const displayName = profile?.name || user.user_metadata?.full_name || user.email?.split("@")[0] || "Criador";
   const avatarUrl = profile?.avatar_url || user.user_metadata?.avatar_url || `https://api.dicebear.com/7.x/bottts/svg?seed=${encodeURIComponent(displayName)}`;
 
-  const formattedAccounts = (socialAccounts || []).map((a: any) => ({
+  const formattedAccounts = (socialAccounts || []).map((a: SocialAccountRow) => ({
     id: a.id,
     platform: a.platform,
     platformUserId: a.platform_user_id,
@@ -113,7 +124,7 @@ export async function PUT(req: NextRequest) {
         success: true,
         user: {
           id: "creator-demo-id",
-          email: "criador@klip.app",
+          email: "criador@klipapp.com.br",
           name: name || "Criador de Conteúdo",
           avatarUrl: avatarUrl || "https://api.dicebear.com/7.x/bottts/svg?seed=KlipCreator",
         },
@@ -166,7 +177,8 @@ export async function PUT(req: NextRequest) {
         avatarUrl: updatedProfile?.avatar_url || avatarUrl,
       },
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (error: unknown) {
+    const message = error instanceof Error ? error.message : "Erro inesperado ao atualizar o perfil.";
+    return NextResponse.json({ error: message }, { status: 500 });
   }
 }

@@ -3,11 +3,83 @@
 import { useEffect, useRef, useState, type CSSProperties } from "react";
 import Link from "next/link";
 import Peer, { DataConnection, MediaConnection } from "peerjs";
+import type { Tensor } from "@tensorflow/tfjs";
 import { AuthModal } from "../components/AuthModal";
 import { SocialAccountsModal } from "../components/SocialAccountsModal";
 import { PublishModal } from "../components/PublishModal";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
-import { Share2, User } from "lucide-react";
+import {
+  Activity,
+  AlignCenter,
+  AlignLeft,
+  AlignRight,
+  ArrowDown,
+  ArrowLeft,
+  ArrowRight,
+  ArrowUp,
+  AudioLines,
+  Blend,
+  BookmarkPlus,
+  Captions,
+  Circle,
+  CircleStop,
+  Clapperboard,
+  Clock3,
+  Copy,
+  Download,
+  Eye,
+  FileDown,
+  FileUp,
+  Film,
+  Frame,
+  ImagePlus,
+  Layers2,
+  LayoutTemplate,
+  LogIn,
+  LogOut,
+  Magnet,
+  Maximize2,
+  MessageSquare,
+  Mic,
+  MicOff,
+  Minimize2,
+  Minus,
+  MonitorUp,
+  Moon,
+  MoreHorizontal,
+  MoveHorizontal,
+  MoveVertical,
+  Music2,
+  Pause,
+  PictureInPicture,
+  Play,
+  Plus,
+  Redo2,
+  RefreshCw,
+  Repeat2,
+  RotateCcw,
+  Scissors,
+  ScreenShare,
+  ScreenShareOff,
+  Settings2,
+  Share2,
+  ShieldCheck,
+  SlidersHorizontal,
+  Sparkles,
+  Sun,
+  Trash2,
+  Type,
+  Undo2,
+  User,
+  UserPlus,
+  Video,
+  VideoOff,
+  Volume2,
+  WandSparkles,
+  X,
+} from "lucide-react";
+import { ProductOverview } from "../components/landing/ProductOverview";
+import { KlipAppLogo } from "../components/brand/KlipAppLogo";
 import GifStudio from "./gif-studio";
 import QuickCreate, {
   getSocialPreset,
@@ -25,7 +97,6 @@ import { EffectsGallery } from "../components/effects";
 import {
   createVisualEffectApplication,
   drawVisualEffectFrame,
-  getVisualEffect,
   getVisualEffectFrame,
   visualEffectFrameToCssFilter,
   VISUAL_EFFECTS,
@@ -41,7 +112,7 @@ type Quality = "720" | "1080";
 type ExportFormat = "mp4" | "webm";
 type ExportAspect = "original" | "vertical" | "portrait" | "landscape" | "square";
 type TransitionKind = "fade-black" | "fade-white" | "flash" | "dissolve" | "wipe" | "none";
-type KlipTheme = "dark" | "light";
+type KlipAppTheme = "dark" | "light";
 type Msg = { name: string; text: string };
 type SavedCall = {
   room: string;
@@ -55,6 +126,18 @@ type SavedCall = {
   startedAt: number;
 };
 type EditorClip = { url: string; name: string; autoAnalyze?: boolean };
+type AppUser = {
+  id: string;
+  email: string;
+  name?: string;
+  avatarUrl?: string;
+};
+type ExtendedDisplayMediaStreamOptions = Omit<DisplayMediaStreamOptions, "audio"> & {
+  audio?: boolean | (MediaTrackConstraints & { suppressLocalAudioPlayback?: boolean });
+  systemAudio?: "include" | "exclude";
+  selfBrowserSurface?: "include" | "exclude";
+  surfaceSwitching?: "include" | "exclude";
+};
 type TextEffect = "none" | "pop" | "slide" | "typewriter" | "zoom" | "bounce";
 type TextLayer = {
   id: string;
@@ -159,7 +242,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.20.5";
+const APP_VERSION = "v0.21.0";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",
@@ -245,7 +328,7 @@ const constraints = (
 });
 
 export default function Home() {
-  const [theme, setTheme] = useState<KlipTheme>("dark");
+  const [theme, setTheme] = useState<KlipAppTheme>("dark");
   const [inRoom, setInRoom] = useState(false);
   const [localStudio, setLocalStudio] = useState(false);
   const [motionStudio, setMotionStudio] = useState(false);
@@ -255,15 +338,18 @@ export default function Home() {
   const [authModalOpen, setAuthModalOpen] = useState(false),
     [socialModalOpen, setSocialModalOpen] = useState(false),
     [publishModalOpen, setPublishModalOpen] = useState(false),
-    [currentUser, setCurrentUser] = useState<{ id: string; email: string; name?: string } | null>(null);
+    [currentUser, setCurrentUser] = useState<AppUser | null>(null);
   const [booting, setBooting] = useState(true);
   const [room, setRoom] = useState("------"),
     [pin, setPin] = useState("----");
 
   useEffect(() => {
-    const saved = localStorage.getItem("klip_theme") as KlipTheme | null;
-    const preferred = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-    setTheme(saved === "dark" || saved === "light" ? saved : preferred);
+    const frame = window.requestAnimationFrame(() => {
+      const saved = localStorage.getItem("klip_theme") as KlipAppTheme | null;
+      const preferred = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
+      setTheme(saved === "dark" || saved === "light" ? saved : preferred);
+    });
+    return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
@@ -426,15 +512,19 @@ export default function Home() {
   useEffect(() => { skinSmoothRef.current = skinSmooth; }, [skinSmooth]);
 
   useEffect(() => {
-    try {
-      const savedUser = localStorage.getItem("klip_user");
-      if (savedUser) setCurrentUser(JSON.parse(savedUser));
-    } catch {}
+    let stopAuthSubscription: (() => void) | null = null;
+    const initialize = () => {
+      try {
+        const savedUser = localStorage.getItem("klip_user");
+        if (savedUser) setCurrentUser(JSON.parse(savedUser) as AppUser);
+      } catch {
+        // Um cache de sessão inválido não deve impedir a inicialização do app.
+      }
 
-    if (isSupabaseConfigured) {
-      const supabase = createClient();
-      const query = new URLSearchParams(window.location.search);
-      const authCode = query.get("code");
+      if (isSupabaseConfigured) {
+        const supabase = createClient();
+        const query = new URLSearchParams(window.location.search);
+        const authCode = query.get("code");
 
       if (authCode) {
         supabase.auth.exchangeCodeForSession(authCode).then(({ data, error }) => {
@@ -482,7 +572,7 @@ export default function Home() {
         }).catch(() => undefined);
       }
 
-      const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+        const authListener = supabase.auth.onAuthStateChange((event, session) => {
         if (session?.user) {
           const userName = session.user.user_metadata?.full_name || session.user.user_metadata?.name || session.user.email?.split("@")[0] || "Criador";
           const avatarUrl = session.user.user_metadata?.avatar_url || session.user.user_metadata?.picture || undefined;
@@ -498,59 +588,66 @@ export default function Home() {
           setCurrentUser(null);
           localStorage.removeItem("klip_user");
         }
-      });
-    }
+        });
+        stopAuthSubscription = () => authListener.data.subscription.unsubscribe();
+      }
 
-    const query = new URLSearchParams(location.search);
-    if (query.get("editor") === "1") {
-      setEditorOpen(true);
-      setBooting(false);
-      return;
-    }
-    if (query.get("motion") === "1") {
-      setMotionStudio(true);
-      setBooting(false);
-      return;
-    }
-    const invitedRoom = (query.get("sala") || "").replace(/\D/g, ""),
-      invitedPin = (query.get("senha") || "").replace(/\D/g, "");
-    if (invitedRoom.length === 6 && invitedPin.length === 4) {
-      setRoom(invitedRoom);
-      setPin(invitedPin);
-      setOwner((query.get("anfitriao") || "Anfitrião").slice(0, 40));
-      setMode("guest");
-      setBooting(false);
-    } else {
-      try {
-        const saved = JSON.parse(
-          sessionStorage.getItem("klip-active-call") || "null",
-        ) as SavedCall | null;
-        if (
-          saved?.room?.length === 6 &&
-          saved.pin?.length === 4 &&
-          saved.name
-        ) {
-          setRoom(saved.room);
-          setPin(saved.pin);
-          setName(saved.name);
-          setOwner(saved.owner);
-          setMode(saved.mode);
-          setQuality(saved.quality);
-          setDeviceId(saved.deviceId);
-          setAudioInputId(saved.audioInputId || "");
-          setRestoreCall(saved);
-          setNotice("Restaurando sua chamada…");
-        } else {
+      const query = new URLSearchParams(location.search);
+      if (query.get("editor") === "1") {
+        setEditorOpen(true);
+        setBooting(false);
+        return;
+      }
+      if (query.get("motion") === "1") {
+        setMotionStudio(true);
+        setBooting(false);
+        return;
+      }
+      const invitedRoom = (query.get("sala") || "").replace(/\D/g, ""),
+        invitedPin = (query.get("senha") || "").replace(/\D/g, "");
+      if (invitedRoom.length === 6 && invitedPin.length === 4) {
+        setRoom(invitedRoom);
+        setPin(invitedPin);
+        setOwner((query.get("anfitriao") || "Anfitrião").slice(0, 40));
+        setMode("guest");
+        setBooting(false);
+      } else {
+        try {
+          const saved = JSON.parse(
+            sessionStorage.getItem("klip-active-call") || "null",
+          ) as SavedCall | null;
+          if (
+            saved?.room?.length === 6 &&
+            saved.pin?.length === 4 &&
+            saved.name
+          ) {
+            setRoom(saved.room);
+            setPin(saved.pin);
+            setName(saved.name);
+            setOwner(saved.owner);
+            setMode(saved.mode);
+            setQuality(saved.quality);
+            setDeviceId(saved.deviceId);
+            setAudioInputId(saved.audioInputId || "");
+            setRestoreCall(saved);
+            setNotice("Restaurando sua chamada…");
+          } else {
+            setRoom(code(6));
+            setPin(code(4));
+            setBooting(false);
+          }
+        } catch {
           setRoom(code(6));
           setPin(code(4));
           setBooting(false);
         }
-      } catch {
-        setRoom(code(6));
-        setPin(code(4));
-        setBooting(false);
       }
-    }
+    };
+    const frame = window.requestAnimationFrame(initialize);
+    return () => {
+      window.cancelAnimationFrame(frame);
+      stopAuthSubscription?.();
+    };
   }, []);
   useEffect(() => {
     if (
@@ -563,6 +660,7 @@ export default function Home() {
     )
       return;
     void join(restoreCall.deviceId).finally(() => setBooting(false));
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- A restauração deve chamar a implementação de join capturada somente quando os dados persistidos coincidirem; incluir a função instável repetiria a entrada na sala.
   }, [restoreCall, inRoom, room, pin, name, mode]);
   useEffect(() => {
     if (!inRoom || !callStartedAt) return;
@@ -829,13 +927,13 @@ export default function Home() {
           const model = await tf.loadGraphModel(
             "/rvm/rvm_mobilenetv3_tfjs_int8/model.json",
           );
-          let r1i: any = tf.scalar(0),
-            r2i: any = tf.scalar(0),
-            r3i: any = tf.scalar(0),
-            r4i: any = tf.scalar(0),
-            downsampleRatio: any = tf.scalar(0.38),
+          let r1i: Tensor = tf.scalar(0),
+            r2i: Tensor = tf.scalar(0),
+            r3i: Tensor = tf.scalar(0),
+            r4i: Tensor = tf.scalar(0),
             maskPixels: ImageData | null = null,
             inferenceBusy = false;
+          const downsampleRatio: Tensor = tf.scalar(0.38);
           // Perfil "reunião": a webcam continua saindo na resolução original,
           // mas a máscara é calculada em até 960 px. É a mesma separação de
           // trabalho usada por apps de chamada: vídeo fluido primeiro, IA em
@@ -897,7 +995,7 @@ export default function Home() {
             inferenceBusy = true;
             const started = performance.now();
             let inferenceFailed = false;
-            let src: any = null;
+            let src: Tensor | null = null;
             try {
               inferenceContext.drawImage(
                 source,
@@ -915,7 +1013,7 @@ export default function Home() {
                 // TensorFlow.js resolve pelos nomes reais dos nós. Usar os
                 // aliases fazia o RVM falhar em todos os Macs no fallback.
                 ["Identity:0", "Identity_1:0", "Identity_2:0", "Identity_3:0", "Identity_4:0", "Identity_5:0"],
-              )) as unknown as any[];
+              )) as Tensor[];
               const [fgr, pha, r1o, r2o, r3o, r4o] = outputs;
               const alpha = (await pha.data()) as Float32Array;
               // O modelo preserva a resolução de entrada; usar o shape evita
@@ -1358,6 +1456,7 @@ export default function Home() {
       active = false;
       stop?.();
     };
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- O pipeline de segmentação reinicia apenas quando a fonte/configuração muda; callbacks de publicação são deliberadamente lidos da renderização que iniciou o pipeline.
   }, [
     background,
     backgroundVideo,
@@ -1458,6 +1557,7 @@ export default function Home() {
     } catch {
       return;
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- O handler é reinstalado somente quando a composição PiP muda; incluir a função recriada a cada render causaria reinstalações contínuas.
   }, [inRoom, vertical, topOrder, tiktokTop, sharing, remoteSharing]);
   useEffect(() => {
     if (!inRoom) return;
@@ -1668,7 +1768,7 @@ export default function Home() {
     const stream = processedLocal.current || local.current;
     if (stream) replaceOutgoingVideo(stream);
   }
-  function useCall(call: MediaConnection, fallback: string) {
+  function attachCall(call: MediaConnection, fallback: string) {
     remoteId.current = call.peer;
     if (!cameraCalls.current.includes(call)) cameraCalls.current.push(call);
     tuneCameraCall(call);
@@ -1685,7 +1785,7 @@ export default function Home() {
       cameraCalls.current = cameraCalls.current.filter((item) => item !== call);
     });
   }
-  function useData(conn: DataConnection) {
+  function attachDataConnection(conn: DataConnection) {
     connection.current = conn;
     const handleOpen = () => {
       if (connection.current !== conn) return;
@@ -1775,7 +1875,7 @@ export default function Home() {
         if (peer.current === client && !peerConnected.current) startPeer(stream);
       }, 1_500);
     };
-    client.on("connection", useData);
+    client.on("connection", attachDataConnection);
     client.on("call", (call) => {
       if (call.metadata?.kind === "screen") {
         call.answer();
@@ -1811,7 +1911,7 @@ export default function Home() {
         return;
       }
       call.answer(callStream(stream));
-      useCall(call, String(call.metadata?.name || "Seu amigo"));
+      attachCall(call, String(call.metadata?.name || "Seu amigo"));
     });
     client.on("open", () => {
       if (isHost) {
@@ -1823,12 +1923,12 @@ export default function Home() {
       const call = client.call(hostId(room, pin), callStream(stream), {
         metadata: { name, kind: "camera" },
       });
-      useCall(call, owner || "Anfitrião");
-      useData(client.connect(hostId(room, pin), { reliable: true }));
+      attachCall(call, owner || "Anfitrião");
+      attachDataConnection(client.connect(hostId(room, pin), { reliable: true }));
       setNotice("Conectando à sala…");
       peerConnectTimer.current = window.setTimeout(retryConnection, 7_000);
     });
-    client.on("error", (error: any) => {
+    client.on("error", (error) => {
       if (
         (error.type === "peer-unavailable" ||
           error.type === "unavailable-id")
@@ -2037,7 +2137,7 @@ export default function Home() {
       return;
     }
     try {
-      const displayMediaOptions: any = {
+      const displayMediaOptions: ExtendedDisplayMediaStreamOptions = {
         video: {
           width: { ideal: 1920 },
           height: { ideal: 1080 },
@@ -2256,11 +2356,10 @@ export default function Home() {
         name: `Gravação ${label}`,
         autoAnalyze,
       };
-    const link = document.createElement("a"),
-      extension = mime.startsWith("video/mp4") ? "mp4" : "webm";
+    const link = document.createElement("a");
     setEditorClip(nextClip);
     link.href = downloadUrl;
-    link.download = `proximo-${label}-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
+    link.download = `klipapp-${label}-${Date.now()}.${mime.startsWith("video/mp4") ? "mp4" : "webm"}`;
     link.click();
     window.setTimeout(() => URL.revokeObjectURL(downloadUrl), 60_000);
     return nextClip;
@@ -2468,7 +2567,7 @@ export default function Home() {
     rec.start(1000);
     setRecording(true);
     connection.current?.send({ kind: "recording", active: true });
-    setNotice("● Gravando localmente com áudio. Seu amigo foi avisado.");
+    setNotice("Gravando localmente com áudio. Seu amigo foi avisado.");
     draw();
   }
   function leave() {
@@ -2697,21 +2796,18 @@ export default function Home() {
     );
   if (booting)
     return (
-      <main className="loading-screen">
-        <div className="loading-mark">
-          <i />
-          <i />
-        </div>
-        <h1>Klip</h1>
-        <p>Recuperando sua sala…</p>
-        <span />
+      <main className="loading-screen" aria-busy="true" aria-live="polite">
+        <KlipAppLogo variant="symbol" width={52} height={52} />
+        <h1>KLIPAPP</h1>
+        <p>Preparando sua sessão…</p>
+        <span className="ka-loader" aria-hidden="true" />
       </main>
     );
   if (localStudio)
-    return <><button className="global-theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? "☀" : "☾"}</button><OfflineStudio onBack={() => setLocalStudio(false)} /></>;
+    return <><button className="global-theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button><OfflineStudio onBack={() => setLocalStudio(false)} /></>;
   if (motionStudio)
     return (
-      <><button className="global-theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? "☀" : "☾"}</button><GifStudio
+      <><button className="global-theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button><GifStudio
           onBack={() => setMotionStudio(false)}
           onUseBackground={(file) => {
             chooseBackground(file);
@@ -2723,84 +2819,81 @@ export default function Home() {
   if (!inRoom)
     return (
       <main className="landing">
-        <nav style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexWrap: "wrap" }}>
-          <div className="brand">
-            <span className="brand-mark" aria-hidden="true">
-              <i />
-              <i />
-            </span>
-            Klip
-          </div>
-          <div className="landing-nav-actions" style={{ display: "flex", alignItems: "center", gap: "8px", flexWrap: "wrap" }}>
-            <button className="theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? "☀" : "☾"}</button>
-            <button className="open-editor" onClick={openEditor}>✦ Editor de clipes</button>
-            <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}>◈ Criador de GIF</button>
-            <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}>◉ Estúdio offline</button>
+        <nav className="landing-nav" aria-label="Navegação principal">
+          <Link className="brand" href="/" aria-label="KLIPAPP — início">
+            <KlipAppLogo variant="full" width={148} height={32} />
+          </Link>
+          <div className="landing-nav-actions">
+            <button className="theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button>
+            <button className="open-editor" onClick={openEditor}><Clapperboard aria-hidden="true" /> Editor</button>
+            <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}><WandSparkles aria-hidden="true" /> Motion</button>
+            <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}><MonitorUp aria-hidden="true" /> Estúdio local</button>
             {currentUser ? (
               <>
                 <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
-                  <Share2 style={{ width: "14px", height: "14px" }} /> Publicar
+                  <Share2 aria-hidden="true" /> Publicar
                 </button>
-                <Link href="/perfil" style={{ textDecoration: "none", display: "inline-flex", alignItems: "center", gap: "6px", background: "rgba(255,255,255,0.06)", padding: "4px 10px 4px 4px", borderRadius: "12px", border: "1px solid rgba(255, 113, 96, 0.25)" }}>
-                  {(currentUser as any).avatarUrl ? (
+                <Link className="landing-profile-link" href="/perfil">
+                  {currentUser.avatarUrl ? (
+                    // eslint-disable-next-line @next/next/no-img-element -- Avatares OAuth podem vir de origens dinâmicas que não são configuráveis com segurança no loader do Next Image.
                     <img
-                      src={(currentUser as any).avatarUrl}
+                      src={currentUser.avatarUrl}
                       alt={currentUser.name || "Avatar"}
-                      style={{ width: "26px", height: "26px", borderRadius: "8px", objectFit: "cover", border: "1px solid rgba(255,113,96,0.4)" }}
                     />
                   ) : (
-                    <div style={{ width: "26px", height: "26px", borderRadius: "8px", background: "linear-gradient(135deg, #ff7564, #d84f41)", display: "flex", alignItems: "center", justifyContent: "center" }}>
-                      <User style={{ width: "14px", height: "14px", color: "#25100e" }} />
+                    <div className="landing-profile-fallback">
+                      <User aria-hidden="true" />
                     </div>
                   )}
-                  <span style={{ fontSize: "12px", fontWeight: 700, color: "#fff8f5" }}>{currentUser.name || currentUser.email}</span>
+                  <span>{currentUser.name || currentUser.email}</span>
                 </Link>
                 <button
+                  className="nav-action-btn ghost"
                   type="button"
                   onClick={async () => {
                     if (isSupabaseConfigured) {
                       try {
                         const supabase = createClient();
                         await supabase.auth.signOut();
-                      } catch {}
+                      } catch {
+                        // O logout local continua disponível mesmo se o provedor falhar.
+                      }
                     }
                     localStorage.removeItem("klip_user");
                     setCurrentUser(null);
                   }}
-                  style={{ background: "none", border: "1px solid rgba(255,255,255,0.12)", color: "#9e9690", fontSize: "11px", padding: "4px 8px", borderRadius: "8px", cursor: "pointer" }}
                   title="Sair da conta"
                 >
-                  Sair
+                  <LogOut aria-hidden="true" /> Sair
                 </button>
               </>
             ) : (
               <button className="nav-action-btn primary" type="button" onClick={() => setAuthModalOpen(true)}>
-                <User style={{ width: "14px", height: "14px" }} /> Entrar / Criar Conta
+                <LogIn aria-hidden="true" /> Entrar
               </button>
             )}
           </div>
         </nav>
         <section className="hero landing-hero-v2">
           <div className="landing-copy">
-            <div className="eyebrow">✦ KLIP STUDIO</div>
-            <h1>Do seu papo<br />ao seu <em>próximo clipe.</em></h1>
-            <p>Grave conversas com alta qualidade, corte momentos em 9:16 e publique diretamente no YouTube, TikTok e Instagram.</p>
+            <div className="eyebrow">ESTÚDIO DE CONVERSAS E CLIPES</div>
+            <h1>Uma conversa.<br /><em>Vários momentos.</em></h1>
+            <p>Grave em alta qualidade, encontre os melhores trechos e publique no formato certo.</p>
             <div className="landing-proof">
-              <span><b>MP4</b> gravação local</span>
-              <span><b>9:16</b> editor de clipes</span>
-              <span><b>1-Clique</b> publicação multi-plataforma</span>
+              <span><Film aria-hidden="true" /><b>Alta qualidade</b></span>
+              <span><Clapperboard aria-hidden="true" /><b>Editor multiformato</b></span>
+              <span><Share2 aria-hidden="true" /><b>Publicação integrada</b></span>
             </div>
           </div>
           <div className="landing-entry-card">
-            <div className="entry-card-heading"><div><small>ESTÚDIO AO VIVO</small><b>{mode === "host" ? "Iniciar sessão" : "Entrar na sessão"}</b></div><span>● privado</span></div>
-            <p className="entry-card-description">{mode === "host" ? "Crie uma sala protegida para gravar com seus convidados." : `Você vai entrar na sala de ${owner || "seu convidado"}.`}</p>
+            <div className="entry-card-heading"><div><small>AO VIVO</small><b>{mode === "host" ? "Criar sala" : "Entrar na sala"}</b></div><span><i /> privada</span></div>
             <div className="entry-tabs">
               <button className={mode === "host" ? "selected" : ""} onClick={() => setMode("host")}>Criar sala</button>
               <button className={mode === "guest" ? "selected" : ""} onClick={() => setMode("guest")}>Entrar</button>
             </div>
             <div className="join">
             <label>
-              SEU NOME OU CANAL
+              Nome
               <input
                 value={name}
                 placeholder={currentUser?.name || "Digite seu nome"}
@@ -2808,7 +2901,7 @@ export default function Home() {
               />
             </label>
             <label>
-              SALA (6 NÚMEROS)
+              Sala
               <input
                 value={room}
                 inputMode="numeric"
@@ -2819,7 +2912,7 @@ export default function Home() {
               />
             </label>
             <label>
-              SENHA DE SEGURANÇA
+              Código
               <input
                 value={pin}
                 inputMode="numeric"
@@ -2837,150 +2930,23 @@ export default function Home() {
                   setPin(code(4));
                 }}
               >
-                Gerar nova sala e senha
+                Gerar novos códigos
               </button>
             )}
             <button onClick={() => void join()}>
-              {mode === "host" ? "Abrir sala de gravação" : "Entrar na sessão"}{" "}
-              <b>→</b>
+              {mode === "host" ? "Abrir sala" : "Entrar na sala"}{" "}
+              <ArrowRight aria-hidden="true" size={16} />
             </button>
             {notice && <p>{notice}</p>}
             </div>
           </div>
         </section>
 
-        {/* Seção de Funcionalidades SaaS - Produto para Venda */}
-        <section style={{ maxWidth: "1200px", margin: "60px auto 40px", padding: "0 20px" }}>
-          <div style={{ textAlign: "center", marginBottom: "40px" }}>
-            <span style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "1.5px", color: "#ff8879", textTransform: "uppercase" }}>
-              Tudo em um único lugar
-            </span>
-            <h2 style={{ fontSize: "28px", fontWeight: 900, color: "#fff8f5", marginTop: "6px" }}>
-              Do estúdio direto para o feed
-            </h2>
-            <p style={{ fontSize: "14px", color: "#bcb4ae", maxWidth: "600px", margin: "8px auto 0" }}>
-              Simplifique seu fluxo de criação: grave conversas, edite os melhores momentos e publique para milhões de seguidores.
-            </p>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(260px, 1fr))", gap: "20px" }}>
-            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
-              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
-                🎙️
-              </div>
-              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Salas de Gravação HD</h3>
-              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
-                Crie salas privadas com gravação local sem perda de áudio ou vídeo. Convide parceiros e grave podcasts sem travamentos.
-              </p>
-            </div>
-
-            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
-              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
-                ✂️
-              </div>
-              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Editor Vertical (9:16)</h3>
-              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
-                Corte os destaques da sua live ou gravação direto no formato vertical ideal para Shorts, Reels e TikTok com ferramentas rápidas.
-              </p>
-            </div>
-
-            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
-              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
-                🚀
-              </div>
-              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Publicação Multi-Plataforma</h3>
-              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
-                Conecte suas contas do YouTube, TikTok e Instagram. Agende ou publique seus vídeos em 1 clique sem abrir cada app.
-              </p>
-            </div>
-
-            <div style={{ background: "linear-gradient(145deg, #241b1be8, #151717f5)", border: "1px solid rgba(255, 113, 96, 0.22)", borderRadius: "24px", padding: "24px" }}>
-              <div style={{ width: "44px", height: "44px", borderRadius: "14px", background: "rgba(255, 113, 96, 0.15)", color: "#ff7160", display: "flex", alignItems: "center", justifyContent: "center", fontSize: "20px", fontWeight: "bold", marginBottom: "16px" }}>
-                ⚡
-              </div>
-              <h3 style={{ fontSize: "16px", fontWeight: 800, color: "#fff8f5", marginBottom: "8px" }}>Ferramentas & GIFs</h3>
-              <p style={{ fontSize: "12px", color: "#bcb4ae", lineHeight: "1.6" }}>
-                Gere GIFs animados para redes sociais, utilize o estúdio offline sem internet e sincronize seus arquivos com o banco Supabase.
-              </p>
-            </div>
-          </div>
-        </section>
-
-        {/* Seção de Planos do Produto (Futuro SaaS comercial) */}
-        <section style={{ maxWidth: "1200px", margin: "40px auto 60px", padding: "0 20px" }}>
-          <div style={{ textAlign: "center", marginBottom: "36px" }}>
-            <span style={{ fontSize: "11px", fontWeight: 800, letterSpacing: "1.5px", color: "#ff8879", textTransform: "uppercase" }}>
-              Planos & Assinaturas
-            </span>
-            <h2 style={{ fontSize: "26px", fontWeight: 900, color: "#fff8f5", marginTop: "4px" }}>
-              Escolha o plano ideal para seu canal
-            </h2>
-          </div>
-
-          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(280px, 1fr))", gap: "24px" }}>
-            {/* Plano Grátis */}
-            <div style={{ background: "#161818", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "24px", padding: "28px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div>
-                <span style={{ fontSize: "12px", fontWeight: 800, color: "#9e9690", textTransform: "uppercase" }}>INICIANTE</span>
-                <h3 style={{ fontSize: "24px", fontWeight: 900, color: "#fff8f5", margin: "8px 0 4px" }}>Grátis</h3>
-                <p style={{ fontSize: "12px", color: "#9e9690", marginBottom: "20px" }}>Para quem está começando a gravar e editar clipes.</p>
-                <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: "12px", color: "#bcb4ae" }}>
-                  <li style={{ marginBottom: "8px" }}>✓ Gravação em salas privadas</li>
-                  <li style={{ marginBottom: "8px" }}>✓ Editor de clipes em 9:16</li>
-                  <li style={{ marginBottom: "8px" }}>✓ Até 1 conta social vinculada</li>
-                  <li>✓ Suporte básico</li>
-                </ul>
-              </div>
-              <button onClick={() => setAuthModalOpen(true)} className="nav-action-btn" style={{ width: "100%", justifyContent: "center" }}>
-                Começar Grátis
-              </button>
-            </div>
-
-            {/* Plano PRO (Destaque Comercial) */}
-            <div style={{ background: "linear-gradient(155deg, #2e1d1f, #181919)", border: "2px solid #ff7160", borderRadius: "24px", padding: "28px", display: "flex", flexDirection: "column", justifyContent: "space-between", position: "relative", boxShadow: "0 14px 40px rgba(255, 113, 96, 0.2)" }}>
-              <div style={{ position: "absolute", top: "-12px", right: "24px", background: "linear-gradient(135deg, #ff7564, #d84f41)", color: "#25100e", fontSize: "10px", fontWeight: 900, padding: "4px 12px", borderRadius: "20px", textTransform: "uppercase" }}>
-                Mais Popular
-              </div>
-              <div>
-                <span style={{ fontSize: "12px", fontWeight: 800, color: "#ff8879" }}>CRIADOR PRO</span>
-                <h3 style={{ fontSize: "28px", fontWeight: 900, color: "#fff8f5", margin: "8px 0 4px" }}>R$ 49 <span style={{ fontSize: "14px", color: "#bcb4ae", fontWeight: 500 }}>/mês</span></h3>
-                <p style={{ fontSize: "12px", color: "#bcb4ae", marginBottom: "20px" }}>Para podcasters e criadores focados em crescimento rápido.</p>
-                <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: "12px", color: "#fff8f5" }}>
-                  <li style={{ marginBottom: "8px" }}>✓ <b>Tudo do plano Grátis</b></li>
-                  <li style={{ marginBottom: "8px" }}>✓ <b>Contas ilimitadas</b> (YouTube, TikTok, Instagram)</li>
-                  <li style={{ marginBottom: "8px" }}>✓ Publicação e agendamento em 1 clique</li>
-                  <li style={{ marginBottom: "8px" }}>✓ Gravação em áudio e vídeo isolado</li>
-                  <li>✓ Renderização de alta velocidade</li>
-                </ul>
-              </div>
-              <button onClick={() => setAuthModalOpen(true)} className="nav-action-btn primary" style={{ width: "100%", justifyContent: "center", padding: "12px" }}>
-                Assinar Plano Pro
-              </button>
-            </div>
-
-            {/* Plano Studio / Business */}
-            <div style={{ background: "#161818", border: "1px solid rgba(255, 255, 255, 0.12)", borderRadius: "24px", padding: "28px", display: "flex", flexDirection: "column", justifyContent: "space-between" }}>
-              <div>
-                <span style={{ fontSize: "12px", fontWeight: 800, color: "#9e9690" }}>ESTÚDIO & AGÊNCIAS</span>
-                <h3 style={{ fontSize: "28px", fontWeight: 900, color: "#fff8f5", margin: "8px 0 4px" }}>R$ 129 <span style={{ fontSize: "14px", color: "#bcb4ae", fontWeight: 500 }}>/mês</span></h3>
-                <p style={{ fontSize: "12px", color: "#9e9690", marginBottom: "20px" }}>Para produtoras, agências e equipes de mídia.</p>
-                <ul style={{ listStyle: "none", padding: 0, margin: "0 0 24px 0", fontSize: "12px", color: "#bcb4ae" }}>
-                  <li style={{ marginBottom: "8px" }}>✓ <b>Múltiplos membros de equipe</b></li>
-                  <li style={{ marginBottom: "8px" }}>✓ Gestão de múltiplos canais de clientes</li>
-                  <li style={{ marginBottom: "8px" }}>✓ Integração via API customizada</li>
-                  <li>✓ Suporte VIP prioritário 24/7</li>
-                </ul>
-              </div>
-              <button onClick={() => setAuthModalOpen(true)} className="nav-action-btn" style={{ width: "100%", justifyContent: "center" }}>
-                Falar com Vendas
-              </button>
-            </div>
-          </div>
-        </section>
+        <ProductOverview onStart={() => setAuthModalOpen(true)} />
 
         <footer className="landing-legal-footer">
-          <span>© 2026 Klip</span>
-          <nav><Link href="/privacidade">Política de Privacidade</Link><Link href="/termos">Termos de Serviço</Link></nav>
+          <span>© 2026 KLIPAPP</span>
+          <nav aria-label="Links legais"><Link href="/privacidade">Privacidade</Link><Link href="/termos">Termos</Link></nav>
         </footer>
 
         <div className="orb one" />
@@ -3003,7 +2969,7 @@ export default function Home() {
         <PublishModal
           isOpen={publishModalOpen}
           onClose={() => setPublishModalOpen(false)}
-          defaultTitle="Novo Vídeo Klip"
+          defaultTitle="Novo vídeo KLIPAPP"
         />
       </main>
     );
@@ -3019,30 +2985,24 @@ export default function Home() {
   return (
     <main className="call">
       <header>
-        <div className="brand">
-          <span className="brand-mark" aria-hidden="true">
-            <i />
-            <i />
-          </span>
-          Klip
-        </div>
+        <div className="brand"><KlipAppLogo variant="full" width={132} height={28} /></div>
         <div className="room">
-          <i /> sala {room} ·{" "}
-          <span className="call-timer">⏱ {callTimeLabel(callSeconds)}</span>
+          <i /> Sala {room}
+          <span className="call-timer"><Clock3 aria-hidden="true" /> {callTimeLabel(callSeconds)}</span>
         </div>
         <div className="header-actions">
-          <button className="theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? "☀" : "☾"}</button>
+          <button className="theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button>
           <button className="open-editor" onClick={openEditor}>
-            ✦ Editor
+            <Clapperboard aria-hidden="true" /> Editor
           </button>
           <button className="invite" onClick={() => void invite()}>
-            ⌁ Convidar
+            <UserPlus aria-hidden="true" /> Convidar
           </button>
           <button
             className="chat-toggle"
             onClick={() => setChatOpen(!chatOpen)}
           >
-            ▤ Chat
+            <MessageSquare aria-hidden="true" /> Chat
           </button>
           <button
             className={connectionOpen ? "connection-open" : "connection-toggle"}
@@ -3052,7 +3012,7 @@ export default function Home() {
               if (next) void refreshConnectionStats();
             }}
           >
-            ◌ Status
+            <Activity aria-hidden="true" /> Status
           </button>
           <button
             className={settingsOpen ? "settings-open" : "settings"}
@@ -3061,7 +3021,7 @@ export default function Home() {
               setSettingsOpen(next);
             }}
           >
-            ⚙ Ajustes
+            <Settings2 aria-hidden="true" /> Ajustes
           </button>
         </div>
       </header>
@@ -3096,13 +3056,13 @@ export default function Home() {
                   settingsMinimized ? "Expandir ajustes" : "Minimizar ajustes"
                 }
               >
-                —
+                <Minimize2 aria-hidden="true" size={14} />
               </button>
               <button
                 onClick={() => setSettingsOpen(false)}
                 aria-label="Fechar ajustes"
               >
-                ×
+                <X aria-hidden="true" size={14} />
               </button>
             </div>
           </div>
@@ -3111,7 +3071,7 @@ export default function Home() {
               <div className="settings-menu">
                 <details open>
                   <summary>
-                    <span>▣</span>
+                    <span><Video aria-hidden="true" size={16} /></span>
                     <div>
                       <b>Câmera e fundo</b>
                       <small>Webcam, imagem e desfoque</small>
@@ -3170,14 +3130,15 @@ export default function Home() {
                     <label className="menu-field" style={{ display: "flex", alignItems: "center", gap: "8px", cursor: "pointer", marginTop: "4px", background: "rgba(255,255,255,0.04)", padding: "8px 10px", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.08)" }}>
                       <input
                         type="checkbox"
+                        aria-label="Compartilhar som da tela"
                         checked={shareScreenAudio}
                         onChange={(e) => setShareScreenAudio(e.target.checked)}
                         style={{ width: "16px", height: "16px", accentColor: "#6366f1", cursor: "pointer" }}
                       />
-                      <div>
-                        <b style={{ fontSize: "11px", display: "block", color: "#f4f4f5" }}>Compartilhar som da tela</b>
+                      <span style={{ fontSize: "11px", display: "block", color: "#f4f4f5" }}>
+                        Compartilhar som da tela
                         <small style={{ fontSize: "10px", color: "#a1a1aa" }}>Inclui áudio do sistema / aba / vídeo ao transmitir tela</small>
-                      </div>
+                      </span>
                     </label>
                     {communicationAudioActive && (
                       <div className="audio-profile-warning" role="status">
@@ -3196,7 +3157,7 @@ export default function Home() {
                     )}
                     <div className="setting-actions">
                       <label className="background-upload">
-                        ▧ Escolher imagem
+                        <ImagePlus aria-hidden="true" size={14} /> Escolher imagem
                         <input
                           type="file"
                           accept="image/*,video/mp4,.mp4"
@@ -3206,7 +3167,7 @@ export default function Home() {
                         />
                       </label>
                       <label className="background-upload animated-background-upload">
-                        ✦ Subir GIF ou MP4 animado
+                        <Sparkles aria-hidden="true" size={14} /> Subir GIF ou MP4 animado
                         <input
                           type="file"
                           accept="image/gif,.gif,video/mp4,.mp4"
@@ -3221,7 +3182,7 @@ export default function Home() {
                         }
                         onClick={toggleBlur}
                       >
-                        ◌ Desfocar
+                        <Blend aria-hidden="true" size={14} /> Desfocar
                       </button>
                       <button
                         className={
@@ -3229,7 +3190,7 @@ export default function Home() {
                         }
                         onClick={toggleBackgroundRemoval}
                       >
-                        ◒ Remover fundo
+                        <Layers2 aria-hidden="true" size={14} /> Remover fundo
                       </button>
                       <button
                         className={
@@ -3237,7 +3198,7 @@ export default function Home() {
                         }
                         onClick={togglePremiumMatting}
                       >
-                        ✦ IA Premium
+                        <Sparkles aria-hidden="true" size={14} /> IA Premium
                       </button>
                     </div>
                     <p className="matting-note">
@@ -3245,11 +3206,11 @@ export default function Home() {
                         ? "IA Premium: recorte temporal de alta qualidade · ideal para GPUs fortes"
                         : "Recorte leve: mais rápido, indicado para computadores comuns"}
                     </p>
-                    {backgroundLabel && <p className="background-file-note">● {backgroundLabel}{/(GIF animado|Vídeo animado)/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
+                    {backgroundLabel && <p className="background-file-note"><ImagePlus aria-hidden="true" size={13} /> {backgroundLabel}{/(GIF animado|Vídeo animado)/.test(backgroundLabel) ? " · animação incluída na gravação" : ""}</p>}
                     {backgroundMode === "image" && (
                       <div className="background-customizer" style={{ marginTop: "10px", padding: "10px", background: "rgba(255,255,255,0.05)", borderRadius: "10px", border: "1px solid rgba(255,255,255,0.09)" }}>
                         <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "8px" }}>
-                          <b style={{ fontSize: "12px", color: "#ffd7ce" }}>✦ Ajuste do GIF / Fundo</b>
+                          <b style={{ fontSize: "12px", color: "#ffd7ce" }}><Sparkles aria-hidden="true" size={13} /> Ajuste do GIF / Fundo</b>
                           <button
                             type="button"
                             onClick={() => {
@@ -3260,7 +3221,7 @@ export default function Home() {
                             }}
                             style={{ fontSize: "11px", background: "rgba(255,255,255,0.08)", border: "1px solid rgba(255,255,255,0.15)", borderRadius: "6px", color: "#ff8d80", padding: "2px 8px", cursor: "pointer" }}
                           >
-                            ↺ Redefinir
+                            <RotateCcw aria-hidden="true" size={13} /> Redefinir
                           </button>
                         </div>
                         <div style={{ display: "flex", gap: "6px", marginBottom: "10px" }}>
@@ -3344,7 +3305,7 @@ export default function Home() {
                         <button onClick={() => updateWebcamLayerText("")}>Limpar</button>
                       </div>
                       <label className="background-upload">
-                        ▣ Subir moldura / overlay
+                        <Frame aria-hidden="true" size={14} /> Subir moldura / overlay
                         <input
                           type="file"
                           accept="image/png,image/jpeg,image/webp,image/gif,.gif"
@@ -3423,7 +3384,7 @@ export default function Home() {
                         className={micTesting ? "format on" : "format"}
                         onClick={testMicrophone}
                       >
-                        {micTesting ? "● Testando…" : "▷ Testar microfone"}
+                        {micTesting ? <><Circle aria-hidden="true" size={12} fill="currentColor" /> Testando…</> : <><Play aria-hidden="true" size={14} /> Testar microfone</>}
                       </button>
                       <small>
                         Fale por 5 segundos. Mantenha o indicador no meio para
@@ -3434,7 +3395,7 @@ export default function Home() {
                 </details>
                 <details>
                   <summary>
-                    <span>▯</span>
+                    <span><Clapperboard aria-hidden="true" size={16} /></span>
                     <div>
                       <b>Reels e prévia</b>
                       <small>Formato para salvar e edição visual</small>
@@ -3446,7 +3407,7 @@ export default function Home() {
                       onClick={toggleResenhaMode}
                       disabled={mode === "guest"}
                     >
-                      {resenhaMode ? "● Modo Resenha ativo" : "◉ Ativar Modo Resenha"}
+                      {resenhaMode ? <><Circle aria-hidden="true" size={12} fill="currentColor" /> Modo Resenha ativo</> : <><Circle aria-hidden="true" size={12} /> Ativar Modo Resenha</>}
                     </button>
                     <small className="resenha-note">
                       Duas câmeras empilhadas em 9:16, sem tela compartilhada — ideal para só bater papo e gravar.
@@ -3472,7 +3433,7 @@ export default function Home() {
                         <option value="webm">WebM · alta qualidade web</option>
                       </select>
                     </label>
-                    <small className="resenha-note">O formato é escolhido antes de iniciar a gravação. Se o Chrome não liberar MP4, o Klip avisa e usa WebM de verdade.</small>
+                    <small className="resenha-note">Se o Chrome não liberar MP4, a KLIPAPP preserva a gravação em WebM.</small>
                     <button
                       className="open-preview"
                       onClick={() => {
@@ -3480,13 +3441,13 @@ export default function Home() {
                         setPreviewOpen(!previewOpen);
                       }}
                     >
-                      ▣ {previewOpen ? "Fechar prévia" : "Abrir prévia"}
+                      <Eye aria-hidden="true" size={14} /> {previewOpen ? "Fechar prévia" : "Abrir prévia"}
                     </button>
                   </div>
                 </details>
                 <details>
                   <summary>
-                    <span>⇄</span>
+                    <span><Repeat2 aria-hidden="true" size={16} /></span>
                     <div>
                       <b>Layout vertical</b>
                       <small>Defina a ordem das câmeras e da tela</small>
@@ -3532,9 +3493,9 @@ export default function Home() {
                 className="session-refresh"
                 onClick={() => location.reload()}
               >
-                ↻ Recarregar sessão
+                <RefreshCw aria-hidden="true" size={14} /> Recarregar sessão
               </button>
-              <p className="app-version">Klip {APP_VERSION} · produção</p>
+              <p className="app-version">KLIPAPP {APP_VERSION} · produção</p>
             </>
           )}
         </aside>
@@ -3545,7 +3506,10 @@ export default function Home() {
             {sharing ? (
               <video ref={screen} autoPlay playsInline muted />
             ) : (
-              <video ref={remoteScreen} autoPlay playsInline />
+              <>
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption -- Fluxo WebRTC ao vivo não possui uma faixa VTT estática. */}
+                <video ref={remoteScreen} autoPlay playsInline />
+              </>
             )}
             <label>
               {sharing
@@ -3565,21 +3529,22 @@ export default function Home() {
           />
           {!cameraOn && <div className="avatar">V</div>}
           <label>
-            {name} (você) <b>{mic ? "●" : "microfone desligado"}</b>
+            {name} (você) <b aria-label={mic ? "Microfone ligado" : undefined}>{mic ? <Mic aria-hidden="true" size={12} /> : "microfone desligado"}</b>
           </label>
         </div>
         <div className={"tile waiting " + (speaking.friend ? "speaking" : "")}>
           {friend ? (
             <>
+              {/* eslint-disable-next-line jsx-a11y/media-has-caption -- Fluxo WebRTC ao vivo não possui uma faixa VTT estática. */}
               <video ref={theirs} autoPlay playsInline />
               <label>
-                {friend} <b>{friendRecording ? "● gravando" : "● conectado"}</b>
+                {friend} <b><Circle aria-hidden="true" size={9} fill="currentColor" /> {friendRecording ? "gravando" : "conectado"}</b>
               </label>
             </>
           ) : (
             <>
               <div className="avatar">?</div>
-              <label>Aguardando seu amigo</label>
+              <p className="tile-status">Aguardando seu amigo</p>
               <p>Envie o convite para ele entrar nesta sala</p>
             </>
           )}
@@ -3607,13 +3572,13 @@ export default function Home() {
                   previewMinimized ? "Expandir prévia" : "Minimizar prévia"
                 }
               >
-                —
+                <Minimize2 aria-hidden="true" size={14} />
               </button>
               <button
                 onClick={() => setPreviewOpen(false)}
                 aria-label="Fechar prévia"
               >
-                ×
+                <X aria-hidden="true" size={14} />
               </button>
             </div>
           </div>
@@ -3625,6 +3590,7 @@ export default function Home() {
             >
               <div>
                 <video ref={previewMine} autoPlay muted playsInline />
+                {/* eslint-disable-next-line jsx-a11y/media-has-caption -- Prévia WebRTC ao vivo não possui uma faixa VTT estática. */}
                 <video ref={previewFriend} autoPlay playsInline />
               </div>
               <span>Prévia 9:16 · clique para expandir</span>
@@ -3654,6 +3620,7 @@ export default function Home() {
                     muted
                     playsInline
                   />
+                  {/* eslint-disable-next-line jsx-a11y/media-has-caption -- Prévia WebRTC ao vivo não possui uma faixa VTT estática. */}
                   <video
                     draggable
                     onDragStart={() => setDragging("friend")}
@@ -3678,7 +3645,10 @@ export default function Home() {
                     style={{ height: `${(1 - tiktokTop) * 100}%` }}
                   >
                     {sharing || remoteSharing ? (
-                      <video ref={previewScreen} autoPlay playsInline />
+                      <>
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- Compartilhamento ao vivo não possui uma faixa VTT estática. */}
+                        <video ref={previewScreen} autoPlay playsInline />
+                      </>
                     ) : (
                       <span>A tela compartilhada aparecerá aqui</span>
                     )}
@@ -3709,7 +3679,7 @@ export default function Home() {
       {chatOpen && (
         <aside className="chat-panel">
           <div className="chat-title">
-            Chat da sala <button onClick={() => setChatOpen(false)}>×</button>
+            Chat da sala <button onClick={() => setChatOpen(false)} aria-label="Fechar chat"><X aria-hidden="true" size={14} /></button>
           </div>
           <div className="chat-messages">
             {messages.length ? (
@@ -3748,7 +3718,7 @@ export default function Home() {
                 <small>APRESENTAR</small>
                 <b id="screen-share-title">Como você quer compartilhar?</b>
               </div>
-              <button onClick={() => setShareScreenDialogOpen(false)} aria-label="Fechar">×</button>
+              <button onClick={() => setShareScreenDialogOpen(false)} aria-label="Fechar"><X aria-hidden="true" size={14} /></button>
             </header>
             <p>Escolha se o seu amigo também deve ouvir vídeos, músicas, jogos ou sons da guia compartilhada.</p>
             <button
@@ -3758,7 +3728,7 @@ export default function Home() {
                 void share(true);
               }}
             >
-              <span>🔊</span>
+              <span><Volume2 aria-hidden="true" size={20} /></span>
               <div><b>Tela com áudio</b><small>Envia imagem e som do sistema ou da guia</small></div>
               <i>Recomendado</i>
             </button>
@@ -3769,7 +3739,7 @@ export default function Home() {
                 void share(false);
               }}
             >
-              <span>▣</span>
+              <span><MonitorUp aria-hidden="true" size={20} /></span>
               <div><b>Somente imagem</b><small>Seu microfone continua normal, mas o som da tela não é enviado</small></div>
             </button>
             <small className="screen-share-hint">No Chrome, confirme também “Compartilhar áudio da guia” ou “Compartilhar áudio do sistema” no seletor que será aberto. A disponibilidade depende do sistema e do tipo de tela escolhido.</small>
@@ -3780,7 +3750,7 @@ export default function Home() {
         <aside className="connection-panel" aria-label="Status da conexão">
           <div className="connection-title">
             <div><b>Status da conexão</b><small>Atualiza a cada 2 segundos</small></div>
-            <button onClick={() => setConnectionOpen(false)} aria-label="Fechar status">×</button>
+            <button onClick={() => setConnectionOpen(false)} aria-label="Fechar status"><X aria-hidden="true" size={14} /></button>
           </div>
           <div className="connection-grid">
             <div><small>FPS do vídeo</small><b>{connectionStats.fps || "—"}<em> fps</em></b></div>
@@ -3789,13 +3759,13 @@ export default function Home() {
             <div><small>Latência / jitter</small><b>{connectionStats.rttMs || "—"}<em> / {connectionStats.jitterMs} ms</em></b></div>
           </div>
           <p>Para fundo animado, até 24 fps é normal: assim a chamada preserva GPU e estabilidade.</p>
-          <button className="refresh-connection" onClick={() => void refreshConnectionStats()}>↻ Atualizar agora</button>
+          <button className="refresh-connection" onClick={() => void refreshConnectionStats()}><RefreshCw aria-hidden="true" size={14} /> Atualizar agora</button>
         </aside>
       )}
       {notice && (
         <div className="toast">
           {notice}
-          <button onClick={() => setNotice("")}>×</button>
+          <button onClick={() => setNotice("")} aria-label="Fechar aviso"><X aria-hidden="true" size={14} /></button>
         </div>
       )}
       {virtualEffectLoading && (
@@ -3815,7 +3785,7 @@ export default function Home() {
             setMic(!mic);
           }}
         >
-          <b>{mic ? "◉" : "◌"}</b>
+          <b>{mic ? <Mic aria-hidden="true" size={18} /> : <MicOff aria-hidden="true" size={18} />}</b>
           <small>{mic ? "Microfone" : "Silenciado"}</small>
         </button>
         <button
@@ -3825,7 +3795,7 @@ export default function Home() {
             setCameraOn(!cameraOn);
           }}
         >
-          <b>{cameraOn ? "◉" : "◌"}</b>
+          <b>{cameraOn ? <Video aria-hidden="true" size={18} /> : <VideoOff aria-hidden="true" size={18} />}</b>
           <small>{cameraOn ? "Câmera" : "Câmera off"}</small>
         </button>
         <button
@@ -3835,11 +3805,11 @@ export default function Home() {
             else setShareScreenDialogOpen(true);
           }}
         >
-          <b>▣</b>
+          <b>{sharing ? <ScreenShareOff aria-hidden="true" size={18} /> : <ScreenShare aria-hidden="true" size={18} />}</b>
           <small>{sharing ? "Parar tela" : "Compartilhar tela"}</small>
         </button>
         <button className={recording ? "recording" : ""} onClick={record}>
-          <b>{recording ? `● ${timeLabel(recordSeconds)}` : "●"}</b>
+          <b>{recording ? <><CircleStop aria-hidden="true" size={18} /> {timeLabel(recordSeconds)}</> : <Circle aria-hidden="true" size={18} fill="currentColor" />}</b>
           <small>{recording ? "Parar e salvar" : "Gravar local"}</small>
         </button>
         {editorClip && !recording && (
@@ -3847,19 +3817,19 @@ export default function Home() {
             setEditorReturnToCall(true);
             setEditorOpen(true);
           }}>
-            <b>✦</b>
+            <b><Sparkles aria-hidden="true" size={18} /></b>
             <small>Editar gravação</small>
           </button>
         )}
         {recording && (
           <button className="clip" onClick={saveClip}>
-            <b>✂</b>
+            <b><Scissors aria-hidden="true" size={18} /></b>
             <small>Salvar trecho</small>
           </button>
         )}
         <i />
         <button className="leave" onClick={leave}>
-          <b>⌕</b>
+          <b><LogOut aria-hidden="true" size={18} /></b>
           <small>Sair</small>
         </button>
       </footer>
@@ -3881,12 +3851,13 @@ export default function Home() {
       <PublishModal
         isOpen={publishModalOpen}
         onClose={() => setPublishModalOpen(false)}
-        defaultTitle="Gravação Klip"
+        defaultTitle="Gravação KLIPAPP"
       />
     </main>
   );
 }
 
+/* eslint-disable @next/next/no-img-element -- O único img deste componente exibe uma URL blob local de moldura escolhida pelo usuário, incompatível com o otimizador do Next Image. */
 function OfflineStudio({ onBack }: { onBack: () => void }) {
   type StudioBox = { x: number; y: number; w: number; h: number };
   const first = useRef<HTMLVideoElement>(null), second = useRef<HTMLVideoElement>(null), canvas = useRef<HTMLCanvasElement>(null), overlayImage = useRef<HTMLImageElement | null>(null);
@@ -3900,7 +3871,7 @@ function OfflineStudio({ onBack }: { onBack: () => void }) {
   const recorder = useRef<MediaRecorder | null>(null), chunks = useRef<Blob[]>([]), frame = useRef(0), audioContext = useRef<AudioContext | null>(null), meterContext = useRef<AudioContext | null>(null), meterAnalyzers = useRef<[AnalyserNode | null, AnalyserNode | null]>([null, null]), meterFrame = useRef(0);
   const drag = useRef<{ index: 0 | 1; x: number; y: number; startX: number; startY: number } | null>(null);
   const studioTime = (seconds: number) => `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
-  useEffect(() => { void navigator.mediaDevices.enumerateDevices().then((items) => { setCams(items.filter((item) => item.kind === "videoinput")); setMics(items.filter((item) => item.kind === "audioinput")); }); return () => { cancelAnimationFrame(frame.current); cancelAnimationFrame(meterFrame.current); audioContext.current?.close(); meterContext.current?.close(); streams.current.forEach((stream) => stream?.getTracks().forEach((track) => track.stop())); }; }, []);
+  useEffect(() => { const activeStreams = streams.current; void navigator.mediaDevices.enumerateDevices().then((items) => { setCams(items.filter((item) => item.kind === "videoinput")); setMics(items.filter((item) => item.kind === "audioinput")); }); return () => { cancelAnimationFrame(frame.current); cancelAnimationFrame(meterFrame.current); audioContext.current?.close(); meterContext.current?.close(); activeStreams.forEach((stream) => stream?.getTracks().forEach((track) => track.stop())); }; }, []);
   useEffect(() => { if (!recording) return; const interval = window.setInterval(() => setRecordSeconds((value) => value + 1), 1000); return () => window.clearInterval(interval); }, [recording]);
   async function openCamera(index: 0 | 1, deviceId: string, micId: string) {
     streams.current[index]?.getTracks().forEach((track) => track.stop());
@@ -3917,7 +3888,7 @@ function OfflineStudio({ onBack }: { onBack: () => void }) {
   }
   const filterFor = (effect: string) => effect === "noir" ? "grayscale(1) contrast(1.25)" : effect === "cinema" ? "contrast(1.15) saturate(1.28) sepia(.12)" : effect === "cool" ? "saturate(1.18) hue-rotate(175deg)" : effect === "warm" ? "sepia(.22) saturate(1.2)" : effect === "vhs" ? "contrast(1.28) saturate(1.45) hue-rotate(-12deg)" : "none";
   const canvasFilter = (effect: string) => effect === "noir" ? "grayscale(1) contrast(1.25)" : effect === "cinema" ? "contrast(1.15) saturate(1.28) sepia(.12)" : effect === "cool" ? "saturate(1.18) hue-rotate(175deg)" : effect === "warm" ? "sepia(.22) saturate(1.2)" : effect === "vhs" ? "contrast(1.28) saturate(1.45) hue-rotate(-12deg)" : "none";
-  const updateBox = (index: 0 | 1, patch: Partial<StudioBox>) => { const apply = (box: StudioBox) => ({ ...box, ...patch }); index === 0 ? setBoxA(apply) : setBoxB(apply); };
+  const updateBox = (index: 0 | 1, patch: Partial<StudioBox>) => { const apply = (box: StudioBox) => ({ ...box, ...patch }); if (index === 0) setBoxA(apply); else setBoxB(apply); };
   const applyLayout = (next: "side" | "stack" | "pip" | "focus") => { setLayout(next); if (next === "side") { setBoxA({ x: 0, y: 0, w: 50, h: 100 }); setBoxB({ x: 50, y: 0, w: 50, h: 100 }); } if (next === "stack") { setBoxA({ x: 0, y: 0, w: 100, h: 50 }); setBoxB({ x: 0, y: 50, w: 100, h: 50 }); } if (next === "pip") { setBoxA({ x: 0, y: 0, w: 100, h: 100 }); setBoxB({ x: 67, y: 65, w: 30, h: 30 }); } if (next === "focus") { setBoxA({ x: 0, y: 0, w: 70, h: 100 }); setBoxB({ x: 70, y: 0, w: 30, h: 100 }); } };
   function draw() {
     const target = canvas.current, a = first.current, b = second.current;
@@ -3944,207 +3915,9 @@ function OfflineStudio({ onBack }: { onBack: () => void }) {
   const beginDrag = (event: React.PointerEvent<HTMLDivElement>, index: 0 | 1) => { const box = index === 0 ? boxA : boxB; drag.current = { index, x: box.x, y: box.y, startX: event.clientX, startY: event.clientY }; event.currentTarget.setPointerCapture(event.pointerId); };
   const moveDrag = (event: React.PointerEvent<HTMLDivElement>) => { const item = drag.current, stage = event.currentTarget.parentElement; if (!item || !stage) return; const bounds = stage.getBoundingClientRect(); updateBox(item.index, { x: Math.max(0, Math.min(100 - (item.index === 0 ? boxA.w : boxB.w), item.x + ((event.clientX - item.startX) / bounds.width) * 100)), y: Math.max(0, Math.min(100 - (item.index === 0 ? boxA.h : boxB.h), item.y + ((event.clientY - item.startY) / bounds.height) * 100)) }); };
   const cameraControl = (label: string, index: 0 | 1, box: StudioBox, effect: string, setEffect: (value: string) => void) => <div className="studio-camera-control"><b>{label}</b><label>Efeito<select value={effect} onChange={(event) => setEffect(event.target.value)}><option value="none">Natural</option><option value="cinema">Cinema</option><option value="warm">Quente</option><option value="cool">Frio</option><option value="noir">Noir</option><option value="vhs">VHS</option></select></label><label>Tamanho<input type="range" min="20" max="100" value={box.w} onChange={(event) => updateBox(index, { w: Number(event.target.value) })} /></label><label>Horizontal<input type="range" min="0" max={Math.max(0, 100 - box.w)} value={box.x} onChange={(event) => updateBox(index, { x: Number(event.target.value) })} /></label><label>Vertical<input type="range" min="0" max={Math.max(0, 100 - box.h)} value={box.y} onChange={(event) => updateBox(index, { y: Number(event.target.value) })} /></label></div>;
-  return <main className="offline-studio"><header className="editor-header"><div className="brand">Klip <em>Estúdio offline</em></div><div className="studio-status"><span className={recording ? "live" : ""}>{recording ? "● GRAVANDO" : "● PRONTO"}</span><b>{studioTime(recordSeconds)}</b><small>{preset === "vertical" ? "1080×1920" : preset === "square" ? "1080×1080" : "1920×1080"} · {fps} FPS</small></div><button onClick={onBack}>← Voltar</button></header><section className="offline-grid offline-grid-pro"><aside className="offline-controls"><h2>Estúdio local</h2><p>Monte a composição e arraste as câmeras diretamente na prévia. O arquivo salvo será igual.</p><label>Câmera 1<select value={camA} onChange={(event) => { setCamA(event.target.value); void openCamera(0, event.target.value, micA); }}>{cams.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Webcam"}</option>)}</select></label><label>Microfone 1<select value={micA} onChange={(event) => { setMicA(event.target.value); if (camA) void openCamera(0, camA, event.target.value); }}>{mics.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Microfone"}</option>)}</select><meter min="0" max="100" value={micLevels[0]} /><small>Volume: {micLevels[0]}%</small></label><label>Câmera 2<select value={camB} onChange={(event) => { setCamB(event.target.value); void openCamera(1, event.target.value, micB); }}>{cams.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Webcam"}</option>)}</select></label><label>Microfone 2<select value={micB} onChange={(event) => { setMicB(event.target.value); if (camB) void openCamera(1, camB, event.target.value); }}>{mics.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Microfone"}</option>)}</select><meter min="0" max="100" value={micLevels[1]} /><small>Volume: {micLevels[1]}%</small></label><label>Formato de saída<select value={preset} onChange={(event) => setPreset(event.target.value as typeof preset)}><option value="landscape">YouTube / widescreen 16:9</option><option value="vertical">TikTok / Reels / Shorts 9:16</option><option value="square">Instagram quadrado 1:1</option></select></label><div className="studio-layouts"><b>Layout</b><div>{([['side','↔ Lado a lado'],['stack','↕ Empilhado'],['pip','▣ Picture in picture'],['focus','◧ Destaque']] as const).map(([key, label]) => <button key={key} className={layout === key ? "selected" : ""} onClick={() => applyLayout(key)}>{label}</button>)}</div></div>{cameraControl("Câmera 1", 0, boxA, effectA, setEffectA)}{cameraControl("Câmera 2", 1, boxB, effectB, setEffectB)}<label>FPS<select value={fps} onChange={(event) => setFps(Number(event.target.value))}><option value="24">24 FPS · econômico</option><option value="30">30 FPS · recomendado</option><option value="60">60 FPS · máximo</option></select></label><label>Qualidade<select value={quality} onChange={(event) => setQuality(event.target.value as typeof quality)}><option value="balanced">Equilibrada</option><option value="max">Máxima</option></select></label><label>Áudio da gravação<select value={audioMode} onChange={(event) => setAudioMode(event.target.value as "mix" | "a" | "b")}><option value="mix">Misturar os dois</option><option value="a">Somente microfone 1</option><option value="b">Somente microfone 2</option></select></label><label>Overlay / moldura<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; if (file) loadOverlay(file); }} /></label>{overlay && <label>Opacidade da moldura<input type="range" min="0.1" max="1" step="0.05" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} /></label>}<button className={recording ? "offline-stop" : "offline-record"} onClick={recording ? stopRecording : startRecording}>{recording ? "■ Parar e salvar" : "● Iniciar gravação"}</button>{notice && <small>{notice}</small>}</aside><section className="offline-preview"><div className={`offline-cameras offline-${preset} offline-composer`}><div className="offline-camera-tile" onPointerDown={(event) => beginDrag(event, 0)} onPointerMove={moveDrag} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} style={{ left: `${boxA.x}%`, top: `${boxA.y}%`, width: `${boxA.w}%`, height: `${boxA.h}%` }}><video ref={first} muted playsInline style={{ filter: filterFor(effectA) }} /><b>Câmera 1 · arraste</b></div><div className="offline-camera-tile" onPointerDown={(event) => beginDrag(event, 1)} onPointerMove={moveDrag} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} style={{ left: `${boxB.x}%`, top: `${boxB.y}%`, width: `${boxB.w}%`, height: `${boxB.h}%` }}><video ref={second} muted playsInline style={{ filter: filterFor(effectB) }} /><b>Câmera 2 · arraste</b></div>{overlay && <img className="offline-overlay-preview" src={overlay} alt="Moldura" style={{ opacity: overlayOpacity }} />}</div><canvas ref={canvas} /><p>Prévia local · mesma posição, tamanho, efeitos e moldura da gravação final.</p></section></section></main>;
+  return <main className="offline-studio"><header className="editor-header"><div className="brand"><KlipAppLogo variant="full" width={132} height={28} /><em>Estúdio local</em></div><div className="studio-status"><span className={recording ? "live" : ""}>{recording ? <><Circle aria-hidden="true" size={12} fill="currentColor" /> GRAVANDO</> : <><Circle aria-hidden="true" size={12} /> PRONTO</>}</span><b>{studioTime(recordSeconds)}</b><small>{preset === "vertical" ? "1080×1920" : preset === "square" ? "1080×1080" : "1920×1080"} · {fps} FPS</small></div><button onClick={onBack}><ArrowLeft aria-hidden="true" size={15} /> Voltar</button></header><section className="offline-grid offline-grid-pro"><aside className="offline-controls"><h2>Estúdio local</h2><p>Monte a composição e arraste as câmeras diretamente na prévia. O arquivo salvo será igual.</p><label>Câmera 1<select value={camA} onChange={(event) => { setCamA(event.target.value); void openCamera(0, event.target.value, micA); }}>{cams.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Webcam"}</option>)}</select></label><label>Microfone 1<select value={micA} onChange={(event) => { setMicA(event.target.value); if (camA) void openCamera(0, camA, event.target.value); }}>{mics.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Microfone"}</option>)}</select><meter min="0" max="100" value={micLevels[0]} /><small>Volume: {micLevels[0]}%</small></label><label>Câmera 2<select value={camB} onChange={(event) => { setCamB(event.target.value); void openCamera(1, event.target.value, micB); }}>{cams.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Webcam"}</option>)}</select></label><label>Microfone 2<select value={micB} onChange={(event) => { setMicB(event.target.value); if (camB) void openCamera(1, camB, event.target.value); }}>{mics.map((item) => <option key={item.deviceId} value={item.deviceId}>{item.label || "Microfone"}</option>)}</select><meter min="0" max="100" value={micLevels[1]} /><small>Volume: {micLevels[1]}%</small></label><label>Formato de saída<select value={preset} onChange={(event) => setPreset(event.target.value as typeof preset)}><option value="landscape">YouTube / widescreen 16:9</option><option value="vertical">TikTok / Reels / Shorts 9:16</option><option value="square">Instagram quadrado 1:1</option></select></label><div className="studio-layouts"><b>Layout</b><div>{([['side', MoveHorizontal, 'Lado a lado'],['stack', MoveVertical, 'Empilhado'],['pip', PictureInPicture, 'Picture in picture'],['focus', Maximize2, 'Destaque']] as const).map(([key, LayoutIcon, label]) => <button key={key} className={layout === key ? "selected" : ""} onClick={() => applyLayout(key)}><LayoutIcon aria-hidden="true" size={14} /> {label}</button>)}</div></div>{cameraControl("Câmera 1", 0, boxA, effectA, setEffectA)}{cameraControl("Câmera 2", 1, boxB, effectB, setEffectB)}<label>FPS<select value={fps} onChange={(event) => setFps(Number(event.target.value))}><option value="24">24 FPS · econômico</option><option value="30">30 FPS · recomendado</option><option value="60">60 FPS · máximo</option></select></label><label>Qualidade<select value={quality} onChange={(event) => setQuality(event.target.value as typeof quality)}><option value="balanced">Equilibrada</option><option value="max">Máxima</option></select></label><label>Áudio da gravação<select value={audioMode} onChange={(event) => setAudioMode(event.target.value as "mix" | "a" | "b")}><option value="mix">Misturar os dois</option><option value="a">Somente microfone 1</option><option value="b">Somente microfone 2</option></select></label><label>Overlay / moldura<input type="file" accept="image/png,image/jpeg,image/webp,image/gif" onChange={(event) => { const file = event.target.files?.[0]; if (file) loadOverlay(file); }} /></label>{overlay && <label>Opacidade da moldura<input type="range" min="0.1" max="1" step="0.05" value={overlayOpacity} onChange={(event) => setOverlayOpacity(Number(event.target.value))} /></label>}<button className={recording ? "offline-stop" : "offline-record"} onClick={recording ? stopRecording : startRecording}>{recording ? <><CircleStop aria-hidden="true" size={15} /> Parar e salvar</> : <><Circle aria-hidden="true" size={15} fill="currentColor" /> Iniciar gravação</>}</button>{notice && <small>{notice}</small>}</aside><section className="offline-preview"><div className={`offline-cameras offline-${preset} offline-composer`}><div className="offline-camera-tile" onPointerDown={(event) => beginDrag(event, 0)} onPointerMove={moveDrag} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} style={{ left: `${boxA.x}%`, top: `${boxA.y}%`, width: `${boxA.w}%`, height: `${boxA.h}%` }}><video ref={first} muted playsInline style={{ filter: filterFor(effectA) }} /><b>Câmera 1 · arraste</b></div><div className="offline-camera-tile" onPointerDown={(event) => beginDrag(event, 1)} onPointerMove={moveDrag} onPointerUp={() => { drag.current = null; }} onPointerCancel={() => { drag.current = null; }} style={{ left: `${boxB.x}%`, top: `${boxB.y}%`, width: `${boxB.w}%`, height: `${boxB.h}%` }}><video ref={second} muted playsInline style={{ filter: filterFor(effectB) }} /><b>Câmera 2 · arraste</b></div>{overlay && <img className="offline-overlay-preview" src={overlay} alt="Moldura" style={{ opacity: overlayOpacity }} />}</div><canvas ref={canvas} /><p>Prévia local · mesma posição, tamanho, efeitos e moldura da gravação final.</p></section></section></main>;
 }
-
-function ClipEditor({
-  initialClip,
-  onBack,
-}: {
-  initialClip: EditorClip | null;
-  onBack: () => void;
-}) {
-  const video = useRef<HTMLVideoElement>(null);
-  const [clip, setClip] = useState<EditorClip | null>(initialClip),
-    [duration, setDuration] = useState(0),
-    [sourceDuration, setSourceDuration] = useState(0),
-    [current, setCurrent] = useState(0),
-    [isPlaying, setIsPlaying] = useState(false),
-    [start, setStart] = useState(0),
-    [end, setEnd] = useState(0),
-    [caption, setCaption] = useState("Seu melhor momento começa aqui ✦"),
-    [font, setFont] = useState("Inter"),
-    [captionColor, setCaptionColor] = useState("#ffffff"),
-    [captionSize, setCaptionSize] = useState(58),
-    [captionX, setCaptionX] = useState(50),
-    [captionY, setCaptionY] = useState(76),
-    [captionAlign, setCaptionAlign] = useState<"left" | "center" | "right">(
-      "center",
-    ),
-    [exporting, setExporting] = useState(false),
-    [notice, setNotice] = useState("");
-  const captionDrag = useRef<{
-    x: number;
-    y: number;
-    startX: number;
-    startY: number;
-  } | null>(null);
-  const time = (value: number) => {
-    const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
-    return `${String(Math.floor(safe / 60)).padStart(2, "0")}:${String(
-      Math.floor(safe % 60),
-    ).padStart(2, "0")}`;
-  };
-  function selectFile(file?: File) {
-    if (!file) return;
-    if (clip?.url.startsWith("blob:")) URL.revokeObjectURL(clip.url);
-    const url = URL.createObjectURL(file);
-    setClip({ url, name: file.name.replace(/\.[^.]+$/, "") });
-    setDuration(0);
-    setCurrent(0);
-    setStart(0);
-    setEnd(0);
-    setNotice("Vídeo carregado. Marque o início e o fim do corte.");
-  }
-  function seek(value: number) {
-    if (!video.current) return;
-    video.current.currentTime = value;
-    setCurrent(value);
-  }
-  function setVideoDuration(element: HTMLVideoElement) {
-    const value = element.duration;
-    if (Number.isFinite(value) && value > 0) {
-      setSourceDuration(value);
-      setDuration((projectLength) => Math.max(projectLength, value));
-      setEnd((projectEnd) => Math.max(projectEnd, value));
-      return;
-    }
-    // Gravações WebM frequentemente chegam sem duração no metadata. Este seek
-    // faz o navegador calcular a duração real antes de montar a linha do tempo.
-    element.currentTime = 1e101;
-  }
-  function startCaptionDrag(event: React.PointerEvent<HTMLDivElement>) {
-    const stage = event.currentTarget.parentElement;
-    if (!stage) return;
-    captionDrag.current = {
-      x: captionX,
-      y: captionY,
-      startX: event.clientX,
-      startY: event.clientY,
-    };
-    event.currentTarget.setPointerCapture(event.pointerId);
-  }
-  function moveCaptionDrag(event: React.PointerEvent<HTMLDivElement>) {
-    const drag = captionDrag.current;
-    const stage = event.currentTarget.parentElement;
-    if (!drag || !stage) return;
-    const bounds = stage.getBoundingClientRect();
-    setCaptionX(Math.max(8, Math.min(92, drag.x + ((event.clientX - drag.startX) / bounds.width) * 100)));
-    setCaptionY(Math.max(6, Math.min(94, drag.y + ((event.clientY - drag.startY) / bounds.height) * 100)));
-  }
-  async function exportReel() {
-    const source = video.current;
-    if (!source || !clip || end <= start) return;
-    setExporting(true);
-    setNotice("Renderizando seu reel localmente…");
-    const canvas = document.createElement("canvas"),
-      context = canvas.getContext("2d");
-    if (!context) return;
-    canvas.width = 1080;
-    canvas.height = 1920;
-    const output = canvas.captureStream(30);
-    const captured = (
-      source as HTMLVideoElement & { captureStream?: () => MediaStream }
-    ).captureStream?.();
-    captured?.getAudioTracks().forEach((track) => output.addTrack(track));
-    const mime = MediaRecorder.isTypeSupported("video/webm;codecs=vp9,opus")
-      ? "video/webm;codecs=vp9,opus"
-      : "video/webm";
-    const chunks: Blob[] = [];
-    const recorder = new MediaRecorder(output, {
-      mimeType: mime,
-      videoBitsPerSecond: 10_000_000,
-      audioBitsPerSecond: 192_000,
-    });
-    let frame = 0;
-    const draw = () => {
-      const scale = Math.max(canvas.width / source.videoWidth, canvas.height / source.videoHeight);
-      const width = source.videoWidth * scale,
-        height = source.videoHeight * scale;
-      context.fillStyle = "#090909";
-      context.fillRect(0, 0, canvas.width, canvas.height);
-      context.drawImage(source, (canvas.width - width) / 2, (canvas.height - height) / 2, width, height);
-      if (caption.trim()) {
-        context.save();
-        context.font = `800 ${captionSize}px ${font}`;
-        context.fillStyle = captionColor;
-        context.textAlign = captionAlign;
-        context.textBaseline = "middle";
-        context.lineWidth = Math.max(4, captionSize / 11);
-        context.strokeStyle = "rgba(0,0,0,.72)";
-        const x = (captionX / 100) * canvas.width;
-        const y = (captionY / 100) * canvas.height;
-        context.strokeText(caption, x, y, 930);
-        context.fillText(caption, x, y, 930);
-        context.restore();
-      }
-      if (source.currentTime < end && !source.paused) {
-        frame = requestAnimationFrame(draw);
-      } else if (recorder.state !== "inactive") {
-        recorder.stop();
-      }
-    };
-    recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
-    recorder.onstop = () => {
-      cancelAnimationFrame(frame);
-      const url = URL.createObjectURL(new Blob(chunks, { type: mime }));
-      const link = document.createElement("a");
-      link.href = url;
-      link.download = `klip-reel-${Date.now()}.webm`;
-      link.click();
-      window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
-      setExporting(false);
-      setNotice("Reel exportado com o corte e a legenda.");
-    };
-    source.currentTime = start;
-    await new Promise<void>((resolve) => source.addEventListener("seeked", () => resolve(), { once: true }));
-    recorder.start();
-    await source.play();
-    draw();
-  }
-  return (
-    <main className="clip-editor">
-      <header className="editor-header">
-        <div className="brand"><span className="brand-mark"><i /><i /></span>Klip <em>Studio</em></div>
-        <div className="editor-header-actions">
-          <button onClick={onBack}>← Voltar para sala</button>
-          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel()}>
-            {exporting ? "Renderizando…" : "⇩ Exportar reel"}
-          </button>
-        </div>
-      </header>
-      <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
-        <aside className="editor-tools">
-          <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Suba ou use uma gravação</small></div></div>
-          <label className="editor-upload">＋ Importar vídeo<input type="file" accept="video/*" onChange={(event) => selectFile(event.target.files?.[0])} /></label>
-          {clip && <p className="editor-file">● {clip.name}</p>}
-          <div className="tool-heading"><span>02</span><div><b>Legenda</b><small>Texto, fonte e posição</small></div></div>
-          <textarea value={caption} onChange={(event) => setCaption(event.target.value)} placeholder="Escreva sua legenda…" />
-          <div className="caption-controls">
-            <select value={font} onChange={(event) => setFont(event.target.value)}><option>Inter</option><option>Arial Black</option><option>Georgia</option><option>Courier New</option></select>
-            <input aria-label="Cor da legenda" type="color" value={captionColor} onChange={(event) => setCaptionColor(event.target.value)} />
-          </div>
-          <label className="range-label">Tamanho <input type="range" min="28" max="100" value={captionSize} onChange={(event) => setCaptionSize(Number(event.target.value))} /></label>
-          <label className="range-label">Posição vertical <input type="range" min="8" max="90" value={captionY} onChange={(event) => setCaptionY(Number(event.target.value))} /></label>
-          <div className="align-buttons"><button className={captionAlign === "left" ? "selected" : ""} onClick={() => setCaptionAlign("left")}>≡</button><button className={captionAlign === "center" ? "selected" : ""} onClick={() => setCaptionAlign("center")}>☰</button><button className={captionAlign === "right" ? "selected" : ""} onClick={() => setCaptionAlign("right")}>≡</button></div>
-          <div className="emoji-row">{["🔥", "😂", "🎙️", "✨", "💥", "👀"].map((emoji) => <button key={emoji} onClick={() => setCaption((value) => `${value} ${emoji}`)}>{emoji}</button>)}</div>
-        </aside>
-        <section className="editor-stage-wrap">
-          <div className="editor-stage">
-            {clip ? <video ref={video} src={clip.url} playsInline controls onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { if (Number.isFinite(event.currentTarget.duration) && event.currentTarget.duration > 0) { setDuration(event.currentTarget.duration); setEnd(event.currentTarget.duration); if (event.currentTarget.currentTime > event.currentTarget.duration) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => setCurrent(event.currentTarget.currentTime)} /> : <div className="editor-empty"><b>Arraste sua história para cá.</b><span>Envie uma gravação, entrevista ou gameplay.</span></div>}
-            {clip && caption && <div className="caption-overlay" onPointerDown={startCaptionDrag} onPointerMove={moveCaptionDrag} onPointerUp={() => { captionDrag.current = null; }} onPointerCancel={() => { captionDrag.current = null; }} style={{ fontFamily: font, color: captionColor, fontSize: `${Math.round(captionSize / 2.25)}px`, left: `${captionX}%`, top: `${captionY}%`, textAlign: captionAlign }}><span>{caption}</span><small>Arraste</small></div>}
-          </div>
-          {notice && <p className="editor-notice">{notice}</p>}
-        </section>
-      </section>
-      <section className="timeline-panel">
-        <div className="timeline-top"><div><b>Linha do tempo</b><span>{clip ? `${time(start)} — ${time(end)} · ${time(Math.max(0, end - start))}` : "Importe um vídeo para começar"}</span></div><button disabled={!clip} onClick={() => seek(start)}>↶ Ir ao início</button><button disabled={!clip} onClick={() => seek(end)}>↷ Ir ao fim</button></div>
-        <div className="timeline"><div className="timeline-ruler">{Array.from({ length: 10 }, (_, index) => <i key={index}>{duration ? time((duration / 9) * index) : "00:00"}</i>)}</div><div className="timeline-track"><div className="timeline-selection" style={{ left: duration ? `${(start / duration) * 100}%` : "0%", width: duration ? `${((end - start) / duration) * 100}%` : "0%" }} /><div className="timeline-playhead" style={{ left: duration ? `${(current / duration) * 100}%` : "0%" }} /></div></div>
-        <div className="cut-controls"><label>Início <input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={start} onChange={(event) => { const value = Math.min(Number(event.target.value), end - .05); setStart(value); seek(value); }} /></label><label>Fim <input type="range" min="0" max={Math.max(duration, 0)} step="0.05" value={end} onChange={(event) => { const value = Math.max(Number(event.target.value), start + .05); setEnd(value); seek(value); }} /></label></div>
-      </section>
-    </main>
-  );
-}
+/* eslint-enable @next/next/no-img-element */
 
 function ClipEditorV2({
   initialClip,
@@ -4154,7 +3927,7 @@ function ClipEditorV2({
 }: {
   initialClip: EditorClip | null;
   onBack: () => void;
-  theme: KlipTheme;
+  theme: KlipAppTheme;
   onToggleTheme: () => void;
 }) {
   const video = useRef<HTMLVideoElement>(null);
@@ -4237,7 +4010,8 @@ function ClipEditorV2({
   const future = useRef<EditorSnapshot[]>([]);
   const editorRecorder = useRef<MediaRecorder | null>(null), cancelExport = useRef(false);
   const exportInProgress = useRef(false);
-  const selected = layers.find((layer) => layer.id === selectedId);
+  const selected = layers.find((layer) => layer.id === selectedId)
+    ?? (!selectedIllustrationId && !selectedAudioId ? layers[0] : undefined);
   const selectedIllustration = illustrations.find((item) => item.id === selectedIllustrationId);
   const selectedAudio = audioTracks.find((track) => track.id === selectedAudioId);
   const sceneItems = illustrations.filter((item) => item.role === "scene");
@@ -4349,6 +4123,7 @@ function ClipEditorV2({
     };
     viewport.addEventListener("wheel", onPrecisionWheel, { passive: false });
     return () => viewport.removeEventListener("wheel", onPrecisionWheel);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- O listener é recriado quando o zoom muda para capturar a escala atual; adicionar a função não memoizada reinstalaria o listener em toda renderização.
   }, [clip, timelineZoom]);
 
   useEffect(() => {
@@ -4379,10 +4154,6 @@ function ClipEditorV2({
   }, [studioPanel]);
 
   useEffect(() => {
-    if (!selectedId && !selectedIllustrationId && !selectedAudioId && layers[0]) setSelectedId(layers[0].id);
-  }, [layers, selectedId, selectedIllustrationId, selectedAudioId]);
-
-  useEffect(() => {
     const syncPlayback = () => {
       const basePlaying = Boolean(video.current && !video.current.paused && !video.current.ended);
       const scenePlaying = Array.from(illustrationElements.current.values()).some((element) => element instanceof HTMLVideoElement && !element.paused && !element.ended);
@@ -4409,7 +4180,7 @@ function ClipEditorV2({
   }, [audioTracks, current, isPlaying]);
 
   useEffect(() => {
-    if (!clip) { setWaveform([]); return; }
+    if (!clip) return;
     let cancelled = false;
     void (async () => {
       try {
@@ -4457,6 +4228,7 @@ function ClipEditorV2({
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- Os atalhos são registrados novamente quando o estado editável muda; as funções de comando são recriadas e adicioná-las causaria reinstalação em toda renderização.
   }, [selectedId, selectedIllustrationId, selectedAudioId, clip, layers, illustrations, audioTracks, start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt]);
 
   const time = (value: number) => {
@@ -4869,7 +4641,7 @@ function ClipEditorV2({
   function exportProject() {
     const persistedAudioTracks = audioTracks.map((track) => ({ id: track.id, name: track.name, start: track.start, end: track.end, volume: track.volume, fadeIn: track.fadeIn, fadeOut: track.fadeOut, assetId: track.assetId, license: track.license }));
     const project = { version: 6, clipName: clip?.name || "", start, end, primaryTimelineStart, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt, transitionColor, transitionKind, videoTransform, exportAspect, exportResolution, exportFps, exportBitrate, audioGain, audioEnhance, audioTracks: persistedAudioTracks, visualPreset, visualEffect, visualEffectIntensity, selectedSocialPresetId, layers, radarMode, approvedCuts, createdAt: new Date().toISOString() };
-    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Sons Klip Original serão restaurados; mídia própria precisa ser reimportada.");
+    const url = URL.createObjectURL(new Blob([JSON.stringify(project, null, 2)], { type: "application/json" })); const link = document.createElement("a"); link.href = url; link.download = "klip-project.json"; link.click(); window.setTimeout(() => URL.revokeObjectURL(url), 60_000); setNotice("Projeto salvo. Sons KLIPAPP Original serão restaurados; mídia própria precisa ser reimportada.");
   }
   async function importProject(file?: File) {
     if (!file) return;
@@ -5358,7 +5130,7 @@ function ClipEditorV2({
       setRadarSuggestions(suggestions);
       setRadarStatus(
         suggestions.length
-          ? `${suggestions.length} possíveis Klips encontrados. Confira antes de aplicar.`
+          ? `${suggestions.length} possíveis clipes encontrados. Confira antes de aplicar.`
           : "Nenhum bloco claro foi encontrado. Tente o modo Destaques.",
       );
     } catch {
@@ -5380,7 +5152,7 @@ function ClipEditorV2({
     setActiveRadarCutId(item.id);
     seek(item.start);
     void playTimelineAt(item.start);
-    setNotice(`Prévia do Klip: ${time(item.start)} até ${time(item.end)}.`);
+    setNotice(`Prévia do clipe: ${time(item.start)} até ${time(item.end)}.`);
   }
   function activateRadarCut(item: RadarSuggestion) {
     radarPreviewEnd.current = null;
@@ -5424,7 +5196,7 @@ function ClipEditorV2({
       baseLoopOffset.current = -accepted[0].start;
     }
     setNotice(
-      `${accepted.length} Klip${accepted.length > 1 ? "s" : ""} criado${accepted.length > 1 ? "s" : ""} com vídeo e áudio independentes. Agora você pode mover cada bloco livremente.`,
+      `${accepted.length} clipe${accepted.length > 1 ? "s" : ""} criado${accepted.length > 1 ? "s" : ""} com vídeo e áudio independentes. Agora você pode mover cada bloco livremente.`,
     );
   }
   function removeRadarCut(id: string) {
@@ -5476,7 +5248,7 @@ function ClipEditorV2({
     }));
   }
   function endRadarCutTrim() {
-    if (radarCutTrim.current) setNotice("Klip recortado. Os outros blocos ficaram exatamente onde estavam.");
+    if (radarCutTrim.current) setNotice("Clipe recortado. Os outros blocos ficaram exatamente onde estavam.");
     radarCutTrim.current = null;
   }
   function beginRadarCutMove(event: React.PointerEvent<HTMLButtonElement>, item: RadarSuggestion) {
@@ -5507,7 +5279,7 @@ function ClipEditorV2({
     setApprovedCuts((items) => items.map((item) => item.id === drag.id ? { ...item, timelineStart: nextStart } : item));
   }
   function endRadarCutMove(event?: React.PointerEvent<HTMLButtonElement>) {
-    if (radarCutMove.current) setNotice("Klip movido livremente. As lacunas da timeline foram preservadas.");
+    if (radarCutMove.current) setNotice("Clipe movido livremente. As lacunas da timeline foram preservadas.");
     radarCutMove.current = null;
     event?.stopPropagation();
   }
@@ -5521,7 +5293,7 @@ function ClipEditorV2({
         : { ...item, fadeOut: durationValue, fadeOutColor: color, fadeOutKind: kind === "none" ? undefined : kind }
       : item));
     setActiveRadarCutId(id);
-    setNotice(kind === "none" ? "Transição removida deste Klip." : `${transitionLabel(kind)} aplicado somente neste Klip.`);
+    setNotice(kind === "none" ? "Transição removida deste clipe." : `${transitionLabel(kind)} aplicado somente neste clipe.`);
   }
   function dropTransitionOnRadarClip(event: React.DragEvent<HTMLButtonElement>, item: RadarSuggestion) {
     event.preventDefault();
@@ -5538,7 +5310,7 @@ function ClipEditorV2({
     const sourceAt = item.start + Math.max(0, current - item.timelineStart);
     const minimum = timelineZoom >= 16 ? .001 : .05;
     if (sourceAt <= item.start + minimum || sourceAt >= item.end - minimum) {
-      setNotice("Mova a linha branca para dentro do Klip antes de cortar.");
+      setNotice("Mova a linha branca para dentro do clipe antes de cortar.");
       return true;
     }
     remember();
@@ -5554,7 +5326,7 @@ function ClipEditorV2({
       ? [{ ...candidate, end: sourceAt, fadeOut: 0 }, second]
       : [candidate]));
     setActiveRadarCutId(second.id);
-    setNotice(`Klip dividido em ${time(current)}. Você pode cortar as duas partes novamente.`);
+    setNotice(`Clipe dividido em ${time(current)}. Você pode cortar as duas partes novamente.`);
     return true;
   }
   useEffect(() => {
@@ -5573,6 +5345,7 @@ function ClipEditorV2({
     if (!clip?.autoAnalyze || !duration || autoRadarAnalyzed.current) return;
     autoRadarAnalyzed.current = true;
     void runRadarAnalysis();
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- A análise automática é intencionalmente disparada uma única vez por mídia/duração; incluir a função recriada poderia reavaliar o efeito sem necessidade.
   }, [clip, duration]);
   function trimAtPlayhead() {
     if (!duration) return;
@@ -5929,7 +5702,7 @@ function ClipEditorV2({
         return {
           start: Math.max(0, Math.min(sourceDuration || duration, item.start)),
           end: Math.max(0, Math.min(sourceDuration || duration, item.end)),
-          // Keep the original montage position when exporting one Radar Klip.
+          // Keep the original montage position when exporting one Radar clipe.
           // This makes timeline music use the correct slice instead of restarting.
           audioTimelineStart: montageItem?.timelineStart || 0,
           timelinePosition: montageItem?.timelineStart || 0,
@@ -5954,9 +5727,9 @@ function ClipEditorV2({
     cancelExport.current = false;
     setNotice(
       andPublish
-        ? `Preparando ${montageRanges.length > 1 ? `a montagem com ${montageRanges.length} Klips` : "o vídeo"} para publicação…`
+        ? `Preparando ${montageRanges.length > 1 ? `a montagem com ${montageRanges.length} clipes` : "o vídeo"} para publicação…`
         : montageRanges.length > 1
-        ? `Montando ${montageRanges.length} Klips com fade entre os cortes…`
+        ? `Montando ${montageRanges.length} clipes com fade entre os cortes…`
         : "Renderizando o reel com todas as camadas e efeitos…",
     );
     const canvas = document.createElement("canvas"),
@@ -6057,7 +5830,6 @@ function ClipEditorV2({
       const activeRange = montageRanges[rangeIndex],
         sourceTime = source.currentTime,
         localTime = Math.max(0, sourceTime - activeRange.start),
-        timelineTime = completedMontageDuration + localTime,
         audioTimelineTime = activeRange.audioTimelineStart + localTime,
         remaining = Math.max(0, activeRange.end - sourceTime),
         rangeLength = activeRange.end - activeRange.start,
@@ -6255,7 +6027,7 @@ function ClipEditorV2({
       }
     }
     recorder.ondataavailable = (event) => event.data.size && chunks.push(event.data);
-    recorder.onerror = () => finishExportWithError("Não foi possível concluir este Klip neste navegador. Tente WebM ou uma resolução menor.");
+    recorder.onerror = () => finishExportWithError("Não foi possível concluir este clipe neste navegador. Tente WebM ou uma resolução menor.");
     recorder.onstop = () => {
       cancelAnimationFrame(frame);
       window.clearTimeout(exportWatchdog);
@@ -6290,9 +6062,9 @@ function ClipEditorV2({
         window.setTimeout(() => URL.revokeObjectURL(url), 60_000);
         setNotice(
           montageRanges.length > 1
-            ? `Montagem exportada com ${montageRanges.length} Klips e fades automáticos.`
+            ? `Montagem exportada com ${montageRanges.length} clipes e fades automáticos.`
             : outputLabel
-              ? `${outputLabel} exportado individualmente com vídeo e áudio. Os demais Klips continuam na montagem.`
+              ? `${outputLabel} exportado individualmente com vídeo e áudio. Os demais clipes continuam na montagem.`
               : "Reel exportado com corte, áudio, textos e efeitos.",
         );
       }
@@ -6329,19 +6101,20 @@ function ClipEditorV2({
     <main className="clip-editor clip-editor-v2">
       <header className="editor-header editor-header-pro">
         <div className="brand">
-          <span className="brand-mark"><i /><i /></span>Klip <em>Studio</em>
+          <KlipAppLogo variant="full" width={142} height={30} /><em>Studio</em>
         </div>
         {clip && <div className="editor-project-status" title={clip.name}>
           <b>{clip.name}</b>
           <span><i /> Salvo localmente</span>
         </div>}
-        {clip && <div className="editor-header-actions">
-          <button className="theme-toggle editor-theme-toggle" onClick={onToggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? "☀" : "☾"}</button>
-          <button className="header-quiet-action" onClick={onBack} title="Voltar para a sala" aria-label="Voltar para a sala">← <span>Sala</span></button>
-          <button className="header-quiet-action radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()} title="Encontrar os melhores momentos">✦ <span>Radar</span></button>
-          <button className="header-format-action" onClick={() => { setActiveTool("formats"); setToolPanelOpen(true); }} title="Alterar formato do vídeo"><span>▣</span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label}</small></button>
+        <div className="editor-header-actions">
+          <button className="theme-toggle editor-theme-toggle" onClick={onToggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" size={16} /> : <Moon aria-hidden="true" size={16} />}</button>
+          <button className="header-quiet-action" onClick={onBack} title="Voltar para a sala" aria-label="Voltar para a sala"><ArrowLeft aria-hidden="true" size={16} /> <span>Sala</span></button>
+          {clip && <>
+          <button className="header-quiet-action radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()} title="Encontrar os melhores momentos"><Sparkles aria-hidden="true" size={16} /> <span>Radar</span></button>
+          <button className="header-format-action" onClick={() => { setActiveTool("formats"); setToolPanelOpen(true); }} title="Alterar formato do vídeo"><span><LayoutTemplate aria-hidden="true" size={16} /></span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label}</small></button>
           <details className="export-settings-popover">
-            <summary title="Configurações de exportação" aria-label="Configurações de exportação">⚙ <span>Qualidade</span></summary>
+            <summary title="Configurações de exportação" aria-label="Configurações de exportação"><Settings2 aria-hidden="true" size={16} /> <span>Qualidade</span></summary>
             <div className="export-settings-menu">
               <header><b>Exportação</b><span>{exportResolution === "source" ? "Original" : `${exportResolution}p`} · {exportFps} FPS</span></header>
               <label>Arquivo<select aria-label="Formato de saída" value={exportFormat} onChange={(event) => setExportFormat(event.target.value as ExportFormat)}><option value="mp4">MP4</option><option value="webm">WebM</option></select></label>
@@ -6352,60 +6125,61 @@ function ClipEditorV2({
             </div>
           </details>
           <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel(false)}>
-            {exporting ? `${exportProgress}%` : approvedCuts.length > 1 ? `Exportar ${approvedCuts.length} Klips` : `Exportar ${exportFormat.toUpperCase()}`}
+            {exporting ? `${exportProgress}%` : approvedCuts.length > 1 ? `Exportar ${approvedCuts.length} clipes` : `Exportar ${exportFormat.toUpperCase()}`}
           </button>
           <button className="editor-publish-btn" disabled={!clip || exporting} onClick={() => void exportReel(true)} title="Publicar nas redes">
             <Share2 aria-hidden="true" /><span>Publicar</span>
           </button>
           {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar</button>}
-        </div>}
+          </>}
+        </div>
       </header>
       {clip && <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
-        <a href="#klip-preview">▣ Prévia</a>
-        <button onClick={() => { setActiveTool("media"); setToolPanelOpen(true); }}>☷ Ferramentas</button>
-        <a href="#klip-timeline">▤ Linha do tempo</a>
-        <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}>✦ Radar</button>
-        <button disabled={!clip || exporting} onClick={() => void exportReel()}>{exporting ? "Renderizando…" : approvedCuts.length > 1 ? `⇩ Montagem (${approvedCuts.length})` : "⇩ Exportar"}</button>
+        <a href="#klip-preview"><Eye aria-hidden="true" size={15} /> Prévia</a>
+        <button onClick={() => { setActiveTool("media"); setToolPanelOpen(true); }}><SlidersHorizontal aria-hidden="true" size={15} /> Ferramentas</button>
+        <a href="#klip-timeline"><Layers2 aria-hidden="true" size={15} /> Linha do tempo</a>
+        <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><Sparkles aria-hidden="true" size={15} /> Radar</button>
+        <button disabled={!clip || exporting} onClick={() => void exportReel()}><Download aria-hidden="true" size={15} /> {exporting ? "Renderizando…" : approvedCuts.length > 1 ? `Montagem (${approvedCuts.length})` : "Exportar"}</button>
       </nav>}
       <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
         <aside className={`editor-tool-dock ${toolPanelOpen ? "panel-open" : ""}`} id="klip-tools">
           <nav className="editor-tool-rail" aria-label="Ferramentas do editor">
             {([
-              ["media", "＋", "Mídia"],
-              ["text", "T", "Texto"],
-              ["audio", "♫", "Áudio"],
-              ["effects", "✦", "Efeitos"],
-              ["transitions", "◐", "Transições"],
-              ["formats", "▣", "Formatos"],
-              ["radar", "◇", "Radar"],
-            ] as const).map(([tool, icon, label]) => <button key={tool} type="button" className={activeTool === tool ? "active" : ""} onClick={() => { setActiveTool(tool); setToolPanelOpen(true); }} title={label} aria-label={label} aria-pressed={activeTool === tool}><span>{icon}</span><b>{label}</b></button>)}
+              { tool: "media", icon: ImagePlus, label: "Mídia" },
+              { tool: "text", icon: Type, label: "Texto" },
+              { tool: "audio", icon: Music2, label: "Áudio" },
+              { tool: "effects", icon: Sparkles, label: "Efeitos" },
+              { tool: "transitions", icon: Blend, label: "Transições" },
+              { tool: "formats", icon: LayoutTemplate, label: "Formatos" },
+              { tool: "radar", icon: WandSparkles, label: "Radar" },
+            ] as const).map(({ tool, icon: ToolIcon, label }) => <button key={tool} type="button" className={activeTool === tool ? "active" : ""} onClick={() => { setActiveTool(tool); setToolPanelOpen(true); }} title={label} aria-label={label} aria-pressed={activeTool === tool}><span><ToolIcon aria-hidden="true" size={18} /></span><b>{label}</b></button>)}
           </nav>
           <aside className="editor-tools" data-tool={activeTool}>
-            <header className="editor-tool-panel-header"><div><span>{activeTool === "radar" ? "IA" : "EDITOR"}</span><b>{activeTool === "media" ? "Mídia" : activeTool === "text" ? "Texto" : activeTool === "audio" ? "Áudio" : activeTool === "effects" ? "Efeitos" : activeTool === "transitions" ? "Transições" : activeTool === "formats" ? "Formatos" : "Klip Radar"}</b></div><button type="button" onClick={() => setToolPanelOpen(false)} aria-label="Fechar ferramentas">×</button></header>
+            <header className="editor-tool-panel-header"><div><span>{activeTool === "radar" ? "IA" : "EDITOR"}</span><b>{activeTool === "media" ? "Mídia" : activeTool === "text" ? "Texto" : activeTool === "audio" ? "Áudio" : activeTool === "effects" ? "Efeitos" : activeTool === "transitions" ? "Transições" : activeTool === "formats" ? "Formatos" : "Radar KLIPAPP"}</b></div><button type="button" onClick={() => setToolPanelOpen(false)} aria-label="Fechar ferramentas"><X aria-hidden="true" size={16} /></button></header>
 
           {activeTool === "media" && <section className="editor-tool-section tool-media-panel">
           <div className="tool-heading"><span>01</span><div><b>Mídia</b><small>Gravação, vídeo ou foto do computador</small></div></div>
           {!clip ? <>
-            <label className="editor-upload">＋ Importar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
+            <label className="editor-upload"><Plus aria-hidden="true" size={15} /> Importar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
             <small className="media-import-help">A mídia principal é a base do seu vídeo. Uma foto vira um clipe animado de 6 segundos.</small>
           </> : <>
             <div className="media-destination-title"><b>Adicionar mídia</b><small>Escolha o destino antes de importar. Nada será trocado por acidente.</small></div>
             <div className="media-destinations">
-              <label className="editor-upload editor-replace-upload">↻ Trocar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
-              <label className="editor-upload editor-scene-upload">＋ Inserir na sequência<input type="file" accept="video/*,image/*" onChange={(event) => void addSceneMedia(event.target.files?.[0])} /></label>
-              <label className="editor-upload editor-illustration-upload">▧ Inserir como camada<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
+              <label className="editor-upload editor-replace-upload"><RefreshCw aria-hidden="true" size={15} /> Trocar mídia principal<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label>
+              <label className="editor-upload editor-scene-upload"><Plus aria-hidden="true" size={15} /> Inserir na sequência<input type="file" accept="video/*,image/*" onChange={(event) => void addSceneMedia(event.target.files?.[0])} /></label>
+              <label className="editor-upload editor-illustration-upload"><Layers2 aria-hidden="true" size={15} /> Inserir como camada<input type="file" accept="image/*,video/*" onChange={(event) => addIllustration(event.target.files?.[0])} /></label>
             </div>
             <small className="media-import-help"><b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado do principal. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
           </>}
-          {clip && <p className="editor-file">● {clip.name}</p>}
-          <div className="project-actions"><button onClick={exportProject}>⇩ Salvar projeto</button><label>↥ Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
+          {clip && <p className="editor-file"><Film aria-hidden="true" size={13} /> {clip.name}</p>}
+          <div className="project-actions"><button onClick={exportProject}><FileDown aria-hidden="true" size={14} /> Salvar projeto</button><label><FileUp aria-hidden="true" size={14} /> Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           </section>}
 
           {activeTool === "effects" && <section className="editor-tool-section tool-effects-panel">
-          <button className="tool-primary-action" type="button" onClick={() => setStudioPanel("effects")}><span>✦</span><b>Galeria de efeitos</b></button>
+          <button className="tool-primary-action" type="button" onClick={() => setStudioPanel("effects")}><span><Sparkles aria-hidden="true" size={18} /></span><b>Galeria de efeitos</b></button>
           {clip && <>
           <details className="tool-disclosure" open><summary>Templates e aparência</summary>
-            <div className="template-grid"><button onClick={() => applyTemplate("podcast")}>🎙️ Podcast</button><button onClick={() => applyTemplate("react")}>👀 React</button><button onClick={() => applyTemplate("gameplay")}>🎮 Gameplay</button><button onClick={() => applyTemplate("interview")}>💬 Entrevista</button></div>
+            <div className="template-grid"><button onClick={() => applyTemplate("podcast")}><Mic aria-hidden="true" size={14} /> Podcast</button><button onClick={() => applyTemplate("react")}><Eye aria-hidden="true" size={14} /> React</button><button onClick={() => applyTemplate("gameplay")}><Video aria-hidden="true" size={14} /> Gameplay</button><button onClick={() => applyTemplate("interview")}><MessageSquare aria-hidden="true" size={14} /> Entrevista</button></div>
             {clip && <div className="visual-presets"><b>Cor e filtros</b><div>{([['clean','Limpo'],['cinematic','Cinema'],['vivid','Vibrante'],['mono','P&B'],['warm','Quente']] as const).map(([key, label]) => <button key={key} className={visualPreset === key ? "selected" : ""} onClick={() => setVisualPreset(key)}>{label}</button>)}</div></div>}
           </details>
           <details className="tool-disclosure video-properties" open><summary>Vídeo e enquadramento</summary><div className="video-properties-grid">
@@ -6414,27 +6188,27 @@ function ClipEditorV2({
             <label>Vertical · {Math.round(videoTransform.y)}%<input type="range" min="-45" max="45" value={videoTransform.y} onChange={(event) => setVideoTransform((frame) => ({ ...frame, y: Number(event.target.value) }))} /></label>
             <label>Largura · {Math.round(videoTransform.scaleX * 100)}%<input type="range" min="0.25" max="4" step="0.01" value={videoTransform.scaleX} onChange={(event) => setVideoTransform((frame) => ({ ...frame, scaleX: Number(event.target.value) }))} /></label>
             <label>Altura · {Math.round(videoTransform.scaleY * 100)}%<input type="range" min="0.25" max="4" step="0.01" value={videoTransform.scaleY} onChange={(event) => setVideoTransform((frame) => ({ ...frame, scaleY: Number(event.target.value) }))} /></label>
-            <button type="button" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar enquadramento</button>
+            <button type="button" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}><RotateCcw aria-hidden="true" size={14} /> Restaurar enquadramento</button>
           </div></details>
           </>}
           </section>}
 
           {activeTool === "audio" && <section className="editor-tool-section tool-audio-panel">
-            <button className="tool-primary-action" type="button" onClick={() => setStudioPanel("audio")}><span>♫</span><b>Biblioteca de sons</b></button>
-            {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz</label><button onClick={() => void detectSilence()}>✂ Remover silêncios</button></div>}
-            {clip && <div className="audio-editor-controls audio-library"><label className="audio-import">＋ Importar áudio<input type="file" accept="audio/*" onChange={(event) => void addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}>● Pop</button><button onClick={() => addBuiltInSound("whoosh")}>〰 Whoosh</button><button onClick={() => addBuiltInSound("ding")}>✦ Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(track.start); }}>♫ {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Faixa selecionada</b><button onClick={removeAudioTrack}>Excluir</button></div>{selectedAudio.license && <small title={selectedAudio.license.summary}>{selectedAudio.license.name}</small>}<label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div>}
+            <button className="tool-primary-action" type="button" onClick={() => setStudioPanel("audio")}><span><Music2 aria-hidden="true" size={18} /></span><b>Biblioteca de sons</b></button>
+            {clip && <div className="audio-editor-controls"><b>Áudio do vídeo</b><label>Volume · {audioGain}%<input type="range" min="0" max="160" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label><label><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz</label><button onClick={() => void detectSilence()}><Scissors aria-hidden="true" size={14} /> Remover silêncios</button></div>}
+            {clip && <div className="audio-editor-controls audio-library"><label className="audio-import"><Plus aria-hidden="true" size={14} /> Importar áudio<input type="file" accept="audio/*" onChange={(event) => void addAudioTrack(event.target.files?.[0])} /></label><div className="sound-fx-shelf"><button onClick={() => addBuiltInSound("pop")}><Circle aria-hidden="true" size={11} fill="currentColor" /> Pop</button><button onClick={() => addBuiltInSound("whoosh")}><AudioLines aria-hidden="true" size={14} /> Whoosh</button><button onClick={() => addBuiltInSound("ding")}><Sparkles aria-hidden="true" size={14} /> Ding</button></div>{audioTracks.map((track) => <button key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(track.start); }}><Music2 aria-hidden="true" size={14} /> {track.name}<span>{time(track.start)}–{time(track.end)}</span></button>)}{selectedAudio && <div className="audio-track-inspector"><div><b>Faixa selecionada</b><button onClick={removeAudioTrack}>Excluir</button></div>{selectedAudio.license && <small title={selectedAudio.license.summary}>{selectedAudio.license.name}</small>}<label>Volume · {selectedAudio.volume}%<input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label><label>Fade in · {selectedAudio.fadeIn.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out · {selectedAudio.fadeOut.toFixed(1)}s<input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></div>}</div>}
           </section>}
 
           {activeTool === "transitions" && <section className="editor-tool-section tool-transitions-panel">
           {clip && <div className="video-transition-controls">
             <small>Arraste uma transição para entrada, saída ou para a faixa de vídeo.</small>
             <div className="transition-shelf">
-              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-black")} onClick={() => applyTransition("fade-black", "in")}>◐ Fade preto</button>
-              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-white")} onClick={() => applyTransition("fade-white", "in")}>◐ Fade branco</button>
-              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "flash")} onClick={() => applyTransition("flash", "in")}>⚡ Flash</button>
-              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "dissolve")} onClick={() => applyTransition("dissolve", "in")}>✣ Dissolver</button>
-              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "wipe")} onClick={() => applyTransition("wipe", "in")}>▰ Cortina</button>
-              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "none")} onClick={() => applyTransition("none", "in")}>⊘ Sem transição</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-black")} onClick={() => applyTransition("fade-black", "in")}><Blend aria-hidden="true" size={14} /> Fade preto</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "fade-white")} onClick={() => applyTransition("fade-white", "in")}><Blend aria-hidden="true" size={14} /> Fade branco</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "flash")} onClick={() => applyTransition("flash", "in")}><Sparkles aria-hidden="true" size={14} /> Flash</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "dissolve")} onClick={() => applyTransition("dissolve", "in")}><Layers2 aria-hidden="true" size={14} /> Dissolver</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "wipe")} onClick={() => applyTransition("wipe", "in")}><MoveHorizontal aria-hidden="true" size={14} /> Cortina</button>
+              <button draggable onDragStart={(event) => event.dataTransfer.setData("application/x-klip-transition", "none")} onClick={() => applyTransition("none", "in")}><X aria-hidden="true" size={14} /> Sem transição</button>
             </div>
             <div className="transition-drops">
               <div onDragOver={(event) => event.preventDefault()} onDrop={(event) => dropTransition(event, "in")}><b>Entrada</b><span>{videoFadeIn ? `${transitionLabel(transitionKind)} · ${videoFadeIn.toFixed(1)}s` : "Solte aqui"}</span></div>
@@ -6468,9 +6242,9 @@ function ClipEditorV2({
           {activeTool === "text" && <section className="editor-tool-section tool-text-panel">
           <div className="tool-heading layer-heading"><span>03</span><div><b>Camadas de texto</b><small>Cada texto tem seu próprio tempo</small></div></div>
           <div className="layer-actions">
-            <button onClick={addLayer}>＋ Texto</button>
-            <button disabled={!selected} onClick={duplicateLayer}>⧉ Duplicar</button>
-            <label className="subtitle-import">▤ Importar SRT<input type="file" accept=".srt,text/plain" onChange={(event) => void importSubtitles(event.target.files?.[0])} /></label>
+            <button onClick={addLayer}><Plus aria-hidden="true" size={14} /> Texto</button>
+            <button disabled={!selected} onClick={duplicateLayer}><Copy aria-hidden="true" size={14} /> Duplicar</button>
+            <label className="subtitle-import"><Captions aria-hidden="true" size={14} /> Importar SRT<input type="file" accept=".srt,text/plain" onChange={(event) => void importSubtitles(event.target.files?.[0])} /></label>
           </div>
           <div className="layer-list">
             {layers.map((layer, index) => (
@@ -6492,9 +6266,9 @@ function ClipEditorV2({
               </div>
               <label className="range-label">Tamanho · {selected.size}px<input type="range" min="28" max="112" value={selected.size} onChange={(event) => updateLayer(selected.id, { size: Number(event.target.value) })} /></label>
               <div className="align-buttons">
-                <button className={selected.align === "left" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "left" })}>≡</button>
-                <button className={selected.align === "center" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "center" })}>☰</button>
-                <button className={selected.align === "right" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "right" })}>≡</button>
+                <button className={selected.align === "left" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "left" })} aria-label="Alinhar à esquerda"><AlignLeft aria-hidden="true" size={15} /></button>
+                <button className={selected.align === "center" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "center" })} aria-label="Centralizar"><AlignCenter aria-hidden="true" size={15} /></button>
+                <button className={selected.align === "right" ? "selected" : ""} onClick={() => updateLayer(selected.id, { align: "right" })} aria-label="Alinhar à direita"><AlignRight aria-hidden="true" size={15} /></button>
                 <label className="text-bg-toggle"><input type="checkbox" checked={selected.background} onChange={(event) => updateLayer(selected.id, { background: event.target.checked })} /> Fundo</label>
               </div>
               <div className="effect-grid">
@@ -6510,14 +6284,14 @@ function ClipEditorV2({
           {activeTool === "formats" && <section className="editor-tool-section tool-formats-panel">
             <div className="current-format-card"><span>Formato atual</span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label} · {exportFps} FPS</small></div>
             <div className="format-shortcuts">{(["tiktok", "instagram-reels", "youtube-shorts", "youtube-landscape"] as SocialPresetId[]).map((id) => { const preset = getSocialPreset(id); return <button key={id} type="button" className={selectedSocialPresetId === id ? "selected" : ""} onClick={() => applySocialPreset(preset)}><span>{preset.platform.slice(0, 2).toUpperCase()}</span><b>{preset.title}</b><small>{preset.aspectRatio.label}</small></button>; })}</div>
-            <button className="tool-primary-action" type="button" onClick={() => { setDraftSocialPresetId(selectedSocialPresetId); setStudioPanel("formats"); }}><span>▣</span><b>Todos os formatos</b></button>
+            <button className="tool-primary-action" type="button" onClick={() => { setDraftSocialPresetId(selectedSocialPresetId); setStudioPanel("formats"); }}><span><LayoutTemplate aria-hidden="true" size={18} /></span><b>Todos os formatos</b></button>
           </section>}
 
           {activeTool === "radar" && <section className="editor-tool-section tool-radar-panel">
-            <div className="radar-tool-visual"><span>✦</span><b>{approvedCuts.length || radarSuggestions.length || "IA"}</b></div>
+            <div className="radar-tool-visual"><span><Sparkles aria-hidden="true" size={20} /></span><b>{approvedCuts.length || radarSuggestions.length || "IA"}</b></div>
             <b className="tool-feature-title">Encontre os melhores momentos</b>
-            <button className="tool-primary-action radar" type="button" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><span>◇</span><b>{radarSuggestions.length ? "Abrir resultados" : "Analisar vídeo"}</b></button>
-            {!!approvedCuts.length && <div className="tool-stat-row"><span>Na timeline</span><b>{approvedCuts.length} Klips</b></div>}
+            <button className="tool-primary-action radar" type="button" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><span><WandSparkles aria-hidden="true" size={18} /></span><b>{radarSuggestions.length ? "Abrir resultados" : "Analisar vídeo"}</b></button>
+            {!!approvedCuts.length && <div className="tool-stat-row"><span>Na timeline</span><b>{approvedCuts.length} clipes</b></div>}
           </section>}
           </aside>
         </aside>
@@ -6526,11 +6300,14 @@ function ClipEditorV2({
           {clip && <div className={`stage-meta ${exportAspect === "vertical" || exportAspect === "portrait" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "stage-meta-tall" : ""}`}><span>Prévia {exportAspect === "original" ? "original" : exportAspect === "vertical" ? "vertical · 9:16" : exportAspect === "portrait" ? "retrato · 4:5" : exportAspect === "landscape" ? "horizontal · 16:9" : "quadrada · 1:1"}</span><b>{time(current)}</b></div>}
           <div className={`editor-stage preset-${visualPreset} ${exportAspect === "vertical" || exportAspect === "portrait" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "editor-stage-tall" : ""}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "portrait" ? "4 / 5" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
-              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ filter: previewFilter, opacity: activeEffectFrame?.opacity ?? 1, transform: `translate(${videoTransform.x + (activeEffectFrame?.transform.translateX || 0) * 100}%, ${videoTransform.y + (activeEffectFrame?.transform.translateY || 0) * 100}%) rotate(${activeEffectFrame?.transform.rotationDeg || 0}deg) scale(${videoTransform.scaleX * (activeEffectFrame?.transform.scale || 1)}, ${videoTransform.scaleY * (activeEffectFrame?.transform.scale || 1)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} />{activeEffectFrame && <div className="studio-effect-layer" aria-hidden="true">{activeEffectFrame.overlays.map((overlay, index) => overlay.kind === "color" ? <i key={index} className="effect-color" style={{ background: overlay.color, opacity: overlay.opacity, mixBlendMode: overlay.blendMode }} /> : overlay.kind === "scanlines" ? <i key={index} className="effect-scanlines" style={{ opacity: overlay.opacity, backgroundSize: `100% ${overlay.spacing}px` }} /> : overlay.kind === "noise" ? <i key={index} className="effect-noise" style={{ opacity: overlay.opacity }} /> : overlay.kind === "vignette" ? <i key={index} className="effect-vignette" style={{ opacity: overlay.opacity }} /> : overlay.kind === "letterbox" ? <i key={index} className="effect-letterbox" style={{ "--letterbox-size": `${overlay.size * 100}%`, opacity: overlay.opacity } as CSSProperties} /> : <i key={index} className="effect-rgb" style={{ opacity: overlay.opacity, transform: `translate(${overlay.offsetX * 100}%, ${overlay.offsetY * 100}%)` }} />)}</div>}<div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar">↔</div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura">↕</div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura">↘</div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}>↺ Restaurar</button></>
+              /* eslint-disable-next-line jsx-a11y/media-has-caption -- A mídia importada é uma prévia local; o editor não possui uma faixa VTT correspondente. */
+              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ filter: previewFilter, opacity: activeEffectFrame?.opacity ?? 1, transform: `translate(${videoTransform.x + (activeEffectFrame?.transform.translateX || 0) * 100}%, ${videoTransform.y + (activeEffectFrame?.transform.translateY || 0) * 100}%) rotate(${activeEffectFrame?.transform.rotationDeg || 0}deg) scale(${videoTransform.scaleX * (activeEffectFrame?.transform.scale || 1)}, ${videoTransform.scaleY * (activeEffectFrame?.transform.scale || 1)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} />{activeEffectFrame && <div className="studio-effect-layer" aria-hidden="true">{activeEffectFrame.overlays.map((overlay, index) => overlay.kind === "color" ? <i key={index} className="effect-color" style={{ background: overlay.color, opacity: overlay.opacity, mixBlendMode: overlay.blendMode }} /> : overlay.kind === "scanlines" ? <i key={index} className="effect-scanlines" style={{ opacity: overlay.opacity, backgroundSize: `100% ${overlay.spacing}px` }} /> : overlay.kind === "noise" ? <i key={index} className="effect-noise" style={{ opacity: overlay.opacity }} /> : overlay.kind === "vignette" ? <i key={index} className="effect-vignette" style={{ opacity: overlay.opacity }} /> : overlay.kind === "letterbox" ? <i key={index} className="effect-letterbox" style={{ "--letterbox-size": `${overlay.size * 100}%`, opacity: overlay.opacity } as CSSProperties} /> : <i key={index} className="effect-rgb" style={{ opacity: overlay.opacity, transform: `translate(${overlay.offsetX * 100}%, ${overlay.offsetY * 100}%)` }} />)}</div>}<div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura"><Maximize2 aria-hidden="true" size={14} /></div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}><RotateCcw aria-hidden="true" size={14} /> Restaurar</button></>
             ) : (
-              <div className="editor-empty"><small>Klip Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload">＋ Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
+              <div className="editor-empty"><small>KLIPAPP Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload"><Plus aria-hidden="true" size={16} /> Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}
+            {/* eslint-disable jsx-a11y/media-has-caption -- Faixas arbitrárias importadas pelo usuário não possuem transcrição VTT conhecida pelo editor. */}
             {audioTracks.map((track) => <audio key={track.id} ref={(element) => { if (element) audioElements.current.set(track.id, element); else audioElements.current.delete(track.id); }} src={track.url} preload="auto" />)}
+            {/* eslint-enable jsx-a11y/media-has-caption */}
             {clip && previewTransition.opacity > 0 && <div className={`video-transition-overlay transition-${previewTransition.kind}`} style={transitionOverlayStyle(previewTransition)} />}
             {clip && illustrations.map((item) => {
               if (item.role !== "scene" && layerOpacity(item, current) <= 0) return null;
@@ -6541,9 +6318,10 @@ function ClipEditorV2({
                 },
               };
               return <div key={item.id} className={`illustration-overlay ${item.role === "scene" ? "scene-video-overlay" : ""} ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current), pointerEvents: item.role === "scene" && layerOpacity(item, current) <= 0 ? "none" : "auto" }}>
+                {/* eslint-disable-next-line @next/next/no-img-element -- Camadas de imagem usam URLs blob locais e precisam preservar o carregamento imediato no canvas do editor. */}
                 {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay={item.role !== "scene"} loop={item.role !== "scene"} playsInline preload="auto" onTimeUpdate={(event) => { if (item.role === "scene" && !event.currentTarget.paused) setCurrent(item.start + event.currentTarget.currentTime); }} onEnded={() => { if (item.role === "scene") void playTimelineAt(item.end); }} />}
                 <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · mover</small>
-                {selectedIllustration?.id === item.id && <div className="illustration-resize-handle" onPointerDown={(event) => beginIllustrationResize(event, item)} onPointerMove={moveIllustrationResize} onPointerUp={() => { illustrationResize.current = null; }} onPointerCancel={() => { illustrationResize.current = null; }} aria-label="Redimensionar camada">↘</div>}
+                {selectedIllustration?.id === item.id && <div className="illustration-resize-handle" onPointerDown={(event) => beginIllustrationResize(event, item)} onPointerMove={moveIllustrationResize} onPointerUp={() => { illustrationResize.current = null; }} onPointerCancel={() => { illustrationResize.current = null; }} aria-label="Redimensionar camada"><Maximize2 aria-hidden="true" size={14} /></div>}
               </div>;
             })}
             {clip && layers.map((layer) => {
@@ -6559,42 +6337,42 @@ function ClipEditorV2({
 
       {clip && <section className={`timeline-panel multi-timeline ${hasMontageTimeline ? "montage-active" : ""}`} id="klip-timeline">
         <div className="timeline-top">
-          <div><b>Linha do tempo</b><span>{hasMontageTimeline ? `Montagem livre · ${montageTimelineClips.length} Klips independentes · vídeo e áudio separados · ${time(montageTimelineDuration)}` : clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
-          <button disabled={!history.current.length} onClick={undo} title="Desfazer">↶ Desfazer</button>
-          <button disabled={!future.current.length} onClick={redo} title="Refazer">↷ Refazer</button>
+          <div><b>Linha do tempo</b><span>{hasMontageTimeline ? `Montagem livre · ${montageTimelineClips.length} clipes independentes · vídeo e áudio separados · ${time(montageTimelineDuration)}` : clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
+          <button disabled={!history.current.length} onClick={undo} title="Desfazer"><Undo2 aria-hidden="true" size={14} /> Desfazer</button>
+          <button disabled={!future.current.length} onClick={redo} title="Refazer"><Redo2 aria-hidden="true" size={14} /> Refazer</button>
           <div className="timeline-precision" title="Segure Ctrl ou ⌘ e use o scroll do mouse sobre a timeline">
-            <button type="button" onClick={() => setTimelineZoomAnchored(timelineZoom / 1.5)} aria-label="Diminuir zoom da timeline">−</button>
+            <button type="button" onClick={() => setTimelineZoomAnchored(timelineZoom / 1.5)} aria-label="Diminuir zoom da timeline"><Minus aria-hidden="true" size={14} /></button>
             <label className="timeline-zoom"><span>{timelineZoom >= 8 ? "Precisão 1 ms" : `Zoom ${timelineZoom.toFixed(1)}×`}</span><input type="range" min="1" max="64" step="0.25" value={timelineZoom} onChange={(event) => setTimelineZoomAnchored(Number(event.target.value))} /></label>
-            <button type="button" onClick={() => setTimelineZoomAnchored(timelineZoom * 1.5)} aria-label="Aumentar zoom da timeline">＋</button>
+            <button type="button" onClick={() => setTimelineZoomAnchored(timelineZoom * 1.5)} aria-label="Aumentar zoom da timeline"><Plus aria-hidden="true" size={14} /></button>
           </div>
-          <button className="timeline-play-toggle" disabled={!clip} onClick={() => void togglePreviewPlayback()}>{isPlaying ? "Ⅱ Pausar" : "▶ Reproduzir"}</button>
-          <button className="timeline-split-toggle" disabled={!clip} onClick={splitSelectedAtPlayhead} title="Divide o Klip selecionado exatamente na linha branca">✂ Cortar Klip</button>
-          <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores">⌁ Ímã</button>
-          <details className="timeline-more"><summary>••• Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}>▣ Área segura</button><button onClick={addMarker} title="Adiciona um marcador no cursor">◆ Marcador</button><button onClick={splitSelectedAtPlayhead} title="Divide a cena, camada, texto ou áudio selecionado">✂ Dividir selecionado no cursor</button><button onClick={trimAtPlayhead} title="Move a ponta mais próxima do vídeo base para o cursor atual">⌘ Ajustar corte do vídeo base</button><button onClick={() => markCut("start")}>◀ Começar aqui</button><button onClick={() => markCut("end")}>Terminar aqui ▶</button><button onClick={() => seek(start)}>↶ Ir ao início</button></div></details>
+          <button className="timeline-play-toggle" disabled={!clip} onClick={() => void togglePreviewPlayback()}>{isPlaying ? <><Pause aria-hidden="true" size={16} /> Pausar</> : <><Play aria-hidden="true" size={16} fill="currentColor" /> Reproduzir</>}</button>
+          <button className="timeline-split-toggle" disabled={!clip} onClick={splitSelectedAtPlayhead} title="Divide o clipe selecionado exatamente na linha branca"><Scissors aria-hidden="true" size={14} /> Cortar clipe</button>
+          <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores"><Magnet aria-hidden="true" size={14} /> Ímã</button>
+          <details className="timeline-more"><summary><MoreHorizontal aria-hidden="true" size={16} /> Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}><ShieldCheck aria-hidden="true" size={14} /> Área segura</button><button onClick={addMarker} title="Adiciona um marcador no cursor"><BookmarkPlus aria-hidden="true" size={14} /> Marcador</button><button onClick={splitSelectedAtPlayhead} title="Divide a cena, camada, texto ou áudio selecionado"><Scissors aria-hidden="true" size={14} /> Dividir selecionado no cursor</button><button onClick={trimAtPlayhead} title="Move a ponta mais próxima do vídeo base para o cursor atual"><Scissors aria-hidden="true" size={14} /> Ajustar corte do vídeo base</button><button onClick={() => markCut("start")}><ArrowLeft aria-hidden="true" size={14} /> Começar aqui</button><button onClick={() => markCut("end")}>Terminar aqui <ArrowRight aria-hidden="true" size={14} /></button><button onClick={() => seek(start)}><RotateCcw aria-hidden="true" size={14} /> Ir ao início</button></div></details>
         </div>
         <div ref={timelineViewport} className="timeline-scroll-viewport">
           <div className="timeline-canvas" style={{ width: `${timelineZoom * 100}%` }}>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{editorTimelineDuration ? time((editorTimelineDuration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline} onContextMenu={openVideoContextMenu}>
-          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><button className="primary-video-clip timeline-item-clip" type="button" style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((primaryClipEnd - primaryClipStart) / duration) * 100)}%` : "100%" }} onPointerDown={beginPrimaryTimelineMove} onPointerMove={movePrimaryTimelineMove} onPointerUp={endPrimaryTimelineMove} onPointerCancel={endPrimaryTimelineMove} onContextMenu={openVideoContextMenu} title="Arraste o corpo para mover o trecho sem alterar o corte. Use as pontas para cortar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineTrim(event, "start")} /><span>▶ VÍDEO PRINCIPAL · {clip?.name}</span><i className="timeline-clip-meta">arraste para mover</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineTrim(event, "end")} /></button>{sceneItems.map((item, index) => <button className={`illustration-clip scene-clip timeline-item-clip ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onClick={(event) => { event.stopPropagation(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag} title="Vídeo na sequência: arraste para mover; use as pontas para encurtar ou aumentar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>▶ VÍDEO {index + 2} · {item.name}</span><i className="timeline-clip-meta">sequência</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button>)}{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%" }}><span>{time(primaryClipStart)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(primaryClipEnd / duration) * 100}%` : "100%" }}><span>{time(primaryClipEnd)}</span></button></div></div>
-          {hasMontageTimeline && <div className="timeline-lane radar-lane montage-video-lane"><b>VÍDEO</b><div className="lane-track" onPointerDown={selectTimeFromTimeline} title="Arraste cada Klip livremente. As lacunas permanecem até você fechar o espaço.">{montageTimelineClips.map((item, index) => <button type="button" key={item.id} className={`radar-cut montage-cut ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onPointerDown={(event) => beginRadarCutMove(event, item)} onPointerMove={moveRadarCutMove} onPointerUp={endRadarCutMove} onPointerCancel={endRadarCutMove} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }} onDrop={(event) => dropTransitionOnRadarClip(event, item)} title={`Klip ${index + 1} · origem ${time(item.start)}–${time(item.end)} · arraste o corpo para mover e as pontas para cortar`}><i className="radar-trim-handle start" onPointerDown={(event) => beginRadarCutTrim(event, item, "start")} onPointerMove={moveRadarCutTrim} onPointerUp={endRadarCutTrim} onPointerCancel={endRadarCutTrim}>↔</i>{item.fadeIn ? <i className={`radar-clip-fade in ${item.fadeInColor || "black"}`} style={{ width: `${Math.min(48, (item.fadeIn / Math.max(.01, item.end - item.start)) * 100)}%` }} /> : null}<span>▶ K{index + 1} · {time(item.timelineEnd - item.timelineStart)}</span><small>arraste para mover</small>{item.fadeOut ? <i className={`radar-clip-fade out ${item.fadeOutColor || "black"}`} style={{ width: `${Math.min(48, (item.fadeOut / Math.max(.01, item.end - item.start)) * 100)}%` }} /> : null}<i className="radar-trim-handle end" onPointerDown={(event) => beginRadarCutTrim(event, item, "end")} onPointerMove={moveRadarCutTrim} onPointerUp={endRadarCutTrim} onPointerCancel={endRadarCutTrim}>↔</i><i className="montage-download" onClick={(event) => { event.stopPropagation(); void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`); }} aria-label={`Salvar Klip ${index + 1} individualmente`} title="Salvar este Klip sem remover os demais">⇩</i><i className="montage-remove" onClick={(event) => { event.stopPropagation(); removeRadarCut(item.id); }} aria-label="Remover Klip">×</i></button>)}</div></div>}
-          <div className="timeline-lane audio-lane"><b>{hasMontageTimeline ? "ÁUDIOS" : "ÁUDIO"}</b><div className={`lane-track waveform-track ${hasMontageTimeline ? "segmented-waveform" : ""}`} onPointerDown={selectTimeFromTimeline} title={hasMontageTimeline ? "Cada Klip possui seu próprio áudio sincronizado e mantém a mesma posição e lacuna do vídeo." : "Forma de onda do áudio. Clique para posicionar o cursor."}>{hasMontageTimeline ? montageAudioClips.map((item, clipIndex) => <button type="button" key={item.id} className={`montage-audio-clip ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} title={`Áudio K${clipIndex + 1} · sincronizado com o vídeo`}><span>♫ K{clipIndex + 1}</span><i className="montage-audio-waveform">{item.waveform.length ? item.waveform.map((value, point) => <i key={point} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <i style={{ height: "18%" }} />}</i></button>) : timelineWaveform.length ? timelineWaveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{!hasMontageTimeline && markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><button className="primary-video-clip timeline-item-clip" type="button" style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((primaryClipEnd - primaryClipStart) / duration) * 100)}%` : "100%" }} onPointerDown={beginPrimaryTimelineMove} onPointerMove={movePrimaryTimelineMove} onPointerUp={endPrimaryTimelineMove} onPointerCancel={endPrimaryTimelineMove} onContextMenu={openVideoContextMenu} title="Arraste o corpo para mover o trecho sem alterar o corte. Use as pontas para cortar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineTrim(event, "start")} /><span><Play aria-hidden="true" size={12} fill="currentColor" /> VÍDEO PRINCIPAL · {clip?.name}</span><i className="timeline-clip-meta">arraste para mover</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineTrim(event, "end")} /></button>{sceneItems.map((item, index) => <button className={`illustration-clip scene-clip timeline-item-clip ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onClick={(event) => { event.stopPropagation(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag} title="Vídeo na sequência: arraste para mover; use as pontas para encurtar ou aumentar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span><Play aria-hidden="true" size={12} fill="currentColor" /> VÍDEO {index + 2} · {item.name}</span><i className="timeline-clip-meta">sequência</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button>)}{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover."><Blend aria-hidden="true" size={12} /> Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}><MoveHorizontal aria-hidden="true" size={12} /></i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}><MoveHorizontal aria-hidden="true" size={12} /></i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%" }}><span>{time(primaryClipStart)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(primaryClipEnd / duration) * 100}%` : "100%" }}><span>{time(primaryClipEnd)}</span></button></div></div>
+          {hasMontageTimeline && <div className="timeline-lane radar-lane montage-video-lane"><b>VÍDEO</b><div className="lane-track" onPointerDown={selectTimeFromTimeline} title="Arraste cada clipe livremente. As lacunas permanecem até você fechar o espaço.">{montageTimelineClips.map((item, index) => <button type="button" key={item.id} className={`radar-cut montage-cut ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onPointerDown={(event) => beginRadarCutMove(event, item)} onPointerMove={moveRadarCutMove} onPointerUp={endRadarCutMove} onPointerCancel={endRadarCutMove} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }} onDrop={(event) => dropTransitionOnRadarClip(event, item)} title={`clipe ${index + 1} · origem ${time(item.start)}–${time(item.end)} · arraste o corpo para mover e as pontas para cortar`}><i className="radar-trim-handle start" onPointerDown={(event) => beginRadarCutTrim(event, item, "start")} onPointerMove={moveRadarCutTrim} onPointerUp={endRadarCutTrim} onPointerCancel={endRadarCutTrim}><MoveHorizontal aria-hidden="true" size={12} /></i>{item.fadeIn ? <i className={`radar-clip-fade in ${item.fadeInColor || "black"}`} style={{ width: `${Math.min(48, (item.fadeIn / Math.max(.01, item.end - item.start)) * 100)}%` }} /> : null}<span><Play aria-hidden="true" size={12} fill="currentColor" /> K{index + 1} · {time(item.timelineEnd - item.timelineStart)}</span><small>arraste para mover</small>{item.fadeOut ? <i className={`radar-clip-fade out ${item.fadeOutColor || "black"}`} style={{ width: `${Math.min(48, (item.fadeOut / Math.max(.01, item.end - item.start)) * 100)}%` }} /> : null}<i className="radar-trim-handle end" onPointerDown={(event) => beginRadarCutTrim(event, item, "end")} onPointerMove={moveRadarCutTrim} onPointerUp={endRadarCutTrim} onPointerCancel={endRadarCutTrim}><MoveHorizontal aria-hidden="true" size={12} /></i><i className="montage-download" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`); } }} aria-label={`Salvar clipe ${index + 1} individualmente`} title="Salvar este clipe sem remover os demais"><Download aria-hidden="true" size={12} /></i><i className="montage-remove" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); removeRadarCut(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); removeRadarCut(item.id); } }} aria-label="Remover clipe"><X aria-hidden="true" size={12} /></i></button>)}</div></div>}
+          <div className="timeline-lane audio-lane"><b>{hasMontageTimeline ? "ÁUDIOS" : "ÁUDIO"}</b><div className={`lane-track waveform-track ${hasMontageTimeline ? "segmented-waveform" : ""}`} onPointerDown={selectTimeFromTimeline} title={hasMontageTimeline ? "Cada clipe possui seu próprio áudio sincronizado e mantém a mesma posição e lacuna do vídeo." : "Forma de onda do áudio. Clique para posicionar o cursor."}>{hasMontageTimeline ? montageAudioClips.map((item, clipIndex) => <button type="button" key={item.id} className={`montage-audio-clip ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} title={`Áudio K${clipIndex + 1} · sincronizado com o vídeo`}><span><Music2 aria-hidden="true" size={12} /> K{clipIndex + 1}</span><i className="montage-audio-waveform">{item.waveform.length ? item.waveform.map((value, point) => <i key={point} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <i style={{ height: "18%" }} />}</i></button>) : timelineWaveform.length ? timelineWaveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{!hasMontageTimeline && markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {audioTracks.map((track, index) => (
-            <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }} onContextMenu={(event) => openContextMenu(event, "audio", track.id)}>
-              <b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip timeline-item-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "move", track.start, track.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}>
+            <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} role="button" tabIndex={0} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); } }} onContextMenu={(event) => openContextMenu(event, "audio", track.id)}>
+              <b><Music2 aria-hidden="true" size={12} /> {index + 1}</b><div className="lane-track"><button type="button" className="audio-clip timeline-item-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "move", track.start, track.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}>
                 <i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "start", track.start, track.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "in", track.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} />
                 {track.waveform?.length ? <i className="audio-clip-waveform" aria-hidden="true">{track.waveform.map((value, point) => <i key={point} style={{ height: `${Math.max(10, value * 100)}%` }} />)}</i> : null}<span>{track.name}</span><i className="timeline-clip-meta">{track.volume}% · canal</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "out", track.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "end", track.start, track.end)} />
               </button></div>
             </div>
           ))}
           {overlayItems.map((item, index) => (
-            <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)}>
-              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
+            <div className={`timeline-lane illustration-lane ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} role="button" tabIndex={0} onClick={() => { setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); seek(Math.max(start, item.start)); } }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)}>
+              <b>{item.kind === "image" ? `IMG ${index + 1}` : `VID ${index + 1}`}</b><div className="lane-track"><button type="button" className="illustration-clip timeline-item-clip" style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{item.name || "Ilustração"}</span><i className="timeline-clip-meta">{item.kind === "image" ? "imagem" : "vídeo"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button></div>
             </div>
           ))}
           {layers.map((layer, index) => (
-            <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} onClick={() => { setSelectedId(layer.id); setSelectedIllustrationId(""); setSelectedAudioId(""); seek(Math.max(start, layer.start)); }} onContextMenu={(event) => openContextMenu(event, "text", layer.id)}>
-              <b>T{index + 1}</b><div className="lane-track"><button className="text-clip timeline-item-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "move", layer.start, layer.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "start", layer.start, layer.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "text", layer.id, "in", layer.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{layer.text || "Texto"}</span><i className="timeline-clip-meta">{layer.effect !== "none" ? layer.effect : "texto"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "text", layer.id, "out", layer.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "end", layer.start, layer.end)} /></button></div>
+            <div className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`} key={layer.id} role="button" tabIndex={0} onClick={() => { setSelectedId(layer.id); setSelectedIllustrationId(""); setSelectedAudioId(""); seek(Math.max(start, layer.start)); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); setSelectedId(layer.id); setSelectedIllustrationId(""); setSelectedAudioId(""); seek(Math.max(start, layer.start)); } }} onContextMenu={(event) => openContextMenu(event, "text", layer.id)}>
+              <b>T{index + 1}</b><div className="lane-track"><button type="button" className="text-clip timeline-item-clip" style={{ left: duration ? `${(layer.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((layer.end - layer.start) / duration) * 100)}%` : "0%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "move", layer.start, layer.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "start", layer.start, layer.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "text", layer.id, "in", layer.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>{layer.text || "Texto"}</span><i className="timeline-clip-meta">{layer.effect !== "none" ? layer.effect : "texto"}</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "text", layer.id, "out", layer.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "text", layer.id, "end", layer.start, layer.end)} /></button></div>
             </div>
           ))}
           <button type="button" className="global-playhead" aria-label={`Cursor em ${time(current)}`} style={{ left: editorTimelineDuration ? `calc(var(--timeline-track-offset) + (100% - var(--timeline-track-offset)) * ${current / editorTimelineDuration})` : "var(--timeline-track-offset)" }} onPointerDown={beginPlayheadDrag} onPointerMove={movePlayheadDrag} onPointerUp={endPlayheadDrag} onPointerCancel={endPlayheadDrag} />
@@ -6608,15 +6386,15 @@ function ClipEditorV2({
         </div>
       </section>}
       {studioPanel && <div className="studio-hub-backdrop" onPointerDown={(event) => { if (event.target === event.currentTarget) closeStudioPanel(); }}>
-        <section ref={studioDialog} className={`studio-hub studio-hub-${studioPanel}`} role="dialog" aria-modal="true" aria-label="Ferramentas de criação do Klip Studio">
+        <section ref={studioDialog} className={`studio-hub studio-hub-${studioPanel}`} role="dialog" aria-modal="true" aria-label="Ferramentas de criação do KLIPAPP Studio">
           <header className="studio-hub-header">
-            <div><span>✦ KLIP CREATOR</span><b>{studioPanel === "formats" ? "Escolha onde vai publicar" : studioPanel === "audio" ? "Dê ritmo à sua história" : "Transforme sua própria mídia"}</b><small>{studioPanel === "formats" ? "TikTok, Reels, Shorts, Stories, feed ou YouTube — sem decorar medidas." : studioPanel === "audio" ? "Músicas e efeitos Klip Original, com licença comercial clara." : "Passe o mouse ou toque para conferir antes de aplicar."}</small></div>
-            <button type="button" onClick={closeStudioPanel} aria-label="Fechar ferramentas">×</button>
+            <div><span><Sparkles aria-hidden="true" size={14} /> KLIP CREATOR</span><b>{studioPanel === "formats" ? "Escolha onde vai publicar" : studioPanel === "audio" ? "Dê ritmo à sua história" : "Transforme sua própria mídia"}</b><small>{studioPanel === "formats" ? "TikTok, Reels, Shorts, Stories, feed ou YouTube — sem decorar medidas." : studioPanel === "audio" ? "Músicas e efeitos KLIPAPP Original, com licença comercial clara." : "Passe o mouse ou toque para conferir antes de aplicar."}</small></div>
+            <button type="button" onClick={closeStudioPanel} aria-label="Fechar ferramentas"><X aria-hidden="true" size={16} /></button>
           </header>
           <nav className="studio-hub-tabs" aria-label="Ferramentas do criador">
-            <button type="button" className={studioPanel === "formats" ? "selected" : ""} onClick={() => setStudioPanel("formats")}>▣ Formatos</button>
-            <button type="button" className={studioPanel === "audio" ? "selected" : ""} onClick={() => setStudioPanel("audio")}>♫ Sons</button>
-            <button type="button" className={studioPanel === "effects" ? "selected" : ""} onClick={() => setStudioPanel("effects")}>✦ Efeitos</button>
+            <button type="button" className={studioPanel === "formats" ? "selected" : ""} onClick={() => setStudioPanel("formats")}><LayoutTemplate aria-hidden="true" size={15} /> Formatos</button>
+            <button type="button" className={studioPanel === "audio" ? "selected" : ""} onClick={() => setStudioPanel("audio")}><Music2 aria-hidden="true" size={15} /> Sons</button>
+            <button type="button" className={studioPanel === "effects" ? "selected" : ""} onClick={() => setStudioPanel("effects")}><Sparkles aria-hidden="true" size={15} /> Efeitos</button>
           </nav>
           <div className="studio-hub-content">
             {studioPanel === "formats" && <QuickCreate
@@ -6652,11 +6430,11 @@ function ClipEditorV2({
         </section>
       </div>}
       {radarOpen && <aside className="radar-panel" aria-label="Sugestões automáticas de cortes">
-        <div className="radar-panel-header"><div><span>✦ KLIP RADAR</span><b>Onde estão os melhores momentos?</b><small>A análise acontece somente neste navegador.</small></div><button onClick={() => setRadarOpen(false)} aria-label="Fechar">×</button></div>
+        <div className="radar-panel-header"><div><span><Sparkles aria-hidden="true" size={14} /> KLIP RADAR</span><b>Onde estão os melhores momentos?</b><small>A análise acontece somente neste navegador.</small></div><button onClick={() => setRadarOpen(false)} aria-label="Fechar"><X aria-hidden="true" size={16} /></button></div>
         <div className="radar-config">
           <label>Formato<select value={radarMode} onChange={(event) => setRadarMode(event.target.value as RadarMode)} disabled={radarAnalyzing}><option value="reels">Reels · direto</option><option value="shorts">Shorts · contexto maior</option><option value="highlights">Destaques · conversa longa</option></select></label>
           <label>Quantidade<select value={radarCount} onChange={(event) => setRadarCount(Number(event.target.value))} disabled={radarAnalyzing}>{[5, 10, 15, 20, 30].map((amount) => <option key={amount} value={amount}>{amount} sugestões</option>)}</select></label>
-          <button className="radar-analyze" disabled={radarAnalyzing} onClick={() => void runRadarAnalysis()}>{radarAnalyzing ? "Analisando…" : radarSuggestions.length ? "↻ Analisar novamente" : "✦ Analisar gravação"}</button>
+          <button className="radar-analyze" disabled={radarAnalyzing} onClick={() => void runRadarAnalysis()}>{radarAnalyzing ? "Analisando…" : radarSuggestions.length ? <><RefreshCw aria-hidden="true" size={15} /> Analisar novamente</> : <><Sparkles aria-hidden="true" size={15} /> Analisar gravação</>}</button>
         </div>
         <div className="radar-progress" aria-live="polite"><div><i style={{ width: `${radarProgress}%` }} /></div><span>{radarStatus}</span></div>
         {!!radarSuggestions.length && <div className="radar-suggestions">
@@ -6668,11 +6446,11 @@ function ClipEditorV2({
               <time>{time(item.end - item.start)}</time>
             </div>
             <div className="radar-item-copy">
-              <label className="radar-check"><input type="checkbox" checked={item.selected} onChange={() => toggleRadarSuggestion(item.id)} /><span>Klip {index + 1}</span></label>
+              <label className="radar-check"><input type="checkbox" checked={item.selected} onChange={() => toggleRadarSuggestion(item.id)} /><span>Clipe {index + 1}</span></label>
               <strong>{item.title}</strong>
               <time>{time(item.start)} → {time(item.end)}</time>
               <p>{item.reason}</p>
-              <div className="radar-item-actions"><button onClick={() => previewRadarSuggestion(item)}>▶ Prévia</button><button className="radar-download-one" disabled={exporting} onClick={() => void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`)}>⇩ Salvar</button></div>
+              <div className="radar-item-actions"><button onClick={() => previewRadarSuggestion(item)}><Play aria-hidden="true" size={14} fill="currentColor" /> Prévia</button><button className="radar-download-one" disabled={exporting} onClick={() => void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`)}><Download aria-hidden="true" size={14} /> Salvar</button></div>
             </div>
             <div className="radar-score"><b>{item.score}</b><span>score</span></div>
           </article>)}
@@ -6680,20 +6458,20 @@ function ClipEditorV2({
         <footer><button onClick={() => setRadarOpen(false)}>Continuar editando</button><button className="radar-apply" disabled={!radarSuggestions.some((item) => item.selected)} onClick={applyRadarSuggestions}>Adicionar selecionados à timeline</button></footer>
       </aside>}
       {contextMenu && <div className="timeline-context-menu" style={{ left: contextMenu.x, top: contextMenu.y }} onMouseLeave={closeContextMenu}>
-        {contextMenu.kind !== "video" && <><button onClick={() => { splitSelectedAtPlayhead(); closeContextMenu(); }}>✂ Dividir no cursor</button><button onClick={() => { duplicateSelected(); closeContextMenu(); }}>⧉ Duplicar</button><button onClick={() => { copySelected(); closeContextMenu(); }}>⌘ Copiar</button>{contextMenu.kind !== "audio" && <><button onClick={() => moveSelectedLayer("front")}>⇧ Trazer para frente</button><button onClick={() => moveSelectedLayer("back")}>⇩ Enviar para trás</button></>}<button className="danger" onClick={() => { deleteSelected(); closeContextMenu(); }}>⌫ Excluir</button><hr /></>}
-        <button onClick={() => { trimAtPlayhead(); closeContextMenu(); }}>⌘ Ajustar corte do vídeo base</button>
-        <button onClick={() => { addMarker(); closeContextMenu(); }}>◆ Adicionar marcador</button>
-        <button onClick={() => { markCut("start"); closeContextMenu(); }}>◀ Começar aqui</button>
-        <button onClick={() => { markCut("end"); closeContextMenu(); }}>Terminar aqui ▶</button>
-        <button onClick={() => { setSafeGuides((value) => !value); closeContextMenu(); }}>▣ {safeGuides ? "Ocultar" : "Mostrar"} área segura</button>
-        <button onClick={() => { seek(start); closeContextMenu(); }}>↶ Ir ao início</button>
+        {contextMenu.kind !== "video" && <><button onClick={() => { splitSelectedAtPlayhead(); closeContextMenu(); }}><Scissors aria-hidden="true" size={14} /> Dividir no cursor</button><button onClick={() => { duplicateSelected(); closeContextMenu(); }}><Copy aria-hidden="true" size={14} /> Duplicar</button><button onClick={() => { copySelected(); closeContextMenu(); }}><Copy aria-hidden="true" size={14} /> Copiar</button>{contextMenu.kind !== "audio" && <><button onClick={() => moveSelectedLayer("front")}><ArrowUp aria-hidden="true" size={14} /> Trazer para frente</button><button onClick={() => moveSelectedLayer("back")}><ArrowDown aria-hidden="true" size={14} /> Enviar para trás</button></>}<button className="danger" onClick={() => { deleteSelected(); closeContextMenu(); }}><Trash2 aria-hidden="true" size={14} /> Excluir</button><hr /></>}
+        <button onClick={() => { trimAtPlayhead(); closeContextMenu(); }}><Scissors aria-hidden="true" size={14} /> Ajustar corte do vídeo base</button>
+        <button onClick={() => { addMarker(); closeContextMenu(); }}><BookmarkPlus aria-hidden="true" size={14} /> Adicionar marcador</button>
+        <button onClick={() => { markCut("start"); closeContextMenu(); }}><ArrowLeft aria-hidden="true" size={14} /> Começar aqui</button>
+        <button onClick={() => { markCut("end"); closeContextMenu(); }}>Terminar aqui <ArrowRight aria-hidden="true" size={14} /></button>
+        <button onClick={() => { setSafeGuides((value) => !value); closeContextMenu(); }}><ShieldCheck aria-hidden="true" size={14} /> {safeGuides ? "Ocultar" : "Mostrar"} área segura</button>
+        <button onClick={() => { seek(start); closeContextMenu(); }}><RotateCcw aria-hidden="true" size={14} /> Ir ao início</button>
       </div>}
 
       <PublishModal
         isOpen={publishModalOpen}
         onClose={() => setPublishModalOpen(false)}
         videoBlob={publishBlob}
-        defaultTitle={clip?.name ? clip.name.replace(/\.[^/.]+$/, "") : "Reel Klip"}
+        defaultTitle={clip?.name ? clip.name.replace(/\.[^/.]+$/, "") : "Reel KLIPAPP"}
       />
     </main>
   );

@@ -302,7 +302,7 @@ export async function GET(
       } = await supabase.auth.getUser();
 
       if (!user) {
-        return fail("Faça login no Klip antes de vincular uma conta social.");
+        return fail("Faça login na KLIPAPP antes de vincular uma conta social.");
       }
 
       const payload: Record<string, unknown> = {

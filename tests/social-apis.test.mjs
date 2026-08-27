@@ -68,7 +68,7 @@ test("Instagram discovery scans every page, not just the first one", async () =>
           { id: "page-1", name: "Página sem Instagram", access_token: "page-1-token" },
           {
             id: "page-2",
-            name: "Página do Klip",
+            name: "Página do KLIPAPP",
             access_token: "page-2-token",
             instagram_business_account: {
               id: "ig-123",
@@ -232,7 +232,7 @@ test("Instagram publisher creates a container, waits for FINISHED, then publishe
   const result = await publishToInstagramReels({
     accessToken: "page-token-real",
     instagramUserId: "ig-123",
-    title: "Novidades do Klip",
+    title: "Novidades do KLIPAPP",
     hashtags: ["#reels", "novidade"],
     videoUrl: "https://cdn.example/video.mp4",
   });

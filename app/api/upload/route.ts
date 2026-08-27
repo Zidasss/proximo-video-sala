@@ -44,12 +44,12 @@ export async function POST(req: NextRequest) {
     return NextResponse.json({
       success: true,
       filename,
-      videoUrl: `https://mock-storage.klip.app/videos/${filename}`,
+      videoUrl: `https://mock-storage.klipapp.com.br/videos/${filename}`,
     });
-  } catch (error: any) {
+  } catch (error: unknown) {
     console.error("Upload API Error:", error);
     return NextResponse.json(
-      { error: error.message || "Erro no processamento do upload." },
+      { error: error instanceof Error ? error.message : "Erro no processamento do upload." },
       { status: 500 }
     );
   }

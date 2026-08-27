@@ -1,0 +1,63 @@
+.logo {
+  display: inline-block;
+  flex: none;
+  max-width: 100%;
+  overflow: visible;
+  vertical-align: middle;
+  color: inherit;
+}
+
+.dark {
+  color: var(--ka-color-canvas, #0b1020);
+}
+
+.light {
+  color: var(--ka-color-on-accent, #f8faff);
+}
+
+.monochrome {
+  color: currentColor;
+}
+
+.primary {
+  fill: var(--ka-color-accent, #7668ff);
+}
+
+.secondary {
+  fill: var(--ka-color-info, #20c7d9);
+}
+
+.cut {
+  fill: var(--ka-color-on-accent, #f8faff);
+  fill-opacity: 0.94;
+}
+
+.monochrome .primary,
+.monochrome .secondary,
+.monochrome .cut {
+  fill: currentColor;
+  fill-opacity: 1;
+}
+
+.wordmark {
+  fill: none;
+  stroke: currentColor;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+  stroke-width: 7;
+}
+
+@media (forced-colors: active) {
+  .primary,
+  .secondary {
+    fill: CanvasText;
+  }
+
+  .cut {
+    fill: Canvas;
+  }
+
+  .wordmark {
+    stroke: CanvasText;
+  }
+}

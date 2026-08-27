@@ -1,0 +1,583 @@
+.overlay {
+  --ka-backdrop: rgba(3, 6, 18, 0.78);
+  --ka-panel: #0b1022;
+  --ka-panel-raised: #121a33;
+  --ka-panel-soft: rgba(19, 29, 57, 0.72);
+  --ka-border: rgba(151, 170, 255, 0.2);
+  --ka-border-strong: rgba(117, 142, 255, 0.46);
+  --ka-text: #f8f9ff;
+  --ka-muted: #aeb8d6;
+  --ka-subtle: #7783a6;
+  --ka-primary: #806dff;
+  --ka-primary-hover: #9b8cff;
+  --ka-primary-ink: #080b1a;
+  --ka-accent: #35d8ff;
+  --ka-success: #55e3b4;
+  --ka-danger: #ff7597;
+  --ka-warning: #ffd479;
+  --ka-focus: rgba(53, 216, 255, 0.92);
+  --ka-shadow: 0 32px 100px rgba(0, 0, 0, 0.64);
+
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  display: grid;
+  place-items: center;
+  overflow-y: auto;
+  padding: clamp(16px, 4vw, 44px);
+  background:
+    radial-gradient(circle at 18% 12%, rgba(91, 75, 220, 0.2), transparent 34%),
+    radial-gradient(circle at 84% 86%, rgba(35, 176, 219, 0.13), transparent 32%),
+    var(--ka-backdrop);
+  -webkit-backdrop-filter: blur(18px) saturate(118%);
+  backdrop-filter: blur(18px) saturate(118%);
+}
+
+.backdropDismiss {
+  position: absolute;
+  inset: 0;
+  border: 0;
+  background: transparent;
+  cursor: default;
+}
+
+:global(html[data-klip-theme="light"]) .overlay {
+  --ka-backdrop: rgba(28, 34, 52, 0.48);
+  --ka-panel: #ffffff;
+  --ka-panel-raised: #f6f7fc;
+  --ka-panel-soft: rgba(242, 245, 252, 0.9);
+  --ka-border: rgba(55, 68, 99, 0.16);
+  --ka-border-strong: rgba(98, 84, 232, 0.48);
+  --ka-text: #141927;
+  --ka-muted: #536078;
+  --ka-subtle: #748198;
+  --ka-primary: #6254e8;
+  --ka-primary-hover: #5144d4;
+  --ka-primary-ink: #ffffff;
+  --ka-accent: #087f97;
+  --ka-success: #087a5e;
+  --ka-danger: #c93e59;
+  --ka-warning: #8a5c00;
+  --ka-focus: rgba(98, 84, 232, 0.9);
+  --ka-shadow: 0 30px 80px rgba(28, 38, 61, 0.2);
+}
+
+:global(html[data-klip-theme="light"]) .dialog {
+  background: linear-gradient(145deg, rgba(255, 255, 255, 0.99), rgba(244, 247, 252, 0.99));
+  box-shadow: var(--ka-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.9);
+}
+
+:global(html[data-klip-theme="light"]) .closeButton,
+:global(html[data-klip-theme="light"]) .googleButton {
+  background: rgba(20, 25, 39, 0.035);
+}
+
+:global(html[data-klip-theme="light"]) .modeSwitch {
+  background: rgba(225, 230, 242, 0.72);
+}
+
+:global(html[data-klip-theme="light"]) .inputShell input {
+  background: rgba(255, 255, 255, 0.9);
+}
+
+:global(html[data-klip-theme="light"]) .inputShell input:focus {
+  background: #ffffff;
+}
+
+.dialog {
+  position: relative;
+  z-index: 1;
+  isolation: isolate;
+  width: min(100%, 480px);
+  max-height: min(880px, calc(100dvh - 32px));
+  overflow: auto;
+  padding: clamp(24px, 5vw, 38px);
+  color: var(--ka-text);
+  border: 1px solid var(--ka-border);
+  border-radius: 28px;
+  background:
+    linear-gradient(145deg, rgba(18, 26, 51, 0.96), rgba(7, 11, 25, 0.98)),
+    var(--ka-panel);
+  box-shadow: var(--ka-shadow), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  scrollbar-width: thin;
+  scrollbar-color: var(--ka-border-strong) transparent;
+}
+
+.dialog:focus {
+  outline: none;
+}
+
+.dialog::-webkit-scrollbar {
+  width: 8px;
+}
+
+.dialog::-webkit-scrollbar-thumb {
+  border: 2px solid transparent;
+  border-radius: 999px;
+  background: var(--ka-border-strong);
+  background-clip: padding-box;
+}
+
+.ambientGlow {
+  position: absolute;
+  z-index: -1;
+  top: -140px;
+  left: 50%;
+  width: 360px;
+  height: 260px;
+  border-radius: 50%;
+  background: radial-gradient(circle, rgba(128, 109, 255, 0.34), transparent 68%);
+  filter: blur(10px);
+  transform: translateX(-50%);
+  pointer-events: none;
+}
+
+.closeButton {
+  position: absolute;
+  top: 16px;
+  right: 16px;
+  display: grid;
+  width: 38px;
+  height: 38px;
+  place-items: center;
+  color: var(--ka-muted);
+  border: 1px solid transparent;
+  border-radius: 12px;
+  background: rgba(255, 255, 255, 0.045);
+  cursor: pointer;
+  transition: color 160ms ease, border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+
+.closeButton:hover {
+  color: var(--ka-text);
+  border-color: var(--ka-border);
+  background: rgba(255, 255, 255, 0.08);
+  transform: translateY(-1px);
+}
+
+.closeButton svg {
+  width: 19px;
+  height: 19px;
+}
+
+.header {
+  display: flex;
+  align-items: center;
+  flex-direction: column;
+  margin: 2px 30px 26px;
+  text-align: center;
+}
+
+.brandMark {
+  position: relative;
+  display: grid;
+  width: 62px;
+  height: 62px;
+  place-items: center;
+  margin-bottom: 15px;
+  border: 1px solid rgba(168, 183, 255, 0.3);
+  border-radius: 20px;
+  background: var(--ka-panel-raised);
+  box-shadow: 0 16px 38px rgba(86, 90, 230, 0.32), inset 0 1px 0 rgba(255, 255, 255, 0.36);
+  overflow: hidden;
+}
+
+.brandMark svg {
+  position: relative;
+  width: 40px;
+  height: 40px;
+}
+
+.eyebrow {
+  margin: 0 0 7px;
+  color: var(--ka-accent);
+  font-size: 0.68rem;
+  font-weight: 850;
+  letter-spacing: 0.19em;
+}
+
+.header h2 {
+  margin: 0;
+  color: var(--ka-text);
+  font-size: clamp(1.6rem, 5vw, 2rem);
+  font-weight: 820;
+  line-height: 1.08;
+  letter-spacing: -0.045em;
+}
+
+.header > p:last-child {
+  max-width: 340px;
+  margin: 10px 0 0;
+  color: var(--ka-muted);
+  font-size: 0.9rem;
+  line-height: 1.55;
+}
+
+.googleButton,
+.primaryButton {
+  display: flex;
+  width: 100%;
+  min-height: 50px;
+  align-items: center;
+  justify-content: center;
+  gap: 11px;
+  padding: 12px 18px;
+  border-radius: 15px;
+  font: inherit;
+  font-size: 0.9rem;
+  font-weight: 760;
+  cursor: pointer;
+  transition: transform 160ms ease, border-color 160ms ease, background 160ms ease, box-shadow 160ms ease;
+}
+
+.googleButton {
+  color: var(--ka-text);
+  border: 1px solid var(--ka-border);
+  background: rgba(255, 255, 255, 0.055);
+}
+
+.googleButton:hover:not(:disabled) {
+  border-color: var(--ka-border-strong);
+  background: rgba(255, 255, 255, 0.085);
+  transform: translateY(-1px);
+}
+
+.googleIcon {
+  width: 21px;
+  height: 21px;
+  flex: 0 0 auto;
+}
+
+.divider {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin: 19px 0;
+  color: var(--ka-subtle);
+  font-size: 0.72rem;
+  font-weight: 650;
+  letter-spacing: 0.02em;
+}
+
+.divider::before,
+.divider::after {
+  height: 1px;
+  flex: 1;
+  background: linear-gradient(90deg, transparent, var(--ka-border));
+  content: "";
+}
+
+.divider::after {
+  background: linear-gradient(90deg, var(--ka-border), transparent);
+}
+
+.modeSwitch {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 5px;
+  padding: 5px;
+  border: 1px solid rgba(151, 170, 255, 0.13);
+  border-radius: 15px;
+  background: rgba(1, 5, 17, 0.54);
+}
+
+.modeSwitch button {
+  min-height: 38px;
+  color: var(--ka-muted);
+  border: 0;
+  border-radius: 11px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.78rem;
+  font-weight: 760;
+  cursor: pointer;
+  transition: color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.modeSwitch button:hover {
+  color: var(--ka-text);
+}
+
+.modeSwitch .modeActive {
+  color: var(--ka-text);
+  background: linear-gradient(135deg, rgba(128, 109, 255, 0.38), rgba(53, 216, 255, 0.14));
+  box-shadow: inset 0 0 0 1px rgba(147, 157, 255, 0.25), 0 5px 16px rgba(0, 0, 0, 0.16);
+}
+
+.messageRegion {
+  min-height: 0;
+}
+
+.message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-top: 14px;
+  padding: 12px 13px;
+  border: 1px solid;
+  border-radius: 13px;
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+
+.message svg {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  margin-top: 1px;
+}
+
+.errorMessage {
+  color: #ffc2d1;
+  border-color: rgba(255, 117, 151, 0.33);
+  background: rgba(255, 117, 151, 0.09);
+}
+
+.errorMessage svg {
+  color: var(--ka-danger);
+}
+
+.successMessage {
+  color: #c3ffe9;
+  border-color: rgba(85, 227, 180, 0.3);
+  background: rgba(85, 227, 180, 0.09);
+}
+
+.successMessage svg {
+  color: var(--ka-success);
+}
+
+.form {
+  display: grid;
+  gap: 14px;
+  margin-top: 17px;
+}
+
+.field {
+  display: grid;
+  gap: 7px;
+}
+
+.field label {
+  color: var(--ka-text);
+  font-size: 0.75rem;
+  font-weight: 720;
+  letter-spacing: 0.015em;
+}
+
+.passwordLabelRow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.forgotButton {
+  min-height: 44px;
+  margin: -12px -8px -12px 0;
+  padding: 6px 8px;
+  color: var(--ka-accent);
+  border: 0;
+  border-radius: 9px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.75rem;
+  font-weight: 720;
+  cursor: pointer;
+  transition: color 150ms ease, background-color 150ms ease;
+}
+
+.forgotButton:hover {
+  color: var(--ka-primary-hover);
+  background: var(--ka-panel-soft);
+}
+
+.inputShell {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.inputShell > svg {
+  position: absolute;
+  left: 14px;
+  width: 17px;
+  height: 17px;
+  color: var(--ka-subtle);
+  pointer-events: none;
+  transition: color 150ms ease;
+}
+
+.inputShell input {
+  width: 100%;
+  min-height: 47px;
+  padding: 11px 14px 11px 43px;
+  color: var(--ka-text);
+  border: 1px solid rgba(151, 170, 255, 0.17);
+  border-radius: 13px;
+  outline: none;
+  background: rgba(2, 6, 18, 0.5);
+  font: inherit;
+  font-size: 0.85rem;
+  transition: border-color 150ms ease, background 150ms ease, box-shadow 150ms ease;
+}
+
+.inputShell input::placeholder {
+  color: #687493;
+}
+
+.inputShell:focus-within > svg {
+  color: var(--ka-accent);
+}
+
+.inputShell input:focus {
+  border-color: var(--ka-border-strong);
+  background: rgba(5, 10, 28, 0.82);
+  box-shadow: 0 0 0 3px rgba(53, 216, 255, 0.11);
+}
+
+.primaryButton {
+  margin-top: 3px;
+  color: var(--ka-primary-ink);
+  border: 1px solid rgba(189, 200, 255, 0.4);
+  background: linear-gradient(120deg, var(--ka-primary), var(--ka-accent));
+  box-shadow: 0 13px 30px rgba(86, 96, 230, 0.26), inset 0 1px 0 rgba(255, 255, 255, 0.33);
+}
+
+.primaryButton:hover:not(:disabled) {
+  background: linear-gradient(120deg, var(--ka-primary-hover), #64e4ff);
+  box-shadow: 0 16px 34px rgba(86, 96, 230, 0.34), inset 0 1px 0 rgba(255, 255, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+.primaryButton svg {
+  width: 18px;
+  height: 18px;
+}
+
+.googleButton:disabled,
+.primaryButton:disabled {
+  cursor: wait;
+  opacity: 0.62;
+}
+
+.recoveryBackButton {
+  display: inline-flex;
+  width: 100%;
+  min-height: 46px;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  margin-top: 10px;
+  padding: 10px 16px;
+  color: var(--ka-muted);
+  border: 1px solid transparent;
+  border-radius: 13px;
+  background: transparent;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 730;
+  cursor: pointer;
+  transition: color 150ms ease, border-color 150ms ease, background-color 150ms ease;
+}
+
+.recoveryBackButton:hover {
+  color: var(--ka-text);
+  border-color: var(--ka-border);
+  background: var(--ka-panel-soft);
+}
+
+.recoveryBackButton:disabled {
+  cursor: wait;
+  opacity: 0.55;
+}
+
+.recoveryBackButton svg {
+  width: 17px;
+  height: 17px;
+}
+
+.spinner {
+  width: 17px;
+  height: 17px;
+  flex: 0 0 auto;
+  border: 2px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: ka-spin 700ms linear infinite;
+}
+
+.setupWarning {
+  display: grid;
+  gap: 4px;
+  margin-top: 16px;
+  padding: 12px 13px;
+  color: var(--ka-warning);
+  border: 1px solid rgba(255, 212, 121, 0.25);
+  border-radius: 13px;
+  background: rgba(255, 212, 121, 0.07);
+  font-size: 0.72rem;
+  line-height: 1.5;
+}
+
+.setupWarning code {
+  color: #fff0c6;
+  font-family: ui-monospace, SFMono-Regular, Consolas, monospace;
+}
+
+.legalNote {
+  margin: 17px 12px 0;
+  color: var(--ka-subtle);
+  font-size: 0.67rem;
+  line-height: 1.5;
+  text-align: center;
+}
+
+.closeButton:focus-visible,
+.googleButton:focus-visible,
+.primaryButton:focus-visible,
+.modeSwitch button:focus-visible,
+.forgotButton:focus-visible,
+.recoveryBackButton:focus-visible {
+  outline: 2px solid var(--ka-focus);
+  outline-offset: 3px;
+}
+
+@keyframes ka-spin {
+  to { transform: rotate(360deg); }
+}
+
+@media (max-width: 520px) {
+  .overlay {
+    align-items: end;
+    padding: 10px;
+  }
+
+  .dialog {
+    width: 100%;
+    max-height: calc(100dvh - 20px);
+    padding: 28px 20px 22px;
+    border-radius: 24px;
+  }
+
+  .header {
+    margin-inline: 22px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .closeButton,
+  .googleButton,
+  .primaryButton,
+  .modeSwitch button,
+  .forgotButton,
+  .recoveryBackButton,
+  .inputShell input,
+  .inputShell > svg {
+    transition: none;
+  }
+
+  .spinner {
+    animation-duration: 1.3s;
+  }
+}

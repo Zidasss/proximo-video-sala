@@ -1,0 +1,32 @@
+.skipLink {
+  position: fixed;
+  z-index: 100000;
+  top: 0.75rem;
+  left: 0.75rem;
+  min-height: 2.75rem;
+  padding: 0.7rem 1rem;
+  border: 2px solid var(--ka-color-focus, #8b7fff);
+  border-radius: var(--ka-radius-md, 0.75rem);
+  background: var(--ka-color-surface, #ffffff);
+  color: var(--ka-color-text, #171625);
+  box-shadow: var(--ka-shadow-lg, 0 1rem 3rem rgb(28 25 48 / 18%));
+  font: 700 var(--ka-font-size-sm, 0.9375rem) / 1.2 var(--ka-font-family, sans-serif);
+  transform: translateY(calc(-100% - 1.5rem));
+  transition: transform var(--ka-duration-fast, 150ms) ease;
+}
+
+.skipLink:focus-visible {
+  outline: 3px solid var(--ka-color-focus, #8b7fff);
+  outline-offset: 2px;
+  transform: translateY(0);
+}
+
+.content:focus {
+  outline: none;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .skipLink {
+    transition: none;
+  }
+}

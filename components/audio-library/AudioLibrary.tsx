@@ -230,7 +230,7 @@ export function AudioLibrary({
 
       <div className={styles.notice}>
         <ShieldCheck size={17} />
-        <span><strong>Klip Original:</strong> uso comercial liberado, sem atribuição e sem arquivos de terceiros.</span>
+        <span><strong>KLIPAPP Original:</strong> uso comercial liberado, sem atribuição e sem arquivos de terceiros.</span>
       </div>
 
       {visibleAssets.length ? (

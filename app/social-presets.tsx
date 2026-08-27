@@ -1,6 +1,7 @@
 "use client";
 
 import { useId, useState, type CSSProperties } from "react";
+import { ArrowRight, Check, Play } from "lucide-react";
 import styles from "./social-presets.module.css";
 import {
   getSocialPreset,
@@ -40,7 +41,7 @@ export function QuickCreate({
   onCustomize,
   className,
   heading = "O que você quer criar?",
-  description = "Escolha onde vai publicar. O Klip prepara tamanho, duração e área segura.",
+  description = "Escolha o destino. A KLIPAPP prepara o formato e a área segura.",
 }: QuickCreateProps) {
   const [internalSelectedId, setInternalSelectedId] = useState(defaultSelectedId);
   const descriptionId = useId();
@@ -92,7 +93,7 @@ export function QuickCreate({
             >
               <span className={styles.preview} aria-hidden="true">
                 <span className={styles.previewSafeArea} />
-                <span className={styles.previewPlay}>▶</span>
+                <span className={styles.previewPlay}><Play aria-hidden="true" size={14} fill="currentColor" /></span>
               </span>
               <span className={styles.cardCopy}>
                 <span className={styles.eyebrow}>{preset.eyebrow}</span>
@@ -102,7 +103,7 @@ export function QuickCreate({
                 </span>
                 <span className={styles.duration}>{preset.recommendedDuration.label} · {preset.fps} fps</span>
               </span>
-              <span className={styles.check} aria-hidden="true">✓</span>
+              <span className={styles.check} aria-hidden="true"><Check size={14} /></span>
             </button>
           );
         })}
@@ -118,7 +119,7 @@ export function QuickCreate({
         </div>
         <button type="button" className={styles.createButton} onClick={startCreation}>
           {activePreset.customizable ? "Definir formato" : "Criar neste formato"}
-          <span aria-hidden="true">→</span>
+          <ArrowRight aria-hidden="true" size={16} />
         </button>
       </div>
     </section>

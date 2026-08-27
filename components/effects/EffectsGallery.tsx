@@ -2,6 +2,7 @@
 
 import Image from "next/image";
 import React, { useMemo, useState } from "react";
+import { ArrowRight } from "lucide-react";
 import {
   createVisualEffectApplication,
   getVisualEffectFrame,
@@ -183,7 +184,7 @@ export function EffectsGallery({
       <header className={styles.header}>
         <div>
           <p className={styles.eyebrow}>EFEITOS VISUAIS</p>
-          <h2 id="effects-gallery-title">Dê movimento ao seu Klip</h2>
+          <h2 id="effects-gallery-title">Dê movimento ao seu clipe</h2>
           <p>Veja o resultado na sua própria mídia antes de aplicar.</p>
         </div>
         <span className={styles.mediaState} data-ready={Boolean(media)}>
@@ -242,7 +243,7 @@ export function EffectsGallery({
                 <small>{effect.description}</small>
                 <span className={styles.applyLabel}>
                   {selected ? "Aplicado" : "Aplicar"}
-                  <i aria-hidden="true">→</i>
+                  <i aria-hidden="true"><ArrowRight size={14} /></i>
                 </span>
               </span>
             </button>

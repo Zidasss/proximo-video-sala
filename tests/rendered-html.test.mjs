@@ -4,7 +4,7 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
-test("keeps the Klip editor interaction model in the production source", async () => {
+test("keeps the KLIPAPP editor interaction model in the production source", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   assert.match(page, /function ClipEditorV2/);
   assert.match(page, /function beginTimelineItemDrag/);
@@ -118,7 +118,7 @@ test("ships the image-to-GIF motion studio and camera background handoff", async
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const studio = await readFile(new URL("app/gif-studio.tsx", root), "utf8");
   const css = await readFile(new URL("app/globals.css", root), "utf8");
-  assert.match(page, /Criador de GIF/);
+  assert.match(page, /<WandSparkles aria-hidden="true" \/> Motion/);
   assert.match(page, /<GifStudio/);
   assert.match(studio, /function paintMotionFrame/);
   assert.match(studio, /function lzwPixels/);
@@ -130,7 +130,7 @@ test("ships the image-to-GIF motion studio and camera background handoff", async
   assert.match(css, /\.motion-exporting/);
 });
 
-test("ships the local Klip Radar review flow without replacing the source", async () => {
+test("ships the local KLIPAPP Radar review flow without replacing the source", async () => {
   const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const radar = await readFile(new URL("app/klip-radar.ts", root), "utf8");
   const css = await readFile(new URL("app/globals.css", root), "utf8");
@@ -144,16 +144,16 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(page, /Montagem livre/);
   assert.match(page, /\? "ÁUDIOS" : "ÁUDIO"/);
   assert.match(page, /vídeo e áudio independentes/);
-  assert.match(page, /Salvar este Klip/);
+  assert.match(page, /Salvar este clipe sem remover os demais/);
   assert.match(page, /exportReel\(false, \[item\]/);
-  assert.match(page, /Os demais Klips continuam na montagem/);
+  assert.match(page, /Os demais clipes continuam na montagem/);
   assert.match(page, /const exportInProgress = useRef\(false\)/);
   assert.match(page, /if \(exportInProgress\.current\) return/);
   assert.match(page, /finishExportWithError/);
   assert.match(page, /document\.body\.appendChild\(link\)/);
   assert.match(page, /function advanceMontageRange/);
   assert.match(page, /fades automáticos/);
-  assert.match(page, /Exportar \$\{approvedCuts\.length\} Klips/);
+  assert.match(page, /Exportar \$\{approvedCuts\.length\} clipes/);
   assert.match(page, /setEditorOpen\(true\)/);
   assert.match(page, /KLIP RADAR/);
   assert.match(page, /Nada altera o arquivo original/);
@@ -169,7 +169,7 @@ test("ships the local Klip Radar review flow without replacing the source", asyn
   assert.match(css, /height: min\(88dvh, 860px\)/);
 });
 
-test("Klip Radar finds separate speech blocks and keeps them inside the source", async () => {
+test("KLIPAPP Radar finds separate speech blocks and keeps them inside the source", async () => {
   const { buildSuggestions } = await import("../app/klip-radar.ts");
   const levels = Array.from({ length: 900 }, () => 0.002);
   for (let index = 50; index < 300; index += 1) levels[index] = index % 37 < 3 ? 0.004 : 0.08;

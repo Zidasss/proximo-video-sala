@@ -1,177 +1,173 @@
-# vinext-starter
+# KLIPAPP
 
-A clean full-stack starter running on
-[vinext](https://github.com/cloudflare/vinext), with optional Cloudflare D1 and
-Drizzle support...
+O **KLIPAPP** é uma plataforma web para conversar, gravar e transformar chamadas em conteúdo pronto para publicar. O produto reúne sala privada com áudio, vídeo e compartilhamento de tela, gravação local em alta qualidade, estúdio com múltiplas câmeras, editor de clipes e publicação social em um único fluxo.
 
-## Prerequisites
+- Produção: [www.klipapp.com.br](https://www.klipapp.com.br)
+- Política de privacidade: [www.klipapp.com.br/privacidade](https://www.klipapp.com.br/privacidade)
+- Termos de serviço: [www.klipapp.com.br/termos](https://www.klipapp.com.br/termos)
+
+## Recursos principais
+
+- Salas privadas por link, código e PIN, com nomes dos participantes e reconexão de sessão.
+- Chamada WebRTC com câmera, microfone, chat, compartilhamento de tela e opção de incluir áudio da tela.
+- Seleção de câmera, microfone e saída de áudio, supressão de ruído, indicador de fala e diagnóstico de conexão.
+- Fundo desfocado, imagem ou mídia animada, além de texto, moldura e overlays na câmera.
+- Gravação local com áudio em layouts horizontal, vertical, quadrado, solo, conversa e tela compartilhada.
+- Estúdio local para duas câmeras e até dois microfones, com composição visual, medidores e presets de saída.
+- KLIPAPP Studio com timeline multipista, cortes, transições, áudio, textos, ilustrações, efeitos e formatos para Reels, TikTok, Shorts e YouTube.
+- Radar de clipes que encontra pausas e momentos candidatos sem enviar o vídeo para análise externa.
+- Biblioteca de sons e efeitos KLIPAPP Original.
+- Publicação integrada para YouTube, Instagram e TikTok, quando as credenciais das plataformas estão configuradas.
+- Tema claro e escuro, interface responsiva e páginas legais públicas.
+
+Processamento de câmera, gravação e edição acontece prioritariamente no navegador. Permissão de câmera, microfone, tela e áudio continua sob controle do usuário e do próprio navegador.
+
+## Arquitetura
+
+| Camada | Tecnologia e responsabilidade |
+| --- | --- |
+| Aplicação | Next.js 16 App Router, React 19 e TypeScript |
+| Interface | CSS/Tailwind, componentes reutilizáveis e Lucide |
+| Chamada | PeerJS/WebRTC para mídia e canal de dados entre participantes |
+| Captura e gravação | MediaDevices, MediaRecorder, Web Audio e Canvas |
+| Efeitos de câmera | MediaPipe Tasks Vision e TensorFlow.js |
+| Autenticação | Supabase Auth, incluindo login com Google |
+| Dados e arquivos | Supabase/Postgres, RLS e Supabase Storage |
+| Publicação | YouTube Data API, Instagram Graph API e TikTok Content Posting API |
+| Deploy | Vercel, com domínio canônico `https://www.klipapp.com.br` |
+
+### Superfícies da aplicação
+
+- `/`: entrada, sala, chamada, estúdio local e ferramentas de criação.
+- `/?editor=1`: KLIPAPP Studio.
+- `/perfil`: conta, perfil e conexões sociais.
+- `/auth/callback`: retorno do Supabase Auth para o aplicativo.
+- `/privacidade` e `/termos`: documentos legais públicos.
+- `/api/auth/connect/[platform]` e `/api/auth/callback/[platform]`: OAuth de publicação social.
+- `/api/upload` e `/api/publish`: upload e publicação multiplataforma.
+
+## Requisitos
 
 - Node.js `>=22.13.0`
+- npm `11.x`
+- Chrome, Edge ou outro navegador moderno com suporte a WebRTC e MediaRecorder
+- HTTPS em produção para câmera, microfone e compartilhamento de tela
+- Projeto Supabase para autenticação, banco e storage
 
-## Quick Start
+## Desenvolvimento local
 
 ```bash
+git clone https://github.com/Zidasss/proximo-video-sala.git
+cd proximo-video-sala
 npm install
+Copy-Item .env.example .env.local  # PowerShell
 npm run dev
+```
+
+Em macOS ou Linux, use `cp .env.example .env.local`. Depois abra [localhost:3000](http://localhost:3000).
+
+O aplicativo funciona sem credenciais sociais em modo local, mas autenticação, persistência e publicação real dependem das variáveis descritas em `.env.example`.
+
+## Comandos
+
+| Comando | Uso |
+| --- | --- |
+| `npm run dev` | inicia o Next.js em desenvolvimento |
+| `npm run build` | gera e valida o build de produção |
+| `npm start` | executa o build de produção |
+| `npm run lint` | executa ESLint |
+| `npm test` | executa a suíte de integração e regressão |
+| `npm run build:sites` | gera o build alternativo com vinext |
+| `npm run db:generate` | gera migrations Drizzle |
+
+Antes de publicar uma alteração:
+
+```bash
+npm run lint
+npx tsc --noEmit
+npm test
 npm run build
 ```
 
-This starter does not use `wrangler.jsonc`.
+## Configuração do Supabase
 
-## Included Shape
+1. Crie o projeto e preencha `NEXT_PUBLIC_SUPABASE_URL` e `NEXT_PUBLIC_SUPABASE_ANON_KEY`.
+2. Aplique, em ordem, as migrations de `supabase/migrations/`.
+3. Crie o bucket público `klip-videos` para arquivos destinados às APIs sociais.
+4. Em **Authentication → URL Configuration**, configure:
+   - Site URL: `https://www.klipapp.com.br`
+   - Redirect URL: `https://www.klipapp.com.br/auth/callback`
+   - Para desenvolvimento: `http://localhost:3000/auth/callback`
+5. Ative o provedor Google no Supabase se o login Google for usado.
 
-- edit site code under `app/`
-- `.openai/hosting.json` declares optional Sites D1 and R2 bindings
-- `vite.config.ts` simulates declared bindings for local development
-- `db/schema.ts` starts intentionally empty
-- `examples/d1/` contains an optional D1 example surface
-- `drizzle.config.ts` supports local migration generation when needed
+## OAuth: login Google e YouTube são fluxos diferentes
 
-## Workspace Auth Headers
+Não misture os dois callbacks abaixo. Eles pertencem a clientes e finalidades diferentes.
 
-Signed-in visitors receive both `oai-authenticated-user-id` and `oai-authenticated-user-email`. Private Sites require every visitor to sign in; public Sites may also have anonymous visitors, for whom neither header is present.
+### 1. Login com Google pela conta KLIPAPP
 
-The user ID is stable for the same user on the same Site and different across Sites. Email and name are intended for display or contact purposes.
+O navegador inicia o login pelo **Supabase Auth**. No cliente OAuth usado pelo provedor Google do Supabase, o URI autorizado no Google Cloud é o callback do próprio Supabase:
 
-SIWC-authenticated workspace sites may also receive
-`oai-authenticated-user-full-name` when the user's SIWC profile has a non-empty
-`name` claim. The full-name value is percent-encoded UTF-8 and is accompanied by
-`oai-authenticated-user-full-name-encoding: percent-encoded-utf-8`.
-
-Treat the full name as optional and fall back to email when it is absent:
-
-```tsx
-import { headers } from "next/headers";
-
-export default async function Home() {
-  const requestHeaders = await headers();
-  const userId = requestHeaders.get("oai-authenticated-user-id");
-  const email = requestHeaders.get("oai-authenticated-user-email");
-  const encodedFullName = requestHeaders.get("oai-authenticated-user-full-name");
-  const fullName =
-    encodedFullName &&
-    requestHeaders.get("oai-authenticated-user-full-name-encoding") ===
-      "percent-encoded-utf-8"
-      ? decodeURIComponent(encodedFullName)
-      : null;
-
-  const displayName = fullName ?? email;
-  // ...
-}
+```text
+https://<PROJECT_REF>.supabase.co/auth/v1/callback
 ```
 
-## Optional Dispatch-Owned ChatGPT Sign-In
+No projeto atual:
 
-Import the ready-to-use helpers from `app/chatgpt-auth.ts` when the site needs
-optional or required ChatGPT sign-in:
-
-- Use `getChatGPTUser()` for optional signed-in UI.
-- Use `requireChatGPTUser(returnTo)` for server-rendered pages that should send
-  anonymous visitors through Sign in with ChatGPT.
-- Use `chatGPTSignInPath(returnTo)` and `chatGPTSignOutPath(returnTo)` for
-  browser links or actions.
-- Pass a same-origin relative `returnTo` path for the destination after sign-in
-  or sign-out. The helper validates and safely encodes it.
-- Mark protected pages with `export const dynamic = "force-dynamic"` because
-  they depend on per-request identity headers.
-
-Dispatch owns `/signin-with-chatgpt`, `/signout-with-chatgpt`, `/callback`, the
-OAuth cookies, and identity header injection. Do not implement app routes for
-those reserved paths. Routes that do not import and call the helper remain
-anonymous-compatible.
-
-SIWC establishes identity only; it does not prove workspace membership. Use the
-Sites hosting platform's access policy controls for workspace-wide restrictions,
-or enforce explicit server-side membership or allowlist checks.
-
-Use SIWC for account pages, user-specific dashboards, saved records, and write
-actions tied to the current ChatGPT user. Leave public content anonymous.
-
-## Useful Commands
-
-- `npm run dev`: start local development
-- `npm run build`: verify the vinext build output
-- `npm test`: build the starter and verify its rendered loading skeleton
-- `npm run db:generate`: generate Drizzle migrations after schema changes
-
-## Learn More
-
-- [vinext Documentation](https://github.com/cloudflare/vinext)
-- [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
-
----
-
-# Publicação multi-plataforma (YouTube, Instagram, TikTok)
-
-O Klip edita o vídeo no navegador e publica o mesmo arquivo em várias
-plataformas de uma vez. Esta seção descreve como ligar as APIs reais.
-
-## Como o fluxo funciona
-
-```
-Editor  →  POST /api/upload           (Supabase Storage → URL pública HTTPS)
-        →  POST /api/publish          (dispara as plataformas em paralelo)
-              ├─ YouTube   upload resumível em blocos (Data API v3)
-              ├─ Instagram container REELS → polling → media_publish (Graph API)
-              └─ TikTok    PULL_FROM_URL (Content Posting API)
+```text
+https://kglzsruwwapvppkpcpaz.supabase.co/auth/v1/callback
 ```
 
-Antes de qualquer envio, `/api/publish` chama `ensureFreshAccount()`
-(`lib/publishing/token-store.ts`), que renova os access tokens vencidos e grava
-os novos em `social_accounts`. Se a renovação falhar, a conta é marcada como
-`expired` e a UI pede reconexão em vez de estourar um 401 no meio do upload.
+Depois de concluir a autenticação, o Supabase devolve o usuário ao aplicativo em:
 
-## Configuração
+```text
+https://www.klipapp.com.br/auth/callback
+```
 
-Copie `.env.example` para `.env.local` e preencha as credenciais. Sem elas o app
-continua funcionando em **modo demonstração**: as publicações são simuladas e
-devolvem IDs falsos (também forçado por `ENABLE_PUBLISH_MOCK=true`).
+Esse segundo endereço deve estar na lista de redirects permitidos do **Supabase**, não no lugar do callback `supabase.co` no cliente Google.
 
-### YouTube — Google Cloud Console
+### 2. Conexão do canal e publicação no YouTube
 
-1. Crie um projeto e ative a **YouTube Data API v3**.
-2. Na tela de consentimento OAuth, adicione os escopos `youtube.upload` e
-   `youtube.readonly`.
-3. Crie um **ID do cliente OAuth → Aplicativo da Web** e registre o redirect URI
-   `https://SEU-DOMINIO/api/auth/callback/youtube`.
-4. Preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
+É um OAuth separado, iniciado pelo KLIPAPP Studio. O cliente Google usado pela integração do YouTube precisa do URI:
 
-O consentimento é pedido com `access_type=offline&prompt=consent` porque o
-access token do Google dura **1 hora** — sem o refresh token o canal
-desconectaria sozinho antes do próximo post.
+```text
+https://www.klipapp.com.br/api/auth/callback/youtube
+```
 
-> **Limite dos apps não verificados:** enquanto o app não passa pela verificação
-> do Google e pela auditoria da YouTube API, todo vídeo enviado é forçado para
-> `private`, independentemente da visibilidade escolhida na UI.
+As variáveis `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET` deste repositório são usadas por esse fluxo de publicação. Ative a YouTube Data API v3 e solicite os escopos `youtube.upload` e `youtube.readonly`.
 
-### Instagram Reels — Meta for Developers
+Enquanto o app do Google estiver em teste ou sem a auditoria exigida pela YouTube API, uploads podem ser limitados a vídeos privados.
 
-1. Crie um app do tipo **Business** e adicione os produtos **Facebook Login** e
-   **Instagram Graph API**.
-2. Permissões: `instagram_basic`, `instagram_content_publish`,
-   `pages_show_list`, `pages_read_engagement`, `business_management`.
-3. Registre o redirect URI `https://SEU-DOMINIO/api/auth/callback/instagram`.
-4. Preencha `META_APP_ID` e `META_APP_SECRET`.
+## Publicação social
 
-A conta que vai publicar precisa ser **Business ou Creator**, estar **vinculada
-a uma Página do Facebook**, e quem autoriza precisa ser admin dessa Página. No
-callback o app troca o token curto por um **token de 60 dias**, varre todas as
-Páginas do usuário procurando a conta Instagram vinculada e guarda o **Page
-access token** — é ele, e não o token de usuário, que a Content Publishing API
-aceita em `POST /{ig-user-id}/media`.
+O fluxo de produção é:
 
-> O Instagram **não aceita upload de arquivo**: a Meta baixa o vídeo da URL que
-> você informar. Por isso o arquivo precisa estar publicado em HTTPS acessível
-> pela internet (o bucket `klip-videos` do Supabase Storage resolve isso) antes
-> de `/api/publish` ser chamado. Limites: 50 publicações por 24h, 3s–15min de
-> duração, proporção recomendada 9:16.
+```text
+Editor
+  -> POST /api/upload
+  -> Supabase Storage (URL HTTPS pública)
+  -> POST /api/publish
+       -> YouTube: upload resumível
+       -> Instagram: container Reels, polling e media_publish
+       -> TikTok: Content Posting API
+```
 
-### TikTok — TikTok for Developers
+Os callbacks de produção são:
+
+```text
+YouTube:   https://www.klipapp.com.br/api/auth/callback/youtube
+Instagram: https://www.klipapp.com.br/api/auth/callback/instagram
+TikTok:    https://www.klipapp.com.br/api/auth/callback/tiktok
+```
+
+Antes de publicar, `ensureFreshAccount()` em `lib/publishing/token-store.ts` renova tokens vencidos e atualiza `social_accounts`. A proteção CSRF do OAuth usa um nonce também salvo em cookie HttpOnly.
+
+### TikTok Content Posting API
 
 Adicione o produto **Content Posting API** ao app, com os escopos
 `user.info.basic,video.upload,video.publish` e o redirect URI
-`https://SEU-DOMINIO/api/auth/callback/tiktok`. Preencha `TIKTOK_CLIENT_KEY` e
-`TIKTOK_CLIENT_SECRET`.
+`https://www.klipapp.com.br/api/auth/callback/tiktok`. Preencha
+`TIKTOK_CLIENT_KEY` e `TIKTOK_CLIENT_SECRET`.
 
 O fluxo tem quatro etapas, e pular qualquer uma delas quebra a publicação:
 
@@ -196,19 +192,32 @@ O fluxo tem quatro etapas, e pular qualquer uma delas quebra a publicação:
 
 ## Banco de dados
 
-Aplique as migrations em `supabase/migrations/` na ordem numérica. A
+Aplique as migrations de `supabase/migrations/` na ordem numérica. A migration
 `002_token_lifecycle.sql` adiciona os índices usados pelas rotas de publicação e
-documenta o campo `expires_at` (epoch em **milissegundos**).
+documenta `expires_at` como epoch em milissegundos.
 
-## Segurança do OAuth
+Para desenvolver sem publicar de verdade, defina `ENABLE_PUBLISH_MOCK=true`.
 
-O parâmetro `state` carrega um nonce que também é gravado num cookie HttpOnly
-(`klip_oauth_state`) e conferido no callback. Sem essa checagem, um terceiro
-poderia forjar um callback e vincular a própria conta social à sessão da vítima.
-O `next` do retorno é validado para aceitar apenas caminhos relativos, evitando
-open redirect.
+### Requisitos por plataforma
 
-## Arquivos relevantes
+- **Instagram:** conta Business ou Creator vinculada a uma Página do Facebook; permissões `instagram_basic`, `instagram_content_publish`, `pages_show_list`, `pages_read_engagement` e `business_management`.
+- **TikTok:** app aprovado com `user.info.basic`, `video.upload` e `video.publish`.
+- **YouTube:** YouTube Data API v3 ativa e consentimento offline para obtenção de refresh token.
+
+## Segurança e privacidade
+
+- Nunca versione `.env.local`, client secrets, refresh tokens ou chaves privadas.
+- A chave Supabase anon é pública por natureza; a proteção depende das políticas RLS.
+- Revise as políticas de `social_accounts` e do bucket antes de produção.
+- Use somente callbacks HTTPS e origens cadastradas nas plataformas.
+- Mídia publicada em redes sociais precisa ficar temporariamente acessível por HTTPS para ingestão.
+- Consulte a [Política de Privacidade](https://www.klipapp.com.br/privacidade) e os [Termos de Serviço](https://www.klipapp.com.br/termos) antes de disponibilizar o produto a terceiros.
+
+O parâmetro OAuth `state` leva um nonce validado contra um cookie HttpOnly. O
+caminho `next` aceita apenas destinos relativos e seguros, evitando CSRF e open
+redirect.
+
+### Arquivos de publicação
 
 | Arquivo | Responsabilidade |
 | --- | --- |
@@ -221,5 +230,17 @@ open redirect.
 | `lib/publishing/tiktok.ts` | Content Posting API: creator info, upload e polling |
 | `lib/publishing/publisher.ts` | Orquestra o multi-post em paralelo |
 
-Os testes de integração ficam em `tests/social-apis.test.mjs` e rodam com
-`npm test` (usam `fetch` mockado, nenhuma chamada real é feita).
+## Estrutura relevante
+
+```text
+app/                    rotas, salas, estúdios, editor e APIs
+components/             autenticação, publicação, tema e design system
+lib/publishing/         OAuth, tokens e clientes das redes sociais
+lib/supabase/           clientes Supabase de browser e servidor
+supabase/migrations/    schema e ciclo de vida de tokens
+tests/                  regressões, integração e contratos de UI
+```
+
+## Licença
+
+Distribuído sob a licença GPL-3.0-only. Consulte `package.json` para a declaração vigente.

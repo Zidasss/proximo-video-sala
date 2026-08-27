@@ -1,6 +1,6 @@
 {
-  "name": "site-creator-vinext-starter",
-  "version": "0.20.5",
+  "name": "klipapp",
+  "version": "0.21.0",
   "private": true,
   "license": "GPL-3.0-only",
   "packageManager": "npm@11.11.0",

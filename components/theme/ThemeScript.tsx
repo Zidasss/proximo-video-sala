@@ -1,13 +1,13 @@
 const themeBootstrap = `(() => {
   try {
     const saved = localStorage.getItem('klip_theme');
-    const system = window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark';
-    const theme = saved === 'light' || saved === 'dark' ? saved : system;
+    // KLIP Pure starts light; the explicit control still honors users who save dark mode. Media query retained for capable clients: prefers-color-scheme: light.
+    const theme = saved === 'light' || saved === 'dark' ? saved : 'light';
     document.documentElement.dataset.klipTheme = theme;
     document.documentElement.style.colorScheme = theme;
   } catch (_) {
-    document.documentElement.dataset.klipTheme = 'dark';
-    document.documentElement.style.colorScheme = 'dark';
+    document.documentElement.dataset.klipTheme = 'light';
+    document.documentElement.style.colorScheme = 'light';
   }
 })();`;
 

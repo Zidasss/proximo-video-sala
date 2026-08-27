@@ -1,6 +1,7 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./styles/klipapp.css";
+import "./styles/klip-pure.css";
 
 import { ThemeScript } from "../components/theme/ThemeScript";
 import accessibilityStyles from "../components/theme/Accessibility.module.css";
@@ -56,8 +57,8 @@ export const metadata: Metadata = {
 export const viewport: Viewport = {
   colorScheme: "light dark",
   themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#F6F8FC" },
-    { media: "(prefers-color-scheme: dark)", color: "#0B1020" },
+    { media: "(prefers-color-scheme: light)", color: "#FAFAFA" },
+    { media: "(prefers-color-scheme: dark)", color: "#17181A" },
   ],
 };
 

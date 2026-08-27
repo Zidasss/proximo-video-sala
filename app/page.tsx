@@ -231,6 +231,7 @@ type EditorSnapshot = {
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type StudioPanel = "formats" | "audio" | "effects";
 type EditorTool = "media" | "text" | "audio" | "effects" | "transitions" | "formats" | "radar";
+type EditorInspectorTab = "edit" | "audio" | "captions";
 type TimedLayer = Pick<IllustrationLayer, "start" | "end" | "fadeIn" | "fadeOut">;
 type ConnectionStats = {
   fps: number;
@@ -328,7 +329,7 @@ const constraints = (
 });
 
 export default function Home() {
-  const [theme, setTheme] = useState<KlipAppTheme>("dark");
+  const [theme, setTheme] = useState<KlipAppTheme>("light");
   const [inRoom, setInRoom] = useState(false);
   const [localStudio, setLocalStudio] = useState(false);
   const [motionStudio, setMotionStudio] = useState(false);
@@ -346,8 +347,7 @@ export default function Home() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const saved = localStorage.getItem("klip_theme") as KlipAppTheme | null;
-      const preferred = window.matchMedia("(prefers-color-scheme: light)").matches ? "light" : "dark";
-      setTheme(saved === "dark" || saved === "light" ? saved : preferred);
+      setTheme(saved === "dark" || saved === "light" ? saved : "light");
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
@@ -3968,6 +3968,7 @@ function ClipEditorV2({
     [studioPanel, setStudioPanel] = useState<StudioPanel | null>(null),
     [activeTool, setActiveTool] = useState<EditorTool>("media"),
     [toolPanelOpen, setToolPanelOpen] = useState(false),
+    [inspectorTab, setInspectorTab] = useState<EditorInspectorTab>("edit"),
     [selectedSocialPresetId, setSelectedSocialPresetId] = useState<SocialPresetId>("custom"),
     [draftSocialPresetId, setDraftSocialPresetId] = useState<SocialPresetId>("custom"),
     [videoTransform, setVideoTransform] = useState({ x: 0, y: 0, scaleX: 1, scaleY: 1 }),
@@ -3979,9 +3980,11 @@ function ClipEditorV2({
     [audioEnhance, setAudioEnhance] = useState(true),
     [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]),
     [waveform, setWaveform] = useState<number[]>([]),
+    [timelineThumbnails, setTimelineThumbnails] = useState<string[]>([]),
     [snapEnabled, setSnapEnabled] = useState(true),
     [markers, setMarkers] = useState<number[]>([]),
     [timelineZoom, setTimelineZoom] = useState(1),
+    [timelineHeight, setTimelineHeight] = useState(300),
     [safeGuides, setSafeGuides] = useState(true),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
     [layers, setLayers] = useState<TextLayer[]>([]),
@@ -4053,6 +4056,7 @@ function ClipEditorV2({
   const managedAudioUrls = useRef<Set<string>>(new Set());
   const studioDialog = useRef<HTMLElement | null>(null);
   const timelineViewport = useRef<HTMLDivElement | null>(null);
+  const timelinePanelResize = useRef<{ startY: number; startHeight: number } | null>(null);
   const layerDrag = useRef<{
     id: string;
     x: number;
@@ -4194,6 +4198,80 @@ function ClipEditorV2({
   }, [clip]);
 
   useEffect(() => {
+    let cancelled = false;
+    const generatedUrls: string[] = [];
+    const thumbnailVideo = document.createElement("video");
+    thumbnailVideo.muted = true;
+    thumbnailVideo.playsInline = true;
+    thumbnailVideo.preload = "auto";
+    if (!clip?.url) return;
+
+    const waitForMediaEvent = (eventName: "loadedmetadata" | "loadeddata" | "seeked") =>
+      new Promise<void>((resolve, reject) => {
+        let timer = 0;
+        const cleanup = () => {
+          window.clearTimeout(timer);
+          thumbnailVideo.removeEventListener(eventName, onReady);
+          thumbnailVideo.removeEventListener("error", onError);
+        };
+        const onReady = () => { cleanup(); resolve(); };
+        const onError = () => { cleanup(); reject(new Error(`thumbnail-${eventName}`)); };
+        thumbnailVideo.addEventListener(eventName, onReady, { once: true });
+        thumbnailVideo.addEventListener("error", onError, { once: true });
+        timer = window.setTimeout(onError, 8_000);
+      });
+    const seekFrame = async (at: number) => {
+      if (thumbnailVideo.readyState >= 2 && Math.abs(thumbnailVideo.currentTime - at) < .01) return;
+      const ready = waitForMediaEvent("seeked");
+      thumbnailVideo.currentTime = at;
+      await ready;
+    };
+
+    void (async () => {
+      const metadataReady = waitForMediaEvent("loadedmetadata");
+      thumbnailVideo.src = clip.url;
+      thumbnailVideo.load();
+      await metadataReady;
+      if (thumbnailVideo.readyState < 2) await waitForMediaEvent("loadeddata");
+      const mediaDuration = thumbnailVideo.duration;
+      if (!Number.isFinite(mediaDuration) || mediaDuration <= .05 || !thumbnailVideo.videoWidth || !thumbnailVideo.videoHeight) return;
+      const frameCount = mediaDuration < 8 ? 10 : 12;
+      const canvas = document.createElement("canvas");
+      canvas.width = 160;
+      canvas.height = 90;
+      const context = canvas.getContext("2d", { alpha: false });
+      if (!context) return;
+      const cover = Math.max(canvas.width / thumbnailVideo.videoWidth, canvas.height / thumbnailVideo.videoHeight);
+      const drawWidth = thumbnailVideo.videoWidth * cover;
+      const drawHeight = thumbnailVideo.videoHeight * cover;
+      const drawX = (canvas.width - drawWidth) / 2;
+      const drawY = (canvas.height - drawHeight) / 2;
+
+      for (let index = 0; index < frameCount && !cancelled; index += 1) {
+        const sampleAt = Math.min(Math.max(0, mediaDuration - .04), mediaDuration * ((index + .5) / frameCount));
+        await seekFrame(sampleAt);
+        if (cancelled) break;
+        context.drawImage(thumbnailVideo, drawX, drawY, drawWidth, drawHeight);
+        const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/webp", .62));
+        if (!blob) continue;
+        generatedUrls.push(URL.createObjectURL(blob));
+      }
+      if (!cancelled) setTimelineThumbnails([...generatedUrls]);
+    })().catch(() => {
+      generatedUrls.forEach((url) => URL.revokeObjectURL(url));
+      if (!cancelled) setTimelineThumbnails([]);
+    });
+
+    return () => {
+      cancelled = true;
+      thumbnailVideo.pause();
+      thumbnailVideo.removeAttribute("src");
+      thumbnailVideo.load();
+      generatedUrls.forEach((url) => URL.revokeObjectURL(url));
+    };
+  }, [clip?.url]);
+
+  useEffect(() => {
     const player = video.current;
     if (!player || !clip) return;
     let animation = 0;
@@ -4215,8 +4293,8 @@ function ClipEditorV2({
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
       const target = event.target as HTMLElement | null;
-      const editingText = target?.tagName === "INPUT" || target?.tagName === "TEXTAREA" || target?.isContentEditable;
-      if (editingText) return;
+      const interactive = target?.closest("input, textarea, select, button, a, summary, [contenteditable='true'], [role='slider'], [role='menuitem']");
+      if (interactive) return;
       const meta = event.ctrlKey || event.metaKey;
       if (meta && event.key.toLowerCase() === "z") { event.preventDefault(); if (event.shiftKey) redo(); else undo(); return; }
       if (meta && event.key.toLowerCase() === "y") { event.preventDefault(); redo(); return; }
@@ -4224,12 +4302,20 @@ function ClipEditorV2({
       if (meta && event.key.toLowerCase() === "v") { event.preventDefault(); pasteSelected(); return; }
       if (meta && event.key.toLowerCase() === "d") { event.preventDefault(); duplicateSelected(); return; }
       if (event.key === "Delete" || event.key === "Backspace") { event.preventDefault(); deleteSelected(); return; }
+      if (event.key.toLowerCase() === "s") { event.preventDefault(); splitSelectedAtPlayhead(); return; }
+      if (event.key === "ArrowLeft" || event.key === "ArrowRight") {
+        event.preventDefault();
+        const direction = event.key === "ArrowLeft" ? -1 : 1;
+        const frameStep = event.shiftKey ? 1 : 1 / Math.max(1, exportFps);
+        seek(current + direction * frameStep);
+        return;
+      }
       if (event.code === "Space") { event.preventDefault(); void togglePreviewPlayback(); }
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   // eslint-disable-next-line react-hooks/exhaustive-deps -- Os atalhos são registrados novamente quando o estado editável muda; as funções de comando são recriadas e adicioná-las causaria reinstalação em toda renderização.
-  }, [selectedId, selectedIllustrationId, selectedAudioId, clip, layers, illustrations, audioTracks, start, end, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt]);
+  }, [selectedId, selectedIllustrationId, selectedAudioId, clip, layers, illustrations, audioTracks, start, end, current, exportFps, videoFadeIn, videoFadeOut, videoFadeInAt, videoFadeOutAt]);
 
   const time = (value: number) => {
     const safe = Number.isFinite(value) ? Math.max(0, value) : 0;
@@ -4375,6 +4461,7 @@ function ClipEditorV2({
     releaseManagedAudioUrls();
     history.current = [];
     future.current = [];
+    setTimelineThumbnails([]);
     setClip(nextClip);
     setDuration(0);
     setSourceDuration(0);
@@ -6097,8 +6184,23 @@ function ClipEditorV2({
     }
   }
 
+  const beginTimelinePanelResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.setPointerCapture(event.pointerId);
+    timelinePanelResize.current = { startY: event.clientY, startHeight: timelineHeight };
+  };
+  const moveTimelinePanelResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    const resize = timelinePanelResize.current;
+    if (!resize) return;
+    const viewportLimit = typeof window === "undefined" ? 620 : Math.max(260, Math.min(720, window.innerHeight * .72));
+    setTimelineHeight(Math.round(Math.max(210, Math.min(viewportLimit, resize.startHeight + resize.startY - event.clientY))));
+  };
+  const endTimelinePanelResize = (event: React.PointerEvent<HTMLButtonElement>) => {
+    event.currentTarget.releasePointerCapture?.(event.pointerId);
+    timelinePanelResize.current = null;
+  };
+
   return (
-    <main className="clip-editor clip-editor-v2">
+    <main className="clip-editor clip-editor-v2" style={{ "--studio-timeline-h": `${timelineHeight}px`, "--pure-timeline-h": `${timelineHeight}px` } as CSSProperties}>
       <header className="editor-header editor-header-pro">
         <div className="brand">
           <KlipAppLogo variant="full" width={142} height={30} /><em>Studio</em>
@@ -6107,12 +6209,16 @@ function ClipEditorV2({
           <b>{clip.name}</b>
           <span><i /> Salvo localmente</span>
         </div>}
+        {clip && <div className="pure-history-controls" aria-label="Histórico de edição">
+          <button type="button" disabled={!history.current.length} onClick={undo} aria-label="Desfazer" title="Desfazer (Ctrl ou ⌘ + Z)"><Undo2 aria-hidden="true" size={15} /></button>
+          <button type="button" disabled={!future.current.length} onClick={redo} aria-label="Refazer" title="Refazer (Ctrl ou ⌘ + Shift + Z)"><Redo2 aria-hidden="true" size={15} /></button>
+        </div>}
         <div className="editor-header-actions">
           <button className="theme-toggle editor-theme-toggle" onClick={onToggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" size={16} /> : <Moon aria-hidden="true" size={16} />}</button>
           <button className="header-quiet-action" onClick={onBack} title="Voltar para a sala" aria-label="Voltar para a sala"><ArrowLeft aria-hidden="true" size={16} /> <span>Sala</span></button>
           {clip && <>
-          <button className="header-quiet-action radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()} title="Encontrar os melhores momentos"><Sparkles aria-hidden="true" size={16} /> <span>Radar</span></button>
-          <button className="header-format-action" onClick={() => { setActiveTool("formats"); setToolPanelOpen(true); }} title="Alterar formato do vídeo"><span><LayoutTemplate aria-hidden="true" size={16} /></span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label}</small></button>
+          <button className="header-quiet-action radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()} title="Encontrar os melhores momentos" aria-haspopup="dialog" aria-expanded={radarOpen} aria-controls="klip-radar-dialog"><Sparkles aria-hidden="true" size={16} /> <span>Radar</span></button>
+          <button className="header-format-action" onClick={() => { setActiveTool("formats"); setToolPanelOpen(true); }} title="Alterar formato do vídeo" aria-expanded={toolPanelOpen && activeTool === "formats"} aria-controls="klip-tool-panel"><span><LayoutTemplate aria-hidden="true" size={16} /></span><b>{selectedSocialPreset.title}</b><small>{selectedSocialPreset.aspectRatio.label}</small></button>
           <details className="export-settings-popover">
             <summary title="Configurações de exportação" aria-label="Configurações de exportação"><Settings2 aria-hidden="true" size={16} /> <span>Qualidade</span></summary>
             <div className="export-settings-menu">
@@ -6124,10 +6230,10 @@ function ClipEditorV2({
               <label>Qualidade<select aria-label="Bitrate" value={exportBitrate} onChange={(event) => setExportBitrate(event.target.value as "standard" | "high" | "ultra")}><option value="standard">Padrão</option><option value="high">Alta</option><option value="ultra">Máxima</option></select></label>
             </div>
           </details>
-          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel(false)}>
+          <button className="editor-export" disabled={!clip || exporting} onClick={() => void exportReel(false)} aria-busy={exporting} aria-live="polite" aria-atomic="true">
             {exporting ? `${exportProgress}%` : approvedCuts.length > 1 ? `Exportar ${approvedCuts.length} clipes` : `Exportar ${exportFormat.toUpperCase()}`}
           </button>
-          <button className="editor-publish-btn" disabled={!clip || exporting} onClick={() => void exportReel(true)} title="Publicar nas redes">
+          <button className="editor-publish-btn" disabled={!clip || exporting} onClick={() => void exportReel(true)} title="Publicar nas redes" aria-busy={exporting}>
             <Share2 aria-hidden="true" /><span>Publicar</span>
           </button>
           {exporting && <button className="editor-cancel" onClick={() => { cancelExport.current = true; editorRecorder.current?.stop(); }}>Cancelar</button>}
@@ -6136,9 +6242,9 @@ function ClipEditorV2({
       </header>
       {clip && <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
         <a href="#klip-preview"><Eye aria-hidden="true" size={15} /> Prévia</a>
-        <button onClick={() => { setActiveTool("media"); setToolPanelOpen(true); }}><SlidersHorizontal aria-hidden="true" size={15} /> Ferramentas</button>
+        <button onClick={() => { setActiveTool("media"); setToolPanelOpen(true); }} aria-expanded={toolPanelOpen} aria-controls="klip-tool-panel"><SlidersHorizontal aria-hidden="true" size={15} /> Ferramentas</button>
         <a href="#klip-timeline"><Layers2 aria-hidden="true" size={15} /> Linha do tempo</a>
-        <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()}><Sparkles aria-hidden="true" size={15} /> Radar</button>
+        <button className="radar-trigger" onClick={() => radarSuggestions.length ? setRadarOpen(true) : void runRadarAnalysis()} aria-haspopup="dialog" aria-expanded={radarOpen} aria-controls="klip-radar-dialog"><Sparkles aria-hidden="true" size={15} /> Radar</button>
         <button disabled={!clip || exporting} onClick={() => void exportReel()}><Download aria-hidden="true" size={15} /> {exporting ? "Renderizando…" : approvedCuts.length > 1 ? `Montagem (${approvedCuts.length})` : "Exportar"}</button>
       </nav>}
       <section className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}>
@@ -6152,9 +6258,9 @@ function ClipEditorV2({
               { tool: "transitions", icon: Blend, label: "Transições" },
               { tool: "formats", icon: LayoutTemplate, label: "Formatos" },
               { tool: "radar", icon: WandSparkles, label: "Radar" },
-            ] as const).map(({ tool, icon: ToolIcon, label }) => <button key={tool} type="button" className={activeTool === tool ? "active" : ""} onClick={() => { setActiveTool(tool); setToolPanelOpen(true); }} title={label} aria-label={label} aria-pressed={activeTool === tool}><span><ToolIcon aria-hidden="true" size={18} /></span><b>{label}</b></button>)}
+            ] as const).map(({ tool, icon: ToolIcon, label }) => <button key={tool} type="button" className={activeTool === tool ? "active" : ""} onClick={() => { setActiveTool(tool); setToolPanelOpen(true); }} title={label} aria-label={label} aria-pressed={activeTool === tool} aria-expanded={toolPanelOpen && activeTool === tool} aria-controls="klip-tool-panel"><span><ToolIcon aria-hidden="true" size={18} /></span><b>{label}</b></button>)}
           </nav>
-          <aside className="editor-tools" data-tool={activeTool}>
+          <aside className="editor-tools" data-tool={activeTool} id="klip-tool-panel" aria-label="Painel de ferramentas do editor">
             <header className="editor-tool-panel-header"><div><span>{activeTool === "radar" ? "IA" : "EDITOR"}</span><b>{activeTool === "media" ? "Mídia" : activeTool === "text" ? "Texto" : activeTool === "audio" ? "Áudio" : activeTool === "effects" ? "Efeitos" : activeTool === "transitions" ? "Transições" : activeTool === "formats" ? "Formatos" : "Radar KLIPAPP"}</b></div><button type="button" onClick={() => setToolPanelOpen(false)} aria-label="Fechar ferramentas"><X aria-hidden="true" size={16} /></button></header>
 
           {activeTool === "media" && <section className="editor-tool-section tool-media-panel">
@@ -6172,6 +6278,18 @@ function ClipEditorV2({
             <small className="media-import-help"><b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado do principal. <b>Camada</b> aparece por cima sem interromper o que você está editando.</small>
           </>}
           {clip && <p className="editor-file"><Film aria-hidden="true" size={13} /> {clip.name}</p>}
+          {clip && <div className="pure-media-library" aria-label="Biblioteca do projeto">
+            <div className="pure-library-toolbar"><b>Biblioteca</b><span>{1 + illustrations.length + audioTracks.length}</span></div>
+            <button type="button" className={!selectedIllustrationId && !selectedAudioId ? "selected" : ""} onClick={() => { setSelectedIllustrationId(""); setSelectedAudioId(""); setInspectorTab("edit"); }}>
+              <span className="pure-media-thumb pure-media-video" style={timelineThumbnails[0] ? { backgroundImage: `url(${timelineThumbnails[0]})`, backgroundPosition: "center", backgroundSize: "cover" } : undefined}>{!timelineThumbnails[0] && <Film aria-hidden="true" size={18} />}</span><span><b>{clip.name}</b><small>Vídeo principal · {time(baseDuration)}</small></span>
+            </button>
+            {illustrations.map((item) => <button type="button" key={item.id} className={selectedIllustration?.id === item.id ? "selected" : ""} onClick={() => { setSelectedIllustrationId(item.id); setSelectedAudioId(""); setSelectedId(""); setInspectorTab("edit"); seek(item.start); }}>
+              <span className={`pure-media-thumb ${item.kind === "image" ? "has-image" : ""}`} style={item.kind === "image" ? { backgroundImage: `url(${item.url})` } : undefined}>{item.kind === "video" && <Film aria-hidden="true" size={18} />}</span><span><b>{item.name}</b><small>{item.role === "scene" ? "Na sequência" : "Camada"} · {time(item.end - item.start)}</small></span>
+            </button>)}
+            {audioTracks.map((track) => <button type="button" key={track.id} className={selectedAudio?.id === track.id ? "selected" : ""} onClick={() => { setSelectedAudioId(track.id); setSelectedIllustrationId(""); setSelectedId(""); setInspectorTab("audio"); seek(track.start); }}>
+              <span className="pure-media-thumb pure-media-audio"><AudioLines aria-hidden="true" size={18} /></span><span><b>{track.name}</b><small>Áudio · {time(track.end - track.start)}</small></span>
+            </button>)}
+          </div>}
           <div className="project-actions"><button onClick={exportProject}><FileDown aria-hidden="true" size={14} /> Salvar projeto</button><label><FileUp aria-hidden="true" size={14} /> Abrir projeto<input type="file" accept="application/json,.json" onChange={(event) => void importProject(event.target.files?.[0])} /></label></div>
           </section>}
 
@@ -6301,7 +6419,7 @@ function ClipEditorV2({
           <div className={`editor-stage preset-${visualPreset} ${exportAspect === "vertical" || exportAspect === "portrait" || exportAspect === "square" || (exportAspect === "original" && sourceAspect < 1) ? "editor-stage-tall" : ""}`} style={{ aspectRatio: exportAspect === "original" ? `${sourceAspect}` : exportAspect === "vertical" ? "9 / 16" : exportAspect === "portrait" ? "4 / 5" : exportAspect === "landscape" ? "16 / 9" : "1 / 1" }}>
             {clip ? (
               /* eslint-disable-next-line jsx-a11y/media-has-caption -- A mídia importada é uma prévia local; o editor não possui uma faixa VTT correspondente. */
-              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline controls onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ filter: previewFilter, opacity: activeEffectFrame?.opacity ?? 1, transform: `translate(${videoTransform.x + (activeEffectFrame?.transform.translateX || 0) * 100}%, ${videoTransform.y + (activeEffectFrame?.transform.translateY || 0) * 100}%) rotate(${activeEffectFrame?.transform.rotationDeg || 0}deg) scale(${videoTransform.scaleX * (activeEffectFrame?.transform.scale || 1)}, ${videoTransform.scaleY * (activeEffectFrame?.transform.scale || 1)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} />{activeEffectFrame && <div className="studio-effect-layer" aria-hidden="true">{activeEffectFrame.overlays.map((overlay, index) => overlay.kind === "color" ? <i key={index} className="effect-color" style={{ background: overlay.color, opacity: overlay.opacity, mixBlendMode: overlay.blendMode }} /> : overlay.kind === "scanlines" ? <i key={index} className="effect-scanlines" style={{ opacity: overlay.opacity, backgroundSize: `100% ${overlay.spacing}px` }} /> : overlay.kind === "noise" ? <i key={index} className="effect-noise" style={{ opacity: overlay.opacity }} /> : overlay.kind === "vignette" ? <i key={index} className="effect-vignette" style={{ opacity: overlay.opacity }} /> : overlay.kind === "letterbox" ? <i key={index} className="effect-letterbox" style={{ "--letterbox-size": `${overlay.size * 100}%`, opacity: overlay.opacity } as CSSProperties} /> : <i key={index} className="effect-rgb" style={{ opacity: overlay.opacity, transform: `translate(${overlay.offsetX * 100}%, ${overlay.offsetY * 100}%)` }} />)}</div>}<div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura"><Maximize2 aria-hidden="true" size={14} /></div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}><RotateCcw aria-hidden="true" size={14} /> Restaurar</button></>
+              <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline aria-label={`Prévia de ${clip.name}`} onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ filter: previewFilter, opacity: activeEffectFrame?.opacity ?? 1, transform: `translate(${videoTransform.x + (activeEffectFrame?.transform.translateX || 0) * 100}%, ${videoTransform.y + (activeEffectFrame?.transform.translateY || 0) * 100}%) rotate(${activeEffectFrame?.transform.rotationDeg || 0}deg) scale(${videoTransform.scaleX * (activeEffectFrame?.transform.scale || 1)}, ${videoTransform.scaleY * (activeEffectFrame?.transform.scale || 1)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} />{activeEffectFrame && <div className="studio-effect-layer" aria-hidden="true">{activeEffectFrame.overlays.map((overlay, index) => overlay.kind === "color" ? <i key={index} className="effect-color" style={{ background: overlay.color, opacity: overlay.opacity, mixBlendMode: overlay.blendMode }} /> : overlay.kind === "scanlines" ? <i key={index} className="effect-scanlines" style={{ opacity: overlay.opacity, backgroundSize: `100% ${overlay.spacing}px` }} /> : overlay.kind === "noise" ? <i key={index} className="effect-noise" style={{ opacity: overlay.opacity }} /> : overlay.kind === "vignette" ? <i key={index} className="effect-vignette" style={{ opacity: overlay.opacity }} /> : overlay.kind === "letterbox" ? <i key={index} className="effect-letterbox" style={{ "--letterbox-size": `${overlay.size * 100}%`, opacity: overlay.opacity } as CSSProperties} /> : <i key={index} className="effect-rgb" style={{ opacity: overlay.opacity, transform: `translate(${overlay.offsetX * 100}%, ${overlay.offsetY * 100}%)` }} />)}</div>}<div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura"><Maximize2 aria-hidden="true" size={14} /></div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}><RotateCcw aria-hidden="true" size={14} /> Restaurar</button></>
             ) : (
               <div className="editor-empty"><small>KLIPAPP Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload"><Plus aria-hidden="true" size={16} /> Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
             )}
@@ -6319,7 +6437,7 @@ function ClipEditorV2({
               };
               return <div key={item.id} className={`illustration-overlay ${item.role === "scene" ? "scene-video-overlay" : ""} ${selectedIllustration?.id === item.id ? "selected-illustration" : ""}`} onPointerDown={(event) => beginIllustrationDrag(event, item)} onPointerMove={moveIllustrationDrag} onPointerUp={() => { illustrationDrag.current = null; illustrationResize.current = null; }} onPointerCancel={() => { illustrationDrag.current = null; illustrationResize.current = null; }} style={{ left: `${item.x}%`, top: `${item.y}%`, width: `${item.size}%`, opacity: layerOpacity(item, current), pointerEvents: item.role === "scene" && layerOpacity(item, current) <= 0 ? "none" : "auto" }}>
                 {/* eslint-disable-next-line @next/next/no-img-element -- Camadas de imagem usam URLs blob locais e precisam preservar o carregamento imediato no canvas do editor. */}
-                {item.kind === "image" ? <img {...common} src={item.url} alt="Ilustração" /> : <video {...common} src={item.url} muted autoPlay={item.role !== "scene"} loop={item.role !== "scene"} playsInline preload="auto" onTimeUpdate={(event) => { if (item.role === "scene" && !event.currentTarget.paused) setCurrent(item.start + event.currentTarget.currentTime); }} onEnded={() => { if (item.role === "scene") void playTimelineAt(item.end); }} />}
+                {item.kind === "image" ? <img {...common} src={item.url} alt={item.name || "Imagem inserida no vídeo"} /> : <video {...common} src={item.url} aria-label={item.name || "Vídeo inserido no projeto"} muted autoPlay={item.role !== "scene"} loop={item.role !== "scene"} playsInline preload="auto" onTimeUpdate={(event) => { if (item.role === "scene" && !event.currentTarget.paused) setCurrent(item.start + event.currentTarget.currentTime); }} onEnded={() => { if (item.role === "scene") void playTimelineAt(item.end); }} />}
                 <small>{item.kind === "image" ? "Imagem" : "Vídeo"} · mover</small>
                 {selectedIllustration?.id === item.id && <div className="illustration-resize-handle" onPointerDown={(event) => beginIllustrationResize(event, item)} onPointerMove={moveIllustrationResize} onPointerUp={() => { illustrationResize.current = null; }} onPointerCancel={() => { illustrationResize.current = null; }} aria-label="Redimensionar camada"><Maximize2 aria-hidden="true" size={14} /></div>}
               </div>;
@@ -6329,13 +6447,78 @@ function ClipEditorV2({
               if (!text || layerOpacity(layer, current) <= 0) return null;
               return <div key={layer.id} className={`caption-overlay ${selected?.id === layer.id ? "selected-layer" : ""} ${layer.background ? "with-background" : ""}`} onPointerDown={(event) => beginLayerDrag(event, layer)} onPointerMove={moveLayerDrag} onPointerUp={() => { layerDrag.current = null; }} onPointerCancel={() => { layerDrag.current = null; }} style={previewStyle(layer)}><span>{text}</span><small>Arraste</small></div>;
             })}
-            {clip && safeGuides && <div className="safe-area-guides" aria-label={selectedSocialPreset.safeArea.label} style={{ top: `${selectedSocialPreset.safeArea.insetPercent.top}%`, right: `${selectedSocialPreset.safeArea.insetPercent.right}%`, bottom: `${selectedSocialPreset.safeArea.insetPercent.bottom}%`, left: `${selectedSocialPreset.safeArea.insetPercent.left}%` }}><i /><span>{selectedSocialPreset.safeArea.label}</span></div>}
+            {clip && safeGuides && <div className="safe-area-guides" aria-hidden="true" style={{ top: `${selectedSocialPreset.safeArea.insetPercent.top}%`, right: `${selectedSocialPreset.safeArea.insetPercent.right}%`, bottom: `${selectedSocialPreset.safeArea.insetPercent.bottom}%`, left: `${selectedSocialPreset.safeArea.insetPercent.left}%` }}><i /><span>{selectedSocialPreset.safeArea.label}</span></div>}
           </div>
-          {notice && <p className="editor-notice">{notice}</p>}
+          {clip && <div className="pure-stage-transport" aria-label="Controles de reprodução">
+            <span>{time(current)} <i>/</i> {time(editorTimelineDuration || duration)}</span>
+            <div>
+              <button type="button" onClick={() => seek(Math.max(0, current - 1 / Math.max(1, exportFps)))} aria-label="Voltar um quadro"><ArrowLeft aria-hidden="true" size={16} /></button>
+              <button type="button" className="pure-play-button" onClick={() => void togglePreviewPlayback()} aria-label={isPlaying ? "Pausar" : "Reproduzir"} aria-keyshortcuts="Space">{isPlaying ? <Pause aria-hidden="true" size={18} fill="currentColor" /> : <Play aria-hidden="true" size={18} fill="currentColor" />}</button>
+              <button type="button" onClick={() => seek(Math.min(editorTimelineDuration || duration, current + 1 / Math.max(1, exportFps)))} aria-label="Avançar um quadro"><ArrowRight aria-hidden="true" size={16} /></button>
+            </div>
+            <div>
+              <Volume2 aria-hidden="true" size={16} />
+              <input aria-label="Volume da prévia" type="range" min="0" max="120" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} />
+              <button type="button" onClick={() => document.querySelector<HTMLElement>("#klip-preview .editor-stage")?.requestFullscreen?.()} aria-label="Tela cheia"><Maximize2 aria-hidden="true" size={16} /></button>
+            </div>
+          </div>}
+          {notice && <p className="editor-notice" role="status" aria-live="polite">{notice}</p>}
         </section>
+        {clip && <aside className="pure-inspector" aria-label="Inspetor contextual">
+          <div className="pure-inspector-tabs" role="tablist" aria-label="Propriedades">
+            {([{ id: "edit", label: "Editar" }, { id: "audio", label: "Áudio" }, { id: "captions", label: "Legendas" }] as const).map(({ id, label }) => <button key={id} type="button" role="tab" aria-selected={inspectorTab === id} className={inspectorTab === id ? "active" : ""} onClick={() => setInspectorTab(id)}>{label}</button>)}
+          </div>
+
+          {inspectorTab === "edit" && <div className="pure-inspector-body" role="tabpanel">
+            <header><span>{selectedIllustration ? "CAMADA" : "VÍDEO"}</span><b>{selectedIllustration?.name || clip.name}</b></header>
+            <details open>
+              <summary>Transformar</summary>
+              {selectedIllustration ? <>
+                <label>Tamanho <output>{Math.round(selectedIllustration.size)}%</output><input type="range" min="10" max="150" value={selectedIllustration.size} onChange={(event) => updateIllustration(selectedIllustration.id, { size: Number(event.target.value) })} /></label>
+                <div className="pure-number-grid"><label>X<input type="number" min="-100" max="200" value={Math.round(selectedIllustration.x)} onChange={(event) => updateIllustration(selectedIllustration.id, { x: Number(event.target.value) })} /></label><label>Y<input type="number" min="-100" max="200" value={Math.round(selectedIllustration.y)} onChange={(event) => updateIllustration(selectedIllustration.id, { y: Number(event.target.value) })} /></label></div>
+                <label>Encaixe<select value={selectedIllustration.fit} onChange={(event) => updateIllustration(selectedIllustration.id, { fit: event.target.value as "cover" | "contain" })}><option value="cover">Preencher</option><option value="contain">Mostrar tudo</option></select></label>
+              </> : <>
+                <label>Escala horizontal <output>{Math.round(videoTransform.scaleX * 100)}%</output><input type="range" min="0.2" max="2.5" step="0.01" value={videoTransform.scaleX} onChange={(event) => setVideoTransform((value) => ({ ...value, scaleX: Number(event.target.value) }))} /></label>
+                <label>Escala vertical <output>{Math.round(videoTransform.scaleY * 100)}%</output><input type="range" min="0.2" max="2.5" step="0.01" value={videoTransform.scaleY} onChange={(event) => setVideoTransform((value) => ({ ...value, scaleY: Number(event.target.value) }))} /></label>
+                <div className="pure-number-grid"><label>X<input type="number" min="-200" max="200" value={Math.round(videoTransform.x)} onChange={(event) => setVideoTransform((value) => ({ ...value, x: Number(event.target.value) }))} /></label><label>Y<input type="number" min="-200" max="200" value={Math.round(videoTransform.y)} onChange={(event) => setVideoTransform((value) => ({ ...value, y: Number(event.target.value) }))} /></label></div>
+                <button type="button" className="pure-secondary" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}><RotateCcw aria-hidden="true" size={14} /> Restaurar</button>
+              </>}
+            </details>
+            <details open>
+              <summary>Aparência</summary>
+              <div className="pure-segmented">{(["clean", "cinematic", "vivid", "mono", "warm"] as VisualPreset[]).map((preset) => <button type="button" key={preset} className={visualPreset === preset ? "active" : ""} onClick={() => setVisualPreset(preset)}>{preset === "clean" ? "Natural" : preset === "cinematic" ? "Cinema" : preset === "vivid" ? "Vibrante" : preset === "mono" ? "P&B" : "Quente"}</button>)}</div>
+            </details>
+            {selectedIllustration && <details open><summary>Tempo e transição</summary><div className="pure-number-grid"><label>Fade in<input type="number" min="0" max="3" step="0.1" value={selectedIllustration.fadeIn} onChange={(event) => updateIllustration(selectedIllustration.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out<input type="number" min="0" max="3" step="0.1" value={selectedIllustration.fadeOut} onChange={(event) => updateIllustration(selectedIllustration.id, { fadeOut: Number(event.target.value) })} /></label></div></details>}
+          </div>}
+
+          {inspectorTab === "audio" && <div className="pure-inspector-body" role="tabpanel">
+            <header><span>ÁUDIO</span><b>{selectedAudio?.name || "Áudio do vídeo"}</b></header>
+            <details open><summary>Volume</summary>
+              {selectedAudio ? <label>Nível <output>{selectedAudio.volume}%</output><input type="range" min="0" max="120" value={selectedAudio.volume} onChange={(event) => updateAudioTrack(selectedAudio.id, { volume: Number(event.target.value) })} /></label> : <label>Nível <output>{audioGain}%</output><input type="range" min="0" max="120" value={audioGain} onChange={(event) => setAudioGain(Number(event.target.value))} /></label>}
+              <label className="pure-check"><input type="checkbox" checked={audioEnhance} onChange={(event) => setAudioEnhance(event.target.checked)} /> Limpar voz e nivelar volume</label>
+            </details>
+            {selectedAudio && <details open><summary>Transição de áudio</summary><label>Fade in <output>{selectedAudio.fadeIn.toFixed(1)}s</output><input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeIn} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out <output>{selectedAudio.fadeOut.toFixed(1)}s</output><input type="range" min="0" max="3" step="0.1" value={selectedAudio.fadeOut} onChange={(event) => updateAudioTrack(selectedAudio.id, { fadeOut: Number(event.target.value) })} /></label></details>}
+            <button type="button" className="pure-secondary" onClick={() => { setActiveTool("audio"); setToolPanelOpen(true); }} aria-expanded={toolPanelOpen && activeTool === "audio"} aria-controls="klip-tool-panel"><Music2 aria-hidden="true" size={14} /> Abrir biblioteca de áudio</button>
+          </div>}
+
+          {inspectorTab === "captions" && <div className="pure-inspector-body" role="tabpanel">
+            <header><span>LEGENDAS</span><b>{selected ? "Texto selecionado" : "Nenhuma legenda"}</b></header>
+            {!selected ? <button type="button" className="pure-primary" onClick={addLayer}><Plus aria-hidden="true" size={15} /> Adicionar texto</button> : <>
+              <textarea aria-label="Texto da legenda" value={selected.text} onChange={(event) => updateLayer(selected.id, { text: event.target.value })} />
+              <details open><summary>Tipografia</summary>
+                <label>Fonte<select value={selected.font} onChange={(event) => updateLayer(selected.id, { font: event.target.value })}><option>Inter</option><option>Arial Black</option><option>Georgia</option><option>Courier New</option><option>Impact</option><option>Trebuchet MS</option></select></label>
+                <label>Tamanho <output>{selected.size}px</output><input type="range" min="18" max="140" value={selected.size} onChange={(event) => updateLayer(selected.id, { size: Number(event.target.value) })} /></label>
+                <div className="pure-caption-row"><input aria-label="Cor da legenda" type="color" value={selected.color} onChange={(event) => updateLayer(selected.id, { color: event.target.value })} /><button type="button" className={selected.align === "left" ? "active" : ""} onClick={() => updateLayer(selected.id, { align: "left" })}><AlignLeft aria-hidden="true" size={15} /></button><button type="button" className={selected.align === "center" ? "active" : ""} onClick={() => updateLayer(selected.id, { align: "center" })}><AlignCenter aria-hidden="true" size={15} /></button><button type="button" className={selected.align === "right" ? "active" : ""} onClick={() => updateLayer(selected.id, { align: "right" })}><AlignRight aria-hidden="true" size={15} /></button></div>
+              </details>
+              <details open><summary>Animação</summary><label>Efeito<select value={selected.effect} onChange={(event) => updateLayer(selected.id, { effect: event.target.value as TextEffect })}><option value="none">Sem efeito</option><option value="pop">Pop</option><option value="zoom">Zoom</option><option value="bounce">Bounce</option><option value="slide">Deslizar</option><option value="typewriter">Máquina de escrever</option></select></label><div className="pure-number-grid"><label>Fade in<input type="number" min="0" max="3" step="0.1" value={selected.fadeIn} onChange={(event) => updateLayer(selected.id, { fadeIn: Number(event.target.value) })} /></label><label>Fade out<input type="number" min="0" max="3" step="0.1" value={selected.fadeOut} onChange={(event) => updateLayer(selected.id, { fadeOut: Number(event.target.value) })} /></label></div></details>
+              <button type="button" className="pure-danger" onClick={removeLayer}><Trash2 aria-hidden="true" size={14} /> Excluir legenda</button>
+            </>}
+          </div>}
+        </aside>}
       </section>
 
-      {clip && <section className={`timeline-panel multi-timeline ${hasMontageTimeline ? "montage-active" : ""}`} id="klip-timeline">
+      {clip && <section className={`timeline-panel multi-timeline ${hasMontageTimeline ? "montage-active" : ""}`} id="klip-timeline" style={{ height: `${timelineHeight}px` }}>
+        <button type="button" className="pure-timeline-resizer" onPointerDown={beginTimelinePanelResize} onPointerMove={moveTimelinePanelResize} onPointerUp={endTimelinePanelResize} onPointerCancel={endTimelinePanelResize} aria-label={`Redimensionar linha do tempo. Altura atual ${timelineHeight} pixels`} title="Arraste para aumentar ou diminuir a timeline"><span /></button>
         <div className="timeline-top">
           <div><b>Linha do tempo</b><span>{hasMontageTimeline ? `Montagem livre · ${montageTimelineClips.length} clipes independentes · vídeo e áudio separados · ${time(montageTimelineDuration)}` : clip ? `Corte ${time(start)} — ${time(end)} · duração ${time(Math.max(0, end - start))}` : "Importe um vídeo ou foto para começar"}</span></div>
           <button disabled={!history.current.length} onClick={undo} title="Desfazer"><Undo2 aria-hidden="true" size={14} /> Desfazer</button>
@@ -6350,11 +6533,12 @@ function ClipEditorV2({
           <button className={snapEnabled ? "selected" : ""} onClick={() => setSnapEnabled((value) => !value)} title="Encaixa o cursor nos cortes, camadas e marcadores"><Magnet aria-hidden="true" size={14} /> Ímã</button>
           <details className="timeline-more"><summary><MoreHorizontal aria-hidden="true" size={16} /> Mais</summary><div><button className={safeGuides ? "selected" : ""} onClick={() => setSafeGuides((value) => !value)}><ShieldCheck aria-hidden="true" size={14} /> Área segura</button><button onClick={addMarker} title="Adiciona um marcador no cursor"><BookmarkPlus aria-hidden="true" size={14} /> Marcador</button><button onClick={splitSelectedAtPlayhead} title="Divide a cena, camada, texto ou áudio selecionado"><Scissors aria-hidden="true" size={14} /> Dividir selecionado no cursor</button><button onClick={trimAtPlayhead} title="Move a ponta mais próxima do vídeo base para o cursor atual"><Scissors aria-hidden="true" size={14} /> Ajustar corte do vídeo base</button><button onClick={() => markCut("start")}><ArrowLeft aria-hidden="true" size={14} /> Começar aqui</button><button onClick={() => markCut("end")}>Terminar aqui <ArrowRight aria-hidden="true" size={14} /></button><button onClick={() => seek(start)}><RotateCcw aria-hidden="true" size={14} /> Ir ao início</button></div></details>
         </div>
-        <div ref={timelineViewport} className="timeline-scroll-viewport">
+        {/* eslint-disable-next-line jsx-a11y/no-noninteractive-tabindex -- A viewport tem overflow bidirecional e precisa receber foco para navegação por teclado. */}
+        <div ref={timelineViewport} className="timeline-scroll-viewport" role="region" tabIndex={0} aria-label="Linha do tempo rolável. Use os controles de zoom para ajustar a precisão.">
           <div className="timeline-canvas" style={{ width: `${timelineZoom * 100}%` }}>
         <div className="timeline-ruler">{Array.from({ length: 9 }, (_, index) => <i key={index}>{editorTimelineDuration ? time((editorTimelineDuration / 8) * index) : "00:00"}</i>)}</div>
         <div className="timeline-lanes" onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline} onContextMenu={openVideoContextMenu}>
-          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><button className="primary-video-clip timeline-item-clip" type="button" style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((primaryClipEnd - primaryClipStart) / duration) * 100)}%` : "100%" }} onPointerDown={beginPrimaryTimelineMove} onPointerMove={movePrimaryTimelineMove} onPointerUp={endPrimaryTimelineMove} onPointerCancel={endPrimaryTimelineMove} onContextMenu={openVideoContextMenu} title="Arraste o corpo para mover o trecho sem alterar o corte. Use as pontas para cortar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineTrim(event, "start")} /><span><Play aria-hidden="true" size={12} fill="currentColor" /> VÍDEO PRINCIPAL · {clip?.name}</span><i className="timeline-clip-meta">arraste para mover</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineTrim(event, "end")} /></button>{sceneItems.map((item, index) => <button className={`illustration-clip scene-clip timeline-item-clip ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onClick={(event) => { event.stopPropagation(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag} title="Vídeo na sequência: arraste para mover; use as pontas para encurtar ou aumentar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span><Play aria-hidden="true" size={12} fill="currentColor" /> VÍDEO {index + 2} · {item.name}</span><i className="timeline-clip-meta">sequência</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button>)}{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover."><Blend aria-hidden="true" size={12} /> Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}><MoveHorizontal aria-hidden="true" size={12} /></i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}><MoveHorizontal aria-hidden="true" size={12} /></i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%" }}><span>{time(primaryClipStart)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(primaryClipEnd / duration) * 100}%` : "100%" }}><span>{time(primaryClipEnd)}</span></button></div></div>
+          <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><button className="primary-video-clip timeline-item-clip" type="button" style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((primaryClipEnd - primaryClipStart) / duration) * 100)}%` : "100%" }} onPointerDown={beginPrimaryTimelineMove} onPointerMove={movePrimaryTimelineMove} onPointerUp={endPrimaryTimelineMove} onPointerCancel={endPrimaryTimelineMove} onContextMenu={openVideoContextMenu} title="Arraste o corpo para mover o trecho sem alterar o corte. Use as pontas para cortar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineTrim(event, "start")} />{!!timelineThumbnails.length && <span className="pure-timeline-thumbnails" aria-hidden="true" style={{ position: "absolute", inset: "2px 16px", display: "grid", gridTemplateColumns: `repeat(${timelineThumbnails.length}, minmax(0, 1fr))`, gap: 1, overflow: "hidden", opacity: .48, borderRadius: "inherit", pointerEvents: "none" }}>{timelineThumbnails.map((thumbnail) => <span key={thumbnail} style={{ minWidth: 0, backgroundImage: `url(${thumbnail})`, backgroundPosition: "center", backgroundSize: "cover" }} />)}</span>}<span style={{ position: "relative", zIndex: 1, textShadow: "0 1px 4px rgba(0,0,0,.85)" }}><Play aria-hidden="true" size={12} fill="currentColor" /> VÍDEO PRINCIPAL · {clip?.name}</span><i className="timeline-clip-meta">arraste para mover</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineTrim(event, "end")} /></button>{sceneItems.map((item, index) => <button className={`illustration-clip scene-clip timeline-item-clip ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onClick={(event) => { event.stopPropagation(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag} title="Vídeo na sequência: arraste para mover; use as pontas para encurtar ou aumentar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span><Play aria-hidden="true" size={12} fill="currentColor" /> VÍDEO {index + 2} · {item.name}</span><i className="timeline-clip-meta">sequência</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button>)}{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover."><Blend aria-hidden="true" size={12} /> Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}><MoveHorizontal aria-hidden="true" size={12} /></i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}><MoveHorizontal aria-hidden="true" size={12} /></i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%" }}><span>{time(primaryClipStart)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(primaryClipEnd / duration) * 100}%` : "100%" }}><span>{time(primaryClipEnd)}</span></button></div></div>
           {hasMontageTimeline && <div className="timeline-lane radar-lane montage-video-lane"><b>VÍDEO</b><div className="lane-track" onPointerDown={selectTimeFromTimeline} title="Arraste cada clipe livremente. As lacunas permanecem até você fechar o espaço.">{montageTimelineClips.map((item, index) => <button type="button" key={item.id} className={`radar-cut montage-cut ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onPointerDown={(event) => beginRadarCutMove(event, item)} onPointerMove={moveRadarCutMove} onPointerUp={endRadarCutMove} onPointerCancel={endRadarCutMove} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} onDragOver={(event) => { event.preventDefault(); event.stopPropagation(); }} onDrop={(event) => dropTransitionOnRadarClip(event, item)} title={`clipe ${index + 1} · origem ${time(item.start)}–${time(item.end)} · arraste o corpo para mover e as pontas para cortar`}><i className="radar-trim-handle start" onPointerDown={(event) => beginRadarCutTrim(event, item, "start")} onPointerMove={moveRadarCutTrim} onPointerUp={endRadarCutTrim} onPointerCancel={endRadarCutTrim}><MoveHorizontal aria-hidden="true" size={12} /></i>{item.fadeIn ? <i className={`radar-clip-fade in ${item.fadeInColor || "black"}`} style={{ width: `${Math.min(48, (item.fadeIn / Math.max(.01, item.end - item.start)) * 100)}%` }} /> : null}<span><Play aria-hidden="true" size={12} fill="currentColor" /> K{index + 1} · {time(item.timelineEnd - item.timelineStart)}</span><small>arraste para mover</small>{item.fadeOut ? <i className={`radar-clip-fade out ${item.fadeOutColor || "black"}`} style={{ width: `${Math.min(48, (item.fadeOut / Math.max(.01, item.end - item.start)) * 100)}%` }} /> : null}<i className="radar-trim-handle end" onPointerDown={(event) => beginRadarCutTrim(event, item, "end")} onPointerMove={moveRadarCutTrim} onPointerUp={endRadarCutTrim} onPointerCancel={endRadarCutTrim}><MoveHorizontal aria-hidden="true" size={12} /></i><i className="montage-download" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`); } }} aria-label={`Salvar clipe ${index + 1} individualmente`} title="Salvar este clipe sem remover os demais"><Download aria-hidden="true" size={12} /></i><i className="montage-remove" role="button" tabIndex={0} onClick={(event) => { event.stopPropagation(); removeRadarCut(item.id); }} onKeyDown={(event) => { if (event.key === "Enter" || event.key === " ") { event.preventDefault(); event.stopPropagation(); removeRadarCut(item.id); } }} aria-label="Remover clipe"><X aria-hidden="true" size={12} /></i></button>)}</div></div>}
           <div className="timeline-lane audio-lane"><b>{hasMontageTimeline ? "ÁUDIOS" : "ÁUDIO"}</b><div className={`lane-track waveform-track ${hasMontageTimeline ? "segmented-waveform" : ""}`} onPointerDown={selectTimeFromTimeline} title={hasMontageTimeline ? "Cada clipe possui seu próprio áudio sincronizado e mantém a mesma posição e lacuna do vídeo." : "Forma de onda do áudio. Clique para posicionar o cursor."}>{hasMontageTimeline ? montageAudioClips.map((item, clipIndex) => <button type="button" key={item.id} className={`montage-audio-clip ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onPointerDown={(event) => event.stopPropagation()} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} title={`Áudio K${clipIndex + 1} · sincronizado com o vídeo`}><span><Music2 aria-hidden="true" size={12} /> K{clipIndex + 1}</span><i className="montage-audio-waveform">{item.waveform.length ? item.waveform.map((value, point) => <i key={point} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <i style={{ height: "18%" }} />}</i></button>) : timelineWaveform.length ? timelineWaveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{!hasMontageTimeline && markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}</div></div>
           {audioTracks.map((track, index) => (
@@ -6391,12 +6575,13 @@ function ClipEditorV2({
             <div><span><Sparkles aria-hidden="true" size={14} /> KLIP CREATOR</span><b>{studioPanel === "formats" ? "Escolha onde vai publicar" : studioPanel === "audio" ? "Dê ritmo à sua história" : "Transforme sua própria mídia"}</b><small>{studioPanel === "formats" ? "TikTok, Reels, Shorts, Stories, feed ou YouTube — sem decorar medidas." : studioPanel === "audio" ? "Músicas e efeitos KLIPAPP Original, com licença comercial clara." : "Passe o mouse ou toque para conferir antes de aplicar."}</small></div>
             <button type="button" onClick={closeStudioPanel} aria-label="Fechar ferramentas"><X aria-hidden="true" size={16} /></button>
           </header>
-          <nav className="studio-hub-tabs" aria-label="Ferramentas do criador">
-            <button type="button" className={studioPanel === "formats" ? "selected" : ""} onClick={() => setStudioPanel("formats")}><LayoutTemplate aria-hidden="true" size={15} /> Formatos</button>
-            <button type="button" className={studioPanel === "audio" ? "selected" : ""} onClick={() => setStudioPanel("audio")}><Music2 aria-hidden="true" size={15} /> Sons</button>
-            <button type="button" className={studioPanel === "effects" ? "selected" : ""} onClick={() => setStudioPanel("effects")}><Sparkles aria-hidden="true" size={15} /> Efeitos</button>
+          {/* eslint-disable-next-line jsx-a11y/no-noninteractive-element-to-interactive-role -- A navegação é o conjunto semântico de tabs do diálogo. */}
+          <nav className="studio-hub-tabs" aria-label="Ferramentas do criador" role="tablist">
+            <button id="studio-tab-formats" type="button" role="tab" aria-selected={studioPanel === "formats"} aria-controls="studio-hub-tabpanel" tabIndex={studioPanel === "formats" ? 0 : -1} className={studioPanel === "formats" ? "selected" : ""} onClick={() => setStudioPanel("formats")}><LayoutTemplate aria-hidden="true" size={15} /> Formatos</button>
+            <button id="studio-tab-audio" type="button" role="tab" aria-selected={studioPanel === "audio"} aria-controls="studio-hub-tabpanel" tabIndex={studioPanel === "audio" ? 0 : -1} className={studioPanel === "audio" ? "selected" : ""} onClick={() => setStudioPanel("audio")}><Music2 aria-hidden="true" size={15} /> Sons</button>
+            <button id="studio-tab-effects" type="button" role="tab" aria-selected={studioPanel === "effects"} aria-controls="studio-hub-tabpanel" tabIndex={studioPanel === "effects" ? 0 : -1} className={studioPanel === "effects" ? "selected" : ""} onClick={() => setStudioPanel("effects")}><Sparkles aria-hidden="true" size={15} /> Efeitos</button>
           </nav>
-          <div className="studio-hub-content">
+          <div className="studio-hub-content" id="studio-hub-tabpanel" role="tabpanel" aria-labelledby={`studio-tab-${studioPanel}`}>
             {studioPanel === "formats" && <QuickCreate
               selectedId={draftSocialPresetId}
               onPresetSelect={(preset) => setDraftSocialPresetId(preset.id)}
@@ -6429,14 +6614,14 @@ function ClipEditorV2({
           </div>
         </section>
       </div>}
-      {radarOpen && <aside className="radar-panel" aria-label="Sugestões automáticas de cortes">
-        <div className="radar-panel-header"><div><span><Sparkles aria-hidden="true" size={14} /> KLIP RADAR</span><b>Onde estão os melhores momentos?</b><small>A análise acontece somente neste navegador.</small></div><button onClick={() => setRadarOpen(false)} aria-label="Fechar"><X aria-hidden="true" size={16} /></button></div>
+      {radarOpen && <aside className="radar-panel" id="klip-radar-dialog" role="dialog" aria-labelledby="klip-radar-title">
+        <div className="radar-panel-header"><div><span><Sparkles aria-hidden="true" size={14} /> KLIP RADAR</span><b id="klip-radar-title">Onde estão os melhores momentos?</b><small>A análise acontece somente neste navegador.</small></div><button onClick={() => setRadarOpen(false)} aria-label="Fechar Radar"><X aria-hidden="true" size={16} /></button></div>
         <div className="radar-config">
           <label>Formato<select value={radarMode} onChange={(event) => setRadarMode(event.target.value as RadarMode)} disabled={radarAnalyzing}><option value="reels">Reels · direto</option><option value="shorts">Shorts · contexto maior</option><option value="highlights">Destaques · conversa longa</option></select></label>
           <label>Quantidade<select value={radarCount} onChange={(event) => setRadarCount(Number(event.target.value))} disabled={radarAnalyzing}>{[5, 10, 15, 20, 30].map((amount) => <option key={amount} value={amount}>{amount} sugestões</option>)}</select></label>
-          <button className="radar-analyze" disabled={radarAnalyzing} onClick={() => void runRadarAnalysis()}>{radarAnalyzing ? "Analisando…" : radarSuggestions.length ? <><RefreshCw aria-hidden="true" size={15} /> Analisar novamente</> : <><Sparkles aria-hidden="true" size={15} /> Analisar gravação</>}</button>
+          <button className="radar-analyze" disabled={radarAnalyzing} aria-busy={radarAnalyzing} onClick={() => void runRadarAnalysis()}>{radarAnalyzing ? "Analisando…" : radarSuggestions.length ? <><RefreshCw aria-hidden="true" size={15} /> Analisar novamente</> : <><Sparkles aria-hidden="true" size={15} /> Analisar gravação</>}</button>
         </div>
-        <div className="radar-progress" aria-live="polite"><div><i style={{ width: `${radarProgress}%` }} /></div><span>{radarStatus}</span></div>
+        <div className="radar-progress" role="status" aria-live="polite" aria-atomic="true"><div role="progressbar" aria-label="Progresso da análise" aria-valuemin={0} aria-valuemax={100} aria-valuenow={radarProgress}><i style={{ width: `${radarProgress}%` }} /></div><span>{radarStatus}</span></div>
         {!!radarSuggestions.length && <div className="radar-suggestions">
           <div className="radar-review-title"><b>Revise antes de aplicar</b><small>Desmarque o que não fizer sentido. Nada altera o arquivo original.</small></div>
           {radarSuggestions.map((item, index) => <article key={item.id} className={item.selected ? "selected" : ""}>

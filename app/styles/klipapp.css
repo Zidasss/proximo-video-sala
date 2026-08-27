@@ -1613,6 +1613,239 @@ html[data-klip-theme] .clip-editor-v2 .studio-effect-controls button {
 }
 
 /* --------------------------------------------------------------------------
+   Detail pass: rounded navigation + safe edge spacing
+
+   Keep this small compatibility layer last so older feature styles cannot
+   flatten the shared shell or push actions against the viewport edge.
+   -------------------------------------------------------------------------- */
+html[data-klip-theme] .landing-nav {
+  width: min(1240px, calc(100% - 32px));
+  min-height: 76px;
+  padding: 10px 14px !important;
+  border: 1px solid var(--ka-border-subtle) !important;
+  border-radius: var(--ka-radius-xl) !important;
+  background: color-mix(in srgb, var(--ka-surface) 88%, transparent) !important;
+  box-shadow: var(--ka-shadow-sm) !important;
+  backdrop-filter: blur(20px) saturate(135%);
+}
+
+html[data-klip-theme] .landing-nav-actions {
+  padding-inline: 4px;
+}
+
+html[data-klip-theme] .landing-nav-actions > :where(button, a),
+html[data-klip-theme] .landing-nav-actions > .nav-action-btn {
+  border-radius: var(--ka-radius-md) !important;
+}
+
+html[data-klip-theme] .landing-nav-actions > .theme-toggle {
+  border-radius: var(--ka-radius-full) !important;
+}
+
+html[data-klip-theme] .landing-profile-link {
+  max-width: min(210px, 22vw);
+  padding-right: 12px !important;
+}
+
+html[data-klip-theme] .landing-nav-actions > .nav-action-btn.ghost {
+  margin-right: 2px;
+  padding-inline: 14px;
+}
+
+html[data-klip-theme] .landing-legal-footer {
+  width: min(1160px, calc(100% - 40px));
+  margin: 4px auto 24px;
+  padding: 18px 22px;
+  border: 1px solid var(--ka-border-subtle);
+  border-radius: var(--ka-radius-lg);
+  background: color-mix(in srgb, var(--ka-surface) 74%, transparent);
+  box-shadow: var(--ka-shadow-xs);
+}
+
+/* Legal pages: keep links inside a readable, rounded footer surface instead
+   of pinning them to opposite viewport edges. */
+html[data-klip-theme] .page > .header {
+  width: min(1240px, calc(100% - 32px));
+  margin: 12px auto 0;
+  padding-inline: 18px;
+  border: 1px solid var(--ka-border-subtle);
+  border-radius: var(--ka-radius-xl);
+  box-shadow: var(--ka-shadow-sm);
+}
+
+html[data-klip-theme] .page > .footer {
+  width: min(1080px, calc(100% - 40px));
+  margin: 0 auto 24px;
+  padding: 18px 22px;
+  border: 1px solid var(--ka-border-subtle);
+  border-radius: var(--ka-radius-lg);
+  background: color-mix(in srgb, var(--ka-surface) 78%, transparent);
+  box-shadow: var(--ka-shadow-xs);
+}
+
+/* Empty-editor CTA: center the icon and label as one visual unit. The legacy
+   block display left the plus sign pinned to the left edge of the button. */
+html[data-klip-theme] .clip-editor-v2 .editor-empty-upload {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: min(100%, 320px);
+  min-width: 0;
+  text-align: center;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-empty-upload svg {
+  flex: 0 0 auto;
+  margin: 0;
+}
+
+@media (max-width: 620px) {
+  html[data-klip-theme] .landing-nav {
+    width: calc(100% - 20px);
+    border-radius: var(--ka-radius-lg) !important;
+  }
+
+  html[data-klip-theme] .landing-nav-actions {
+    padding-inline: 0;
+  }
+
+  html[data-klip-theme] .landing-legal-footer,
+  html[data-klip-theme] .page > .footer {
+    width: calc(100% - 24px);
+    margin-bottom: 12px;
+    border-radius: var(--ka-radius-md);
+  }
+
+  html[data-klip-theme] .page > .header {
+    width: calc(100% - 20px);
+    border-radius: var(--ka-radius-lg);
+  }
+}
+
+/* Studio density + adaptive workspace pass. Keep controls compact while
+   preserving touch-friendly targets, and let the docked timeline grow with
+   the viewport instead of consuming a fixed, cramped slice of the screen. */
+html[data-klip-theme] .clip-editor-v2 {
+  --studio-timeline-h: clamp(248px, 34dvh, 460px);
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tools button,
+html[data-klip-theme] .clip-editor-v2 .editor-tools .editor-upload,
+html[data-klip-theme] .clip-editor-v2 .editor-tools .tool-primary-action {
+  min-height: 42px;
+  padding-inline: 13px;
+  gap: 10px;
+  border-radius: var(--ka-radius-md) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tools button svg,
+html[data-klip-theme] .clip-editor-v2 .editor-tools label svg,
+html[data-klip-theme] .clip-editor-v2 .timeline-top button svg {
+  flex: 0 0 auto;
+  margin-inline: 0;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+  height: clamp(248px, 34dvh, 460px);
+  min-height: 248px;
+  max-height: 72dvh;
+  resize: vertical;
+  overflow: auto;
+  border-radius: var(--ka-radius-lg) var(--ka-radius-lg) 0 0;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline::after {
+  content: "↕ arraste para ajustar a altura";
+  position: absolute;
+  left: 50%;
+  top: 7px;
+  transform: translateX(-50%);
+  color: var(--ka-text-muted);
+  font-size: 10px;
+  letter-spacing: .02em;
+  opacity: .7;
+  pointer-events: none;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-top {
+  padding-inline: 10px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-top > button,
+html[data-klip-theme] .clip-editor-v2 .timeline-more summary {
+  min-height: 36px;
+  padding-inline: 10px;
+  gap: 7px;
+  border-radius: var(--ka-radius-md) !important;
+}
+
+@media (max-width: 760px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --studio-timeline-h: 290px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+    min-height: 220px;
+    height: 290px;
+    max-height: 68dvh;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline::after {
+    content: "↕";
+    left: 50%;
+  }
+}
+
+/* Transition controls: give each tile breathing room and center its icon
+   with the label instead of letting the inline SVG hug the top-left corner. */
+html[data-klip-theme] .clip-editor-v2 .transition-shelf {
+  gap: 10px;
+  padding: 2px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .transition-shelf button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 9px;
+  min-height: 58px;
+  padding: 12px 16px;
+  border-radius: var(--ka-radius-md) !important;
+  line-height: 1.2;
+  text-align: center;
+}
+
+html[data-klip-theme] .clip-editor-v2 .transition-shelf button svg {
+  flex: 0 0 auto;
+  width: 18px;
+  height: 18px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .transition-drops {
+  gap: 10px;
+  margin-top: 12px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .transition-drops > div {
+  display: grid;
+  align-content: center;
+  min-height: 68px;
+  padding: 14px 16px;
+  border-radius: var(--ka-radius-md) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .transition-drops b,
+html[data-klip-theme] .clip-editor-v2 .transition-drops span {
+  margin: 0;
+  line-height: 1.35;
+}
+
+html[data-klip-theme] .clip-editor-v2 .transition-drops span {
+  margin-top: 5px;
+}
+
+/* --------------------------------------------------------------------------
    Post-QA readability and first-fold polish
    -------------------------------------------------------------------------- */
 

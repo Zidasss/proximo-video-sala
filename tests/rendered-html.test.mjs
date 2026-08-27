@@ -139,6 +139,11 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.segmented-waveform/);
   assert.match(css, /\.montage-audio-waveform::after/);
   assert.match(css, /\.transition-shelf button:hover/);
+  assert.match(css, /Studio control-density pass/);
+  assert.match(css, /--studio-panel-w: 350px/);
+  assert.match(css, /\.editor-tool-rail button:hover \{ min-height: 50px/);
+  assert.match(css, /\.editor-tools \.tool-primary-action \{ min-height: 36px/);
+  assert.match(css, /\.editor-tools \.tool-primary-action \{ min-height: 44px; font-size: 14px/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 

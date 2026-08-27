@@ -4031,3 +4031,67 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
   .clip-editor-v2 .radar-config .radar-analyze { grid-column: 1; }
   .clip-editor-v2 .radar-panel > footer { grid-template-columns: 1fr; }
 }
+
+/* Studio control-density pass: compact, aligned controls without sacrificing touch targets. */
+@media (min-width: 761px) {
+  .clip-editor-v2 { --studio-rail-w: 72px; --studio-panel-w: 350px; }
+  .clip-editor-v2 .editor-tool-dock { border-radius: 14px; }
+  .clip-editor-v2 .editor-tool-rail { gap: 2px; padding: 8px 6px; }
+  .clip-editor-v2 .editor-tool-rail button,
+  .clip-editor-v2 .editor-tool-rail button:hover { min-height: 50px; gap: 3px; padding: 5px 3px; border-radius: 9px; transform: none; }
+  .clip-editor-v2 .editor-tool-rail button span { font-size: 17px; }
+  .clip-editor-v2 .editor-tool-rail button b { font-size: 10px; line-height: 1.1; }
+  .clip-editor-v2 .editor-tools { padding: 0 14px 20px; overflow-x: hidden; font-size: 13px; }
+  .clip-editor-v2 .editor-tool-panel-header { min-height: 56px; margin: 0 -14px 12px; padding: 10px 14px; }
+  .clip-editor-v2 .editor-tool-panel-header span { font-size: 9px; }
+  .clip-editor-v2 .editor-tool-panel-header b { font-size: 18px; }
+  .clip-editor-v2 .editor-tool-section { gap: 11px; }
+  .clip-editor-v2 .editor-tools button,
+  .clip-editor-v2 .editor-tools .editor-upload,
+  .clip-editor-v2 .editor-tools .subtitle-import,
+  .clip-editor-v2 .editor-tools .tool-primary-action { min-height: 36px; border-radius: 9px; font-size: 12px; line-height: 1.2; }
+  .clip-editor-v2 .tool-primary-action { gap: 7px; padding: 8px 11px; }
+  .clip-editor-v2 .tool-primary-action svg,
+  .clip-editor-v2 .editor-tools button svg,
+  .clip-editor-v2 .editor-tools label svg { flex: 0 0 auto; }
+  .clip-editor-v2 .tool-disclosure { max-width: 100%; margin-top: 0; border-radius: 9px; }
+  .clip-editor-v2 .tool-disclosure > summary { min-height: 38px; padding: 0 10px; font-size: 13px; }
+  .clip-editor-v2 .tool-disclosure > :not(summary) { min-width: 0; margin-right: 10px; margin-left: 10px; }
+  .clip-editor-v2 .tool-disclosure > :last-child { margin-bottom: 10px; }
+  .clip-editor-v2 .template-grid,
+  .clip-editor-v2 .visual-presets > div,
+  .clip-editor-v2 .sound-fx-shelf,
+  .clip-editor-v2 .format-shortcuts { gap: 6px; }
+  .clip-editor-v2 .template-grid button,
+  .clip-editor-v2 .visual-presets button,
+  .clip-editor-v2 .sound-fx-shelf button,
+  .clip-editor-v2 .transition-shelf button { min-height: 34px; padding: 7px 8px; font-size: 11px; }
+  .clip-editor-v2 .visual-presets,
+  .clip-editor-v2 .audio-editor-controls,
+  .clip-editor-v2 .editor-file,
+  .clip-editor-v2 .current-format-card,
+  .clip-editor-v2 .layer-inspector,
+  .clip-editor-v2 .audio-track-inspector,
+  .clip-editor-v2 .video-properties-grid,
+  .clip-editor-v2 .video-transition-controls { gap: 8px; padding: 10px; border-radius: 10px; }
+  .clip-editor-v2 .audio-editor-controls label,
+  .clip-editor-v2 .range-label,
+  .clip-editor-v2 .effect-grid label { font-size: 12px; }
+  .clip-editor-v2 .audio-editor-controls button,
+  .clip-editor-v2 .audio-import { display: inline-flex !important; align-items: center; justify-content: center; gap: 7px; min-height: 36px; padding: 8px 10px; }
+  .clip-editor-v2 .format-shortcuts button { min-height: 46px; padding: 8px; }
+  .clip-editor-v2 .format-shortcuts button > span { width: 26px; height: 26px; }
+}
+
+@media (min-width: 1800px) {
+  .clip-editor-v2 { --studio-rail-w: 76px; --studio-panel-w: 390px; }
+  .clip-editor-v2 .editor-tool-rail button { min-height: 52px; }
+}
+
+@media (max-width: 760px) {
+  .clip-editor-v2 .editor-tools button,
+  .clip-editor-v2 .editor-tools .editor-upload,
+  .clip-editor-v2 .editor-tools .subtitle-import,
+  .clip-editor-v2 .editor-tools .tool-primary-action { min-height: 44px; font-size: 14px; }
+  .clip-editor-v2 .editor-tool-section { gap: 12px; }
+}

@@ -2556,6 +2556,12 @@ html[data-klip-theme] .clip-editor-v2 .waveform-track > i:not(.montage-audio-wav
   background-color: var(--klip-cyan) !important;
 }
 
+.landing-legal-footer { position: relative; z-index: 2; display: flex; align-items: center; justify-content: space-between; gap: 18px; max-width: 1160px; margin: 0 auto; padding: 28px 22px 38px; border-top: 1px solid #ffffff17; color: #8f8b87; font-size: 12px; }
+.landing-legal-footer nav { display: flex; gap: 18px; }
+.landing-legal-footer a { color: #c5bfba; text-decoration: none; }
+.landing-legal-footer a:hover { color: #ff9185; }
+@media (max-width: 620px) { .landing-legal-footer { align-items: flex-start; flex-direction: column; }.landing-legal-footer nav { flex-direction: column; gap: 9px; } }
+
 .clip-editor-v2 .transition-shelf { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .clip-editor-v2 .transition-shelf button { min-height: 44px; border-color: #8e78ff55; background: linear-gradient(145deg, #20243a, #151827); color: #f5f2ff; font-weight: 850; }
 .clip-editor-v2 .transition-shelf button:hover { border-color: #a895ff; box-shadow: inset 0 0 20px #7659ff22; transform: translateY(-1px); }

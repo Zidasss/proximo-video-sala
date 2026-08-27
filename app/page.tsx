@@ -159,7 +159,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.20.4";
+const APP_VERSION = "v0.20.5";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",
@@ -2977,6 +2977,11 @@ export default function Home() {
             </div>
           </div>
         </section>
+
+        <footer className="landing-legal-footer">
+          <span>© 2026 Klip</span>
+          <nav><Link href="/privacidade">Política de Privacidade</Link><Link href="/termos">Termos de Serviço</Link></nav>
+        </footer>
 
         <div className="orb one" />
         <div className="orb two" />

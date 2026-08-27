@@ -37,6 +37,10 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /onEnded=\{\(\) => \{ if \(!exportInProgress\.current\) void playTimelineAt/);
   assert.match(page, /const hasFriendVideo/);
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
+  assert.match(page, /type VerticalCameraMode = "auto" \| "solo-mine" \| "solo-friend"/);
+  assert.match(page, /TikTok solo ativo: somente a sua câmera será gravada em 9:16/);
+  assert.match(page, /Câmera \/ placa de captura/);
+  assert.match(page, /Placa de captura —/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
   assert.match(page, /const stream = processedLocal\.current \|\| local\.current/);
   assert.match(page, /let loadedOverlaySource = cameraOverlayRef\.current/);

@@ -125,13 +125,16 @@ type Msg = { name: string; text: string };
 // Inspector label contract: Horizontal · {Math.round(selectedIllustration.x)}%
 // Drag payloads: application/x-klip-transition", "flash"; application/x-klip-transition", "dissolve"; application/x-klip-transition", "wipe".
 
+function isCaptureInputLabel(label = "") {
+  return /(capture|cam\s?link|avermedia|elgato|hdmi|usb\s?video|placa de captura|obs virtual)/i.test(
+    label,
+  );
+}
+
 function videoInputLabel(device: MediaDeviceInfo, index: number) {
   const label = device.label.trim();
   if (!label) return `Câmera ou placa de captura ${index + 1}`;
-  const isCaptureCard =
-    /(capture|cam\s?link|avermedia|elgato|hdmi|usb\s?video|placa de captura|obs virtual)/i.test(
-      label,
-    );
+  const isCaptureCard = isCaptureInputLabel(label);
   return isCaptureCard && !/placa de captura/i.test(label)
     ? `Placa de captura — ${label}`
     : label;
@@ -190,6 +193,8 @@ type IllustrationLayer = {
   x: number;
   y: number;
   size: number;
+  width?: number;
+  height?: number;
   start: number;
   end: number;
   fadeIn: number;
@@ -3806,6 +3811,36 @@ export default function Home() {
                         ))}
                       </select>
                     </label>
+                    <div className="capture-source-actions">
+                      <small>
+                        {isCaptureInputLabel(
+                          devices.find((item) => item.deviceId === deviceId)
+                            ?.label,
+                        )
+                          ? "Placa de captura ativa como fonte principal."
+                          : devices.some((item) =>
+                                isCaptureInputLabel(item.label),
+                              )
+                            ? "Placa detectada. Selecione a opção marcada como placa de captura acima."
+                            : "Para HDMI/console, conecte a placa e autorize a câmera. Para jogo ou janela do PC, use a captura de tela."}
+                      </small>
+                      <button
+                        className="open-preview capture-window-button"
+                        onClick={() => {
+                          if (sharing) void share();
+                          else setShareScreenDialogOpen(true);
+                        }}
+                      >
+                        {sharing ? (
+                          <ScreenShareOff aria-hidden="true" size={15} />
+                        ) : (
+                          <MonitorUp aria-hidden="true" size={15} />
+                        )}
+                        {sharing
+                          ? "Parar captura do PC"
+                          : "Capturar janela, tela ou jogo"}
+                      </button>
+                    </div>
                     <label className="menu-field">
                       Microfone
                       <select
@@ -6009,8 +6044,11 @@ function ClipEditorV2({
   } | null>(null);
   const illustrationResize = useRef<{
     id: string;
-    size: number;
+    width: number;
+    height: number;
     startX: number;
+    startY: number;
+    edge: "corner" | "right" | "bottom";
   } | null>(null);
   const timelineTrim = useRef<"start" | "end" | null>(null);
   const primaryTimelineDrag = useRef<{
@@ -7579,6 +7617,8 @@ function ClipEditorV2({
       x: 72,
       y: 30,
       size: 38,
+      width: 38,
+      height: 28,
       start: from,
       end: Math.max(
         from + 0.4,
@@ -8948,14 +8988,18 @@ function ClipEditorV2({
   function beginIllustrationResize(
     event: React.PointerEvent<HTMLDivElement>,
     item: IllustrationLayer,
+    edge: "corner" | "right" | "bottom" = "corner",
   ) {
     event.stopPropagation();
     remember();
     setSelectedIllustrationId(item.id);
     illustrationResize.current = {
       id: item.id,
-      size: item.size,
+      width: item.width ?? item.size,
+      height: item.height ?? item.size * 0.72,
       startX: event.clientX,
+      startY: event.clientY,
+      edge,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -8964,17 +9008,27 @@ function ClipEditorV2({
     const stage = event.currentTarget.parentElement?.parentElement;
     if (!resize || !stage) return;
     const bounds = stage.getBoundingClientRect();
+    const nextWidth = Math.max(
+        8,
+        Math.min(
+          160,
+          resize.width +
+            ((event.clientX - resize.startX) / bounds.width) * 100,
+        ),
+      ),
+      nextHeight = Math.max(
+        8,
+        Math.min(
+          160,
+          resize.height +
+            ((event.clientY - resize.startY) / bounds.height) * 100,
+        ),
+      );
     updateIllustration(
       resize.id,
       {
-        size: Math.max(
-          18,
-          Math.min(
-            90,
-            resize.size +
-              ((event.clientX - resize.startX) / bounds.width) * 100,
-          ),
-        ),
+        ...(resize.edge !== "bottom" ? { width: nextWidth, size: nextWidth } : {}),
+        ...(resize.edge !== "right" ? { height: nextHeight } : {}),
       },
       false,
     );
@@ -9523,9 +9577,11 @@ function ClipEditorV2({
         const boxWidth =
           item.role === "scene"
             ? canvas.width
-            : (item.size / 100) * canvas.width;
+            : ((item.width ?? item.size) / 100) * canvas.width;
         const boxHeight =
-          item.role === "scene" ? canvas.height : boxWidth * 0.72;
+          item.role === "scene"
+            ? canvas.height
+            : ((item.height ?? item.size * 0.72) / 100) * canvas.height;
         const scale =
           item.fit === "cover"
             ? Math.max(boxWidth / mediaWidth, boxHeight / mediaHeight)
@@ -10237,8 +10293,8 @@ function ClipEditorV2({
                         />
                       </label>
                       <label className="editor-upload editor-illustration-upload">
-                        <Layers2 aria-hidden="true" size={15} /> Inserir como
-                        camada
+                        <Layers2 aria-hidden="true" size={15} /> Sobrepor vídeo
+                        ou imagem
                         <input
                           type="file"
                           accept="image/*,video/*"
@@ -10250,8 +10306,9 @@ function ClipEditorV2({
                     </div>
                     <small className="media-import-help">
                       <b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado
-                      do principal. <b>Camada</b> aparece por cima sem
-                      interromper o que você está editando.
+                      do principal. <b>Sobreposição</b> permite colocar webcam,
+                      gameplay ou outro vídeo simultaneamente, arrastar e
+                      redimensionar livremente.
                     </small>
                   </>
                 )}
@@ -10801,13 +10858,14 @@ function ClipEditorV2({
                 <div className="tool-heading layer-heading">
                   <span>02</span>
                   <div>
-                    <b>Ilustrações</b>
-                    <small>Imagem ou vídeo por cima da conversa</small>
+                    <b>Camadas de mídia</b>
+                    <small>Vários vídeos e imagens na mesma tela</small>
                   </div>
                 </div>
                 <small className="illustration-help">
-                  As camadas novas são inseridas pelo bloco “Adicionar mídia”
-                  acima. Selecione uma abaixo para ajustar.
+                  Use “Sobrepor vídeo ou imagem” quantas vezes quiser. Arraste
+                  cada camada na prévia e use as alças para mudar largura e
+                  altura.
                 </small>
                 {!!illustrations.length && (
                   <div className="layer-list illustration-list">
@@ -10842,7 +10900,7 @@ function ClipEditorV2({
                 {selectedIllustration && (
                   <div className="layer-inspector illustration-inspector">
                     <div className="inspector-title">
-                      <b>Ilustração selecionada</b>
+                      <b>Camada de mídia selecionada</b>
                       <div className="inspector-actions">
                         <button onClick={duplicateIllustration}>
                           Duplicar
@@ -10850,20 +10908,37 @@ function ClipEditorV2({
                         <button onClick={removeIllustration}>Excluir</button>
                       </div>
                     </div>
-                    <label className="range-label">
-                      Tamanho · {selectedIllustration.size}%
-                      <input
-                        type="range"
-                        min="18"
-                        max="86"
-                        value={selectedIllustration.size}
-                        onChange={(event) =>
-                          updateIllustration(selectedIllustration.id, {
-                            size: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
+                    <div className="position-grid layer-size-grid">
+                      <label>
+                        Largura · {Math.round(selectedIllustration.width ?? selectedIllustration.size)}%
+                        <input
+                          type="range"
+                          min="8"
+                          max="160"
+                          value={selectedIllustration.width ?? selectedIllustration.size}
+                          onChange={(event) =>
+                            updateIllustration(selectedIllustration.id, {
+                              width: Number(event.target.value),
+                              size: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Altura · {Math.round(selectedIllustration.height ?? selectedIllustration.size * 0.72)}%
+                        <input
+                          type="range"
+                          min="8"
+                          max="160"
+                          value={selectedIllustration.height ?? selectedIllustration.size * 0.72}
+                          onChange={(event) =>
+                            updateIllustration(selectedIllustration.id, {
+                              height: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                    </div>
                     <div className="position-grid">
                       <label>
                         Horizontal · {Math.round(selectedIllustration.x)}%
@@ -11636,7 +11711,8 @@ function ClipEditorV2({
                     style={{
                       left: `${item.x}%`,
                       top: `${item.y}%`,
-                      width: `${item.size}%`,
+                      width: `${item.width ?? item.size}%`,
+                      height: `${item.height ?? item.size * 0.72}%`,
                       opacity: layerOpacity(item, current),
                       pointerEvents:
                         item.role === "scene" &&
@@ -11681,22 +11757,52 @@ function ClipEditorV2({
                       {item.kind === "image" ? "Imagem" : "Vídeo"} · mover
                     </small>
                     {selectedIllustration?.id === item.id && (
-                      <div
-                        className="illustration-resize-handle"
-                        onPointerDown={(event) =>
-                          beginIllustrationResize(event, item)
-                        }
-                        onPointerMove={moveIllustrationResize}
-                        onPointerUp={() => {
-                          illustrationResize.current = null;
-                        }}
-                        onPointerCancel={() => {
-                          illustrationResize.current = null;
-                        }}
-                        aria-label="Redimensionar camada"
-                      >
-                        <Maximize2 aria-hidden="true" size={14} />
-                      </div>
+                      <>
+                        <div
+                          className="illustration-resize-handle illustration-resize-right"
+                          onPointerDown={(event) =>
+                            beginIllustrationResize(event, item, "right")
+                          }
+                          onPointerMove={moveIllustrationResize}
+                          onPointerUp={() => {
+                            illustrationResize.current = null;
+                          }}
+                          onPointerCancel={() => {
+                            illustrationResize.current = null;
+                          }}
+                          aria-label="Ajustar largura da camada"
+                        />
+                        <div
+                          className="illustration-resize-handle illustration-resize-bottom"
+                          onPointerDown={(event) =>
+                            beginIllustrationResize(event, item, "bottom")
+                          }
+                          onPointerMove={moveIllustrationResize}
+                          onPointerUp={() => {
+                            illustrationResize.current = null;
+                          }}
+                          onPointerCancel={() => {
+                            illustrationResize.current = null;
+                          }}
+                          aria-label="Ajustar altura da camada"
+                        />
+                        <div
+                          className="illustration-resize-handle illustration-resize-corner"
+                          onPointerDown={(event) =>
+                            beginIllustrationResize(event, item, "corner")
+                          }
+                          onPointerMove={moveIllustrationResize}
+                          onPointerUp={() => {
+                            illustrationResize.current = null;
+                          }}
+                          onPointerCancel={() => {
+                            illustrationResize.current = null;
+                          }}
+                          aria-label="Redimensionar livremente a camada"
+                        >
+                          <Maximize2 aria-hidden="true" size={14} />
+                        </div>
+                      </>
                     )}
                   </div>
                 );
@@ -11855,18 +11961,36 @@ function ClipEditorV2({
                   {selectedIllustration ? (
                     <>
                       <label>
-                        Tamanho{" "}
+                        Largura{" "}
                         <output>
-                          {Math.round(selectedIllustration.size)}%
+                          {Math.round(selectedIllustration.width ?? selectedIllustration.size)}%
                         </output>
                         <input
                           type="range"
-                          min="10"
-                          max="150"
-                          value={selectedIllustration.size}
+                          min="8"
+                          max="160"
+                          value={selectedIllustration.width ?? selectedIllustration.size}
                           onChange={(event) =>
                             updateIllustration(selectedIllustration.id, {
+                              width: Number(event.target.value),
                               size: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Altura{" "}
+                        <output>
+                          {Math.round(selectedIllustration.height ?? selectedIllustration.size * 0.72)}%
+                        </output>
+                        <input
+                          type="range"
+                          min="8"
+                          max="160"
+                          value={selectedIllustration.height ?? selectedIllustration.size * 0.72}
+                          onChange={(event) =>
+                            updateIllustration(selectedIllustration.id, {
+                              height: Number(event.target.value),
                             })
                           }
                         />

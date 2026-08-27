@@ -30,6 +30,11 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /editor-workspace-empty/);
   assert.match(page, /scaleX: 1, scaleY: 1/);
   assert.match(page, /beginVideoFrameResize\(event, "corner"\)/);
+  assert.match(page, /Sobrepor vídeo ou imagem/);
+  assert.match(page, /Vários vídeos e imagens na mesma tela/);
+  assert.match(page, /illustration-resize-right/);
+  assert.match(page, /illustration-resize-bottom/);
+  assert.match(page, /item\.width \?\? item\.size/);
   assert.match(page, /function turnPhotoIntoClip/);
   assert.match(page, /function togglePreviewPlayback/);
   assert.match(page, /function playTimelineAt/);
@@ -44,6 +49,8 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /A tela compartilhada também será gravada exatamente como aparece aqui/);
   assert.match(page, /Câmera \/ placa de captura/);
   assert.match(page, /Placa de captura —/);
+  assert.match(page, /Capturar janela, tela ou jogo/);
+  assert.match(page, /function isCaptureInputLabel/);
   assert.match(page, /function placeholderCameraStream/);
   assert.match(page, /Sala aberta sem mídia/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);

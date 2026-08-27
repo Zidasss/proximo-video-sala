@@ -362,6 +362,29 @@ const constraints = (
   audio: microphoneConstraints(audioInputId),
 });
 
+function placeholderCameraStream() {
+  const canvas = document.createElement("canvas");
+  canvas.width = 640;
+  canvas.height = 360;
+  const context = canvas.getContext("2d");
+  if (context) {
+    context.fillStyle = "#0b1020";
+    context.fillRect(0, 0, canvas.width, canvas.height);
+    context.fillStyle = "#7868ff";
+    context.beginPath();
+    context.arc(canvas.width / 2, 135, 42, 0, Math.PI * 2);
+    context.fill();
+    context.fillStyle = "#f7f8fc";
+    context.font = "600 24px system-ui, sans-serif";
+    context.textAlign = "center";
+    context.fillText("Câmera indisponível", canvas.width / 2, 220);
+    context.fillStyle = "#b7c0d1";
+    context.font = "16px system-ui, sans-serif";
+    context.fillText("Abra Ajustes para tentar novamente", canvas.width / 2, 252);
+  }
+  return canvas.captureStream(1);
+}
+
 export default function Home() {
   const [theme, setTheme] = useState<KlipAppTheme>("light");
   const [themeReady, setThemeReady] = useState(false);
@@ -2316,26 +2339,42 @@ export default function Home() {
       window.clearTimeout(peerRetryTimer.current);
       local.current?.getTracks().forEach((track) => track.stop());
       let stream: MediaStream;
+      let mediaWarning = "";
+      let usedPlaceholder = false;
       try {
         stream = await navigator.mediaDevices.getUserMedia(
           constraints(quality, chosen || undefined, chosenAudio || undefined),
         );
-      } catch {
-        stream = await navigator.mediaDevices.getUserMedia({
-          video: {
-            width: { ideal: quality === "1080" ? 1920 : 1280 },
-            height: { ideal: quality === "1080" ? 1080 : 720 },
-            frameRate: { ideal: 30 },
-          },
-          audio: {
-            echoCancellation: true,
-            noiseSuppression: true,
-            autoGainControl: true,
-          },
-        });
+      } catch (combinedError) {
+        try {
+          stream = await navigator.mediaDevices.getUserMedia({
+            video: chosen
+              ? { deviceId: { exact: chosen }, width: { ideal: 1920 }, height: { ideal: 1080 }, frameRate: { ideal: 30 } }
+              : { width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+            audio: false,
+          });
+          mediaWarning = "Sala aberta sem microfone. Libere ou selecione o microfone em Ajustes.";
+        } catch {
+          try {
+            stream = await navigator.mediaDevices.getUserMedia({
+              video: false,
+              audio: microphoneConstraints(chosenAudio || undefined),
+            });
+            mediaWarning = "Sala aberta sem câmera. Feche outros aplicativos e selecione a câmera ou placa em Ajustes.";
+          } catch {
+            stream = placeholderCameraStream();
+            usedPlaceholder = true;
+            const denied = combinedError instanceof DOMException && combinedError.name === "NotAllowedError";
+            mediaWarning = denied
+              ? "Sala aberta sem mídia: a permissão foi bloqueada. Autorize câmera e microfone no cadeado do navegador e tente em Ajustes."
+              : "Sala aberta sem mídia: câmera ou placa está ocupada/indisponível. Feche outros aplicativos e tente em Ajustes.";
+          }
+        }
       }
       local.current = stream;
-      setupMicrophoneProcessing(stream, micSensitivity);
+      if (stream.getAudioTracks().length)
+        setupMicrophoneProcessing(stream, micSensitivity);
+      setCameraOn(!usedPlaceholder && stream.getVideoTracks().length > 0);
       setCameraEpoch((value) => value + 1);
       if (mine.current) {
         mine.current.srcObject = stream;
@@ -2362,11 +2401,12 @@ export default function Home() {
       setInRoom(true);
       await devicesList();
       startPeer(stream);
+      if (mediaWarning) setNotice(mediaWarning);
       setBooting(false);
-    } catch {
+    } catch (error) {
       setBooting(false);
       setNotice(
-        "Permita câmera e microfone. Feche outros aplicativos que possam estar usando a webcam.",
+        `Não foi possível abrir a sala${error instanceof Error && error.message ? `: ${error.message}` : ". Tente novamente."}`,
       );
     }
   }

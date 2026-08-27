@@ -41,6 +41,8 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /TikTok solo ativo: somente a sua câmera será gravada em 9:16/);
   assert.match(page, /Câmera \/ placa de captura/);
   assert.match(page, /Placa de captura —/);
+  assert.match(page, /function placeholderCameraStream/);
+  assert.match(page, /Sala aberta sem mídia/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
   assert.match(page, /const stream = processedLocal\.current \|\| local\.current/);
   assert.match(page, /let loadedOverlaySource = cameraOverlayRef\.current/);

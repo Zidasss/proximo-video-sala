@@ -166,7 +166,7 @@ html[data-klip-theme="light"] {
 }
 
 :root {
-  --ka-font-sans: Inter, ui-sans-serif, -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+  --ka-font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", "SF Pro Display", "Helvetica Neue", "Segoe UI", ui-sans-serif, sans-serif;
   --ka-font-mono: "SFMono-Regular", Consolas, "Liberation Mono", monospace;
   --ka-font-family: var(--ka-font-sans);
   --ka-font-size-xs: .8125rem;
@@ -226,7 +226,20 @@ body {
   background: var(--ka-bg);
   color: var(--ka-text);
   font-family: var(--ka-font-sans);
+  font-kerning: normal;
+  font-optical-sizing: auto;
+  letter-spacing: -.006em;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
   transition: background-color var(--ka-motion-slow) var(--ka-ease), color var(--ka-motion) var(--ka-ease);
+}
+
+html[data-klip-theme] :where(button, input, select, textarea, summary, label) {
+  font-family: var(--ka-font-sans) !important;
+}
+
+html[data-klip-theme] :where(h1, h2, h3, h4, h5, h6, strong, b) {
+  letter-spacing: -.018em;
 }
 
 ::selection { background: var(--ka-brand); color: white; }

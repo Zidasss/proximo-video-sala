@@ -40,11 +40,11 @@
 }
 
 .wordmark {
-  fill: none;
-  stroke: currentColor;
-  stroke-linecap: round;
-  stroke-linejoin: round;
-  stroke-width: 7;
+  fill: currentColor;
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
+  font-size: 36px;
+  font-weight: 720;
+  letter-spacing: -1.6px;
 }
 
 @media (forced-colors: active) {
@@ -57,7 +57,5 @@
     fill: Canvas;
   }
 
-  .wordmark {
-    stroke: CanvasText;
-  }
+  .wordmark { fill: CanvasText; }
 }

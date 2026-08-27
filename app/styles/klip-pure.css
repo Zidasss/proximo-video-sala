@@ -3157,13 +3157,163 @@ html[data-klip-theme] .clip-editor-v2 .tool-formats-panel .current-format-card b
 }
 
 html[data-klip-theme] .clip-editor-v2 .tool-formats-panel .format-shortcuts button {
-  min-height: 40px;
-  padding: 5px 7px;
+  grid-template-columns: 25px minmax(0, 1fr) auto;
+  grid-template-rows: 1fr;
+  align-items: center;
+  column-gap: 7px;
+  min-height: 42px;
+  padding: 6px 8px;
 }
 
 html[data-klip-theme] .clip-editor-v2 .tool-formats-panel .format-shortcuts button b {
   font-size: 10.5px;
   font-weight: 600;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-formats-panel .format-shortcuts button > span {
+  grid-row: auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  line-height: 1;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-formats-panel .format-shortcuts button small {
+  justify-self: end;
+  line-height: 1;
+  white-space: nowrap;
+}
+
+/* Creator hub and Radar: same visual language as the editor, with compact,
+   aligned controls instead of oversized promotional blocks. */
+html[data-klip-theme] .clip-editor-v2 .studio-hub {
+  overflow: hidden;
+  border-radius: 16px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header {
+  align-items: center;
+  padding: 16px 20px 13px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header b {
+  color: var(--pure-text) !important;
+  font-size: clamp(21px, 2.2vw, 27px) !important;
+  font-weight: 680;
+  letter-spacing: -.035em;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header small {
+  color: var(--pure-text-3) !important;
+  font-size: 12px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header > button {
+  display: inline-grid;
+  place-items: center;
+  width: 36px !important;
+  height: 36px !important;
+  padding: 0 !important;
+  border: 1px solid var(--pure-border) !important;
+  border-radius: 9px !important;
+  background: var(--pure-surface-2) !important;
+  color: var(--pure-text-2) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs {
+  gap: 6px;
+  padding: 9px 20px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-content {
+  padding: 14px 20px 20px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-panel-header {
+  align-items: center;
+  padding: 15px 18px 12px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-panel-header b {
+  color: var(--pure-text) !important;
+  font-size: 22px !important;
+  font-weight: 680;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-panel-header > button {
+  display: inline-grid;
+  place-items: center;
+  width: 34px !important;
+  height: 34px !important;
+  padding: 0 !important;
+  border-color: var(--pure-border) !important;
+  background: var(--pure-surface-2) !important;
+  color: var(--pure-text-2) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-config {
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 8px 10px;
+  padding: 12px 18px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-config select {
+  min-height: 38px !important;
+  border-color: var(--pure-border) !important;
+  background: var(--pure-surface-2) !important;
+  color: var(--pure-text) !important;
+  font-size: 12px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-config .radar-analyze {
+  display: inline-flex !important;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 40px !important;
+  padding: 0 14px !important;
+  font-size: 13px !important;
+  line-height: 1;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-config .radar-analyze > :where(svg, span) {
+  flex: none;
+  margin: 0;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-progress {
+  padding: 0 18px 11px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-panel > footer {
+  gap: 8px;
+  padding: 10px 18px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-panel > footer button {
+  min-height: 38px !important;
+  padding: 0 12px !important;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .pure-inspector-body .pure-secondary {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  min-height: 36px;
 }
 
 /* Radar */

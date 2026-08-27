@@ -12,9 +12,6 @@ export type KlipAppLogoProps = Omit<SVGProps<SVGSVGElement>, "children"> & {
   variant?: KlipAppLogoVariant;
 };
 
-const WORDMARK_PATH =
-  "M90 16v40m0-17 20-23M99 31l14 25M126 16v40h23M162 16v40M177 56V16h13c8 0 12 4 12 10s-4 10-12 10h-13M214 56l14-40 14 40m-23-13h18M257 56V16h13c8 0 12 4 12 10s-4 10-12 10h-13M297 56V16h13c8 0 12 4 12 10s-4 10-12 10h-13";
-
 function SymbolMark() {
   return (
     <>
@@ -46,9 +43,9 @@ export function KlipAppLogo({
 }: KlipAppLogoProps) {
   const isSymbol = variant === "symbol";
   const isWordmark = variant === "wordmark";
-  const viewBox = isSymbol ? "0 0 64 64" : isWordmark ? "0 0 254 72" : "0 0 340 72";
-  const defaultWidth = isSymbol ? 32 : isWordmark ? 99 : 132;
-  const defaultHeight = isSymbol ? 32 : 28;
+  const viewBox = isSymbol ? "0 0 64 64" : isWordmark ? "0 0 190 64" : "0 0 270 64";
+  const defaultWidth = isSymbol ? 32 : isWordmark ? 112 : 150;
+  const defaultHeight = isSymbol ? 32 : 30;
   const toneClass = tone === "auto" ? "" : styles[tone];
 
   return (
@@ -65,16 +62,18 @@ export function KlipAppLogo({
       xmlns="http://www.w3.org/2000/svg"
     >
       {!isWordmark && (
-        <g transform={isSymbol ? undefined : "translate(4 4) scale(.875)"}>
+        <g transform={isSymbol ? undefined : "translate(2 2) scale(.94)"}>
           <SymbolMark />
         </g>
       )}
       {!isSymbol && (
-        <path
+        <text
           className={styles.wordmark}
-          d={WORDMARK_PATH}
-          transform={isWordmark ? "translate(-84 0)" : undefined}
-        />
+          x={isWordmark ? 2 : 78}
+          y="42"
+        >
+          KLIPAPP
+        </text>
       )}
     </svg>
   );

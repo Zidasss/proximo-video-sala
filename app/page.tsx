@@ -330,6 +330,7 @@ const constraints = (
 
 export default function Home() {
   const [theme, setTheme] = useState<KlipAppTheme>("light");
+  const [themeReady, setThemeReady] = useState(false);
   const [inRoom, setInRoom] = useState(false);
   const [localStudio, setLocalStudio] = useState(false);
   const [motionStudio, setMotionStudio] = useState(false);
@@ -347,16 +348,23 @@ export default function Home() {
   useEffect(() => {
     const frame = window.requestAnimationFrame(() => {
       const saved = localStorage.getItem("klip_theme") as KlipAppTheme | null;
-      setTheme(saved === "dark" || saved === "light" ? saved : "light");
+      const restoredTheme = saved === "dark" || saved === "light" ? saved : "light";
+      // Theme restoration intentionally happens after hydration. Persisting the
+      // default before this point would overwrite the user's saved preference.
+      setTheme(restoredTheme);
+      document.documentElement.dataset.klipTheme = restoredTheme;
+      document.documentElement.style.colorScheme = restoredTheme;
+      setThemeReady(true);
     });
     return () => window.cancelAnimationFrame(frame);
   }, []);
 
   useEffect(() => {
+    if (!themeReady) return;
     document.documentElement.dataset.klipTheme = theme;
     document.documentElement.style.colorScheme = theme;
     localStorage.setItem("klip_theme", theme);
-  }, [theme]);
+  }, [theme, themeReady]);
 
   const toggleTheme = () => setTheme((value) => value === "dark" ? "light" : "dark");
   const [name, setName] = useState(""),
@@ -2421,9 +2429,9 @@ export default function Home() {
     ) => {
       if (!active) return;
       context.save();
-      context.strokeStyle = "#ff6b5c";
+      context.strokeStyle = "#4f8cff";
       context.lineWidth = 10;
-      context.shadowColor = "#ff6b5c";
+      context.shadowColor = "#4f8cff";
       context.shadowBlur = 18;
       context.strokeRect(x + 5, y + 5, width - 10, height - 10);
       context.restore();
@@ -2826,46 +2834,49 @@ export default function Home() {
           <div className="landing-nav-actions">
             <button className="theme-toggle" onClick={toggleTheme} aria-label={`Usar tema ${theme === "dark" ? "claro" : "escuro"}`} title={`Tema ${theme === "dark" ? "claro" : "escuro"}`}>{theme === "dark" ? <Sun aria-hidden="true" /> : <Moon aria-hidden="true" />}</button>
             <button className="open-editor" onClick={openEditor}><Clapperboard aria-hidden="true" /> Editor</button>
-            <button className="open-editor landing-motion-link" onClick={() => setMotionStudio(true)}><WandSparkles aria-hidden="true" /> Motion</button>
-            <button className="open-editor landing-studio-link" onClick={() => setLocalStudio(true)}><MonitorUp aria-hidden="true" /> Estúdio local</button>
+            <details className="landing-nav-menu landing-tools-menu">
+              <summary aria-label="Abrir ferramentas"><WandSparkles aria-hidden="true" /><span>Criar</span></summary>
+              <div className="landing-nav-popover">
+                <button type="button" onClick={() => setMotionStudio(true)}><WandSparkles aria-hidden="true" /> Motion</button>
+                <button type="button" onClick={() => setLocalStudio(true)}><MonitorUp aria-hidden="true" /> Estúdio local</button>
+              </div>
+            </details>
             {currentUser ? (
               <>
                 <button className="nav-action-btn primary" type="button" onClick={() => setPublishModalOpen(true)}>
                   <Share2 aria-hidden="true" /> Publicar
                 </button>
-                <Link className="landing-profile-link" href="/perfil">
-                  {currentUser.avatarUrl ? (
-                    // eslint-disable-next-line @next/next/no-img-element -- Avatares OAuth podem vir de origens dinâmicas que não são configuráveis com segurança no loader do Next Image.
-                    <img
-                      src={currentUser.avatarUrl}
-                      alt={currentUser.name || "Avatar"}
-                    />
-                  ) : (
-                    <div className="landing-profile-fallback">
-                      <User aria-hidden="true" />
-                    </div>
-                  )}
-                  <span>{currentUser.name || currentUser.email}</span>
-                </Link>
-                <button
-                  className="nav-action-btn ghost"
-                  type="button"
-                  onClick={async () => {
-                    if (isSupabaseConfigured) {
-                      try {
-                        const supabase = createClient();
-                        await supabase.auth.signOut();
-                      } catch {
-                        // O logout local continua disponível mesmo se o provedor falhar.
-                      }
-                    }
-                    localStorage.removeItem("klip_user");
-                    setCurrentUser(null);
-                  }}
-                  title="Sair da conta"
-                >
-                  <LogOut aria-hidden="true" /> Sair
-                </button>
+                <details className="landing-nav-menu landing-account-menu">
+                  <summary aria-label="Abrir menu da conta">
+                    {currentUser.avatarUrl ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- Avatares OAuth podem vir de origens dinâmicas que não são configuráveis com segurança no loader do Next Image.
+                      <img src={currentUser.avatarUrl} alt="" />
+                    ) : (
+                      <span className="landing-profile-fallback"><User aria-hidden="true" /></span>
+                    )}
+                    <span>{(currentUser.name || currentUser.email).split(" ")[0]}</span>
+                  </summary>
+                  <div className="landing-nav-popover">
+                    <Link href="/perfil"><User aria-hidden="true" /> Meu perfil</Link>
+                    <button
+                      type="button"
+                      onClick={async () => {
+                        if (isSupabaseConfigured) {
+                          try {
+                            const supabase = createClient();
+                            await supabase.auth.signOut();
+                          } catch {
+                            // O logout local continua disponível mesmo se o provedor falhar.
+                          }
+                        }
+                        localStorage.removeItem("klip_user");
+                        setCurrentUser(null);
+                      }}
+                    >
+                      <LogOut aria-hidden="true" /> Sair
+                    </button>
+                  </div>
+                </details>
               </>
             ) : (
               <button className="nav-action-btn primary" type="button" onClick={() => setAuthModalOpen(true)}>
@@ -2886,7 +2897,7 @@ export default function Home() {
             </div>
           </div>
           <div className="landing-entry-card">
-            <div className="entry-card-heading"><div><small>AO VIVO</small><b>{mode === "host" ? "Criar sala" : "Entrar na sala"}</b></div><span><i /> privada</span></div>
+            <div className="entry-card-heading"><div><small>AO VIVO</small><b>{mode === "host" ? "Criar sala" : "Entrar na sala"}</b></div><span title="A entrada exige o número da sala e o código de acesso"><ShieldCheck aria-hidden="true" size={13} /> Acesso por código</span></div>
             <div className="entry-tabs">
               <button className={mode === "host" ? "selected" : ""} onClick={() => setMode("host")}>Criar sala</button>
               <button className={mode === "guest" ? "selected" : ""} onClick={() => setMode("guest")}>Entrar</button>
@@ -3259,7 +3270,7 @@ export default function Home() {
                             step="5"
                             value={backgroundScale}
                             onChange={(e) => setBackgroundScale(Number(e.target.value))}
-                            style={{ width: "100%", accentColor: "#ff6b5c" }}
+                            style={{ width: "100%", accentColor: "var(--ka-brand)" }}
                           />
                         </label>
                         <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px" }}>
@@ -3272,7 +3283,7 @@ export default function Home() {
                               step="2"
                               value={backgroundOffsetX}
                               onChange={(e) => setBackgroundOffsetX(Number(e.target.value))}
-                              style={{ width: "100%", accentColor: "#ff6b5c" }}
+                              style={{ width: "100%", accentColor: "var(--ka-brand)" }}
                             />
                           </label>
                           <label className="menu-field" style={{ fontSize: "11px" }}>
@@ -3284,7 +3295,7 @@ export default function Home() {
                               step="2"
                               value={backgroundOffsetY}
                               onChange={(e) => setBackgroundOffsetY(Number(e.target.value))}
-                              style={{ width: "100%", accentColor: "#ff6b5c" }}
+                              style={{ width: "100%", accentColor: "var(--ka-brand)" }}
                             />
                           </label>
                         </div>
@@ -6421,7 +6432,28 @@ function ClipEditorV2({
               /* eslint-disable-next-line jsx-a11y/media-has-caption -- A mídia importada é uma prévia local; o editor não possui uma faixa VTT correspondente. */
               <><video ref={video} className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`} src={clip.url} playsInline aria-label={`Prévia de ${clip.name}`} onPointerDown={beginVideoFrameDrag} onPointerMove={moveVideoFrameDrag} onPointerUp={() => { videoFrameDrag.current = null; }} onPointerCancel={() => { videoFrameDrag.current = null; }} style={{ filter: previewFilter, opacity: activeEffectFrame?.opacity ?? 1, transform: `translate(${videoTransform.x + (activeEffectFrame?.transform.translateX || 0) * 100}%, ${videoTransform.y + (activeEffectFrame?.transform.translateY || 0) * 100}%) rotate(${activeEffectFrame?.transform.rotationDeg || 0}deg) scale(${videoTransform.scaleX * (activeEffectFrame?.transform.scale || 1)}, ${videoTransform.scaleY * (activeEffectFrame?.transform.scale || 1)})` }} onLoadedMetadata={(event) => setVideoDuration(event.currentTarget)} onDurationChange={(event) => { const value = event.currentTarget.duration; if (Number.isFinite(value) && value > 0) { setSourceDuration(value); setDuration((projectLength) => Math.max(projectLength, value)); setEnd((old) => old || value); if (event.currentTarget.currentTime > value) event.currentTarget.currentTime = 0; } }} onTimeUpdate={(event) => { if (exportInProgress.current) return; const at = baseLoopOffset.current + event.currentTarget.currentTime; if (hasMontageTimeline) { const montageClip = montageTimelineClips.find((item) => item.id === activeRadarCutId) || montageTimelineClips.find((item) => item.timelineStart <= at && at < item.timelineEnd); if (montageClip && event.currentTarget.currentTime >= montageClip.end - .025) { event.currentTarget.pause(); setCurrent(montageClip.timelineEnd); void playTimelineAt(montageClip.timelineEnd); return; } setCurrent(Math.max(0, Math.min(montageTimelineDuration, at))); return; } if (event.currentTarget.currentTime >= primarySourceEnd - .025) { event.currentTarget.pause(); setCurrent(primaryClipEnd); void playTimelineAt(primaryClipEnd); return; } const next = sceneItems.find((item) => item.start <= at && at < item.end); if (next) { event.currentTarget.pause(); void playTimelineAt(at); return; } setCurrent(at); }} onEnded={() => { if (!exportInProgress.current) void playTimelineAt(hasMontageTimeline ? montageTimelineDuration : primaryClipEnd); }} />{activeEffectFrame && <div className="studio-effect-layer" aria-hidden="true">{activeEffectFrame.overlays.map((overlay, index) => overlay.kind === "color" ? <i key={index} className="effect-color" style={{ background: overlay.color, opacity: overlay.opacity, mixBlendMode: overlay.blendMode }} /> : overlay.kind === "scanlines" ? <i key={index} className="effect-scanlines" style={{ opacity: overlay.opacity, backgroundSize: `100% ${overlay.spacing}px` }} /> : overlay.kind === "noise" ? <i key={index} className="effect-noise" style={{ opacity: overlay.opacity }} /> : overlay.kind === "vignette" ? <i key={index} className="effect-vignette" style={{ opacity: overlay.opacity }} /> : overlay.kind === "letterbox" ? <i key={index} className="effect-letterbox" style={{ "--letterbox-size": `${overlay.size * 100}%`, opacity: overlay.opacity } as CSSProperties} /> : <i key={index} className="effect-rgb" style={{ opacity: overlay.opacity, transform: `translate(${overlay.offsetX * 100}%, ${overlay.offsetY * 100}%)` }} />)}</div>}<div className="video-layout-hint">Arraste o centro para mover. Use as alças para esticar livremente.</div><div className="video-frame-resize edge left" onPointerDown={(event) => beginVideoFrameResize(event, "left")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge right" onPointerDown={(event) => beginVideoFrameResize(event, "right")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para alargar ou estreitar"><MoveHorizontal aria-hidden="true" size={14} /></div><div className="video-frame-resize edge top" onPointerDown={(event) => beginVideoFrameResize(event, "top")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize edge bottom" onPointerDown={(event) => beginVideoFrameResize(event, "bottom")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste para aumentar ou diminuir a altura"><MoveVertical aria-hidden="true" size={14} /></div><div className="video-frame-resize corner" onPointerDown={(event) => beginVideoFrameResize(event, "corner")} onPointerMove={moveVideoFrameResize} onPointerUp={() => { videoFrameResize.current = null; }} onPointerCancel={() => { videoFrameResize.current = null; }} title="Arraste livremente largura e altura"><Maximize2 aria-hidden="true" size={14} /></div><button className="reset-video-frame" onClick={() => setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 })}><RotateCcw aria-hidden="true" size={14} /> Restaurar</button></>
             ) : (
-              <div className="editor-empty"><small>KLIPAPP Studio</small><b>Comece pelo vídeo.</b><span>Importe uma gravação, vídeo ou foto para montar seu próximo reel.</span><label className="editor-empty-upload"><Plus aria-hidden="true" size={16} /> Importar mídia<input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} /></label><i>MP4, WebM, MOV, JPG, PNG e WebP</i></div>
+              <div className="editor-empty">
+                <div className="editor-empty-copy">
+                  <small><Sparkles aria-hidden="true" size={14} /> KLIPAPP Studio</small>
+                  <b>Transforme uma ideia em história.</b>
+                  <span>Comece com um vídeo ou uma foto.</span>
+                  <label className="editor-empty-upload">
+                    <FileUp aria-hidden="true" size={19} />
+                    <span><strong>Escolher mídia</strong><em>Vídeo ou foto</em></span>
+                    <input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} />
+                  </label>
+                  <i>MP4 · WebM · MOV · JPG · PNG · WebP</i>
+                </div>
+                <div className="editor-empty-art" aria-hidden="true">
+                  <div className="editor-empty-artboard">
+                    <div className="editor-empty-artbar"><i /><i /><i /><span>00:12</span></div>
+                    <div className="editor-empty-frame"><Film size={34} /><span /></div>
+                    <div className="editor-empty-track"><i /><i /><i /><i /><i /></div>
+                  </div>
+                  <div className="editor-empty-chip chip-captions"><Captions size={15} /><span /></div>
+                  <div className="editor-empty-chip chip-magic"><WandSparkles size={15} /></div>
+                </div>
+              </div>
             )}
             {/* eslint-disable jsx-a11y/media-has-caption -- Faixas arbitrárias importadas pelo usuário não possuem transcrição VTT conhecida pelo editor. */}
             {audioTracks.map((track) => <audio key={track.id} ref={(element) => { if (element) audioElements.current.set(track.id, element); else audioElements.current.delete(track.id); }} src={track.url} preload="auto" />)}

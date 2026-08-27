@@ -18,13 +18,14 @@ test("integrates creator formats, licensed audio and visual effects into the rea
   assert.match(page, /editorTimelineDuration \|\| duration \|\| trackLength/);
   assert.match(page, /audioTimelineStart: montageItem\?\.timelineStart \|\| 0/);
   assert.match(page, /audioTimelineTime = activeRange\.audioTimelineStart \+ localTime/);
-  assert.match(page, /APP_VERSION = "v0\.19\.0"/);
+  assert.match(page, /APP_VERSION = "v0\.20\.0"/);
   assert.match(page, /editor-tool-rail/);
   assert.match(page, /export-settings-popover/);
   assert.match(page, /radar-thumbnail/);
 });
 
 test("keeps the creator hub readable on desktop and mobile", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
   const css = await readFile(new URL("app/globals.css", root), "utf8");
   assert.match(css, /\.studio-hub-backdrop/);
   assert.match(css, /\.studio-quick-actions/);
@@ -34,4 +35,12 @@ test("keeps the creator hub readable on desktop and mobile", async () => {
   assert.match(css, /--studio-timeline-h: 340px/);
   assert.match(css, /\.editor-tool-dock/);
   assert.match(css, /\.timeline-panel\.multi-timeline/);
+  assert.match(page, /setTimelineZoomAnchored/);
+  assert.match(page, /onPrecisionWheel/);
+  assert.match(page, /passive: false/);
+  assert.match(page, /max="64"/);
+  assert.match(page, /Precisão 1 ms/);
+  assert.match(page, /klip_theme/);
+  assert.match(css, /data-klip-theme="light"/);
+  assert.match(css, /timeline-scroll-viewport/);
 });

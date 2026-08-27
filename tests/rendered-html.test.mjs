@@ -66,6 +66,10 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /function buildAudioWaveform/);
   assert.match(page, /timelineWaveform/);
   assert.match(page, /audio-clip-waveform/);
+  assert.match(page, /function splitActiveRadarCutAtPlayhead/);
+  assert.match(page, /function beginRadarCutTrim/);
+  assert.match(page, /function dropTransitionOnRadarClip/);
+  assert.match(page, /timeline-split-toggle/);
 });
 
 test("ships direct-manipulation styling for desktop and mobile timelines", async () => {
@@ -92,6 +96,8 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.settings-panel::-webkit-scrollbar/);
   assert.match(css, /\.virtual-effect-loading/);
   assert.match(css, /\.audio-clip-waveform/);
+  assert.match(css, /\.radar-trim-handle/);
+  assert.match(css, /\.radar-clip-fade/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 

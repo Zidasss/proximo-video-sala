@@ -2586,11 +2586,62 @@ html[data-klip-theme] .clip-editor-v2 .timeline-transition {
 }
 
 .clip-editor-v2 .timeline-scroll-viewport .timeline-lanes {
+  --timeline-track-offset: 69px;
   width: 100%;
   min-width: 100%;
   overflow: visible !important;
   padding: 7px 0 14px;
 }
+
+.clip-editor-v2 .timeline-split-toggle {
+  min-width: 118px;
+  border-color: color-mix(in srgb, var(--klip-cyan) 58%, var(--klip-border)) !important;
+  background: color-mix(in srgb, var(--klip-cyan) 14%, var(--klip-bg-elevated)) !important;
+  color: var(--klip-text) !important;
+  font-weight: 900;
+}
+.clip-editor-v2 .montage-cut .radar-trim-handle {
+  position: absolute;
+  z-index: 12;
+  top: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  width: 12px;
+  height: auto;
+  margin: 0;
+  border-radius: 3px;
+  background: #fff8;
+  color: #28100d;
+  font-size: 8px;
+  font-style: normal;
+  opacity: .82;
+  cursor: ew-resize;
+  touch-action: none;
+  transform: none;
+}
+.clip-editor-v2 .montage-cut .radar-trim-handle.start { left: 0; right: auto; }
+.clip-editor-v2 .montage-cut .radar-trim-handle.end { right: 0; }
+.clip-editor-v2 .montage-cut:hover .radar-trim-handle,
+.clip-editor-v2 .montage-cut.active .radar-trim-handle { width: 16px; background: #fff; opacity: 1; }
+.clip-editor-v2 .montage-cut .radar-clip-fade {
+  position: absolute;
+  z-index: 2;
+  top: 0;
+  bottom: 0;
+  height: auto !important;
+  margin: 0;
+  border-radius: 0;
+  opacity: .68;
+  pointer-events: none;
+  transform: none;
+}
+.clip-editor-v2 .montage-cut .radar-clip-fade.in { left: 0; right: auto; }
+.clip-editor-v2 .montage-cut .radar-clip-fade.out { right: 0; }
+.clip-editor-v2 .montage-cut .radar-clip-fade.black { background: linear-gradient(90deg, #000, transparent); }
+.clip-editor-v2 .montage-cut .radar-clip-fade.out.black { background: linear-gradient(270deg, #000, transparent); }
+.clip-editor-v2 .montage-cut .radar-clip-fade.white { background: linear-gradient(90deg, #fff, transparent); }
+.clip-editor-v2 .montage-cut .radar-clip-fade.out.white { background: linear-gradient(270deg, #fff, transparent); }
 
 /* Every audio lane follows the same precision canvas as video. Imported music
    and effects also expose their own waveform instead of a featureless block. */
@@ -2679,7 +2730,7 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-playhead {
 @media (max-width: 760px) {
   .clip-editor-v2 .timeline-panel .timeline-top > .timeline-precision { display: flex !important; min-width: 160px; }
   .clip-editor-v2 .timeline-scroll-viewport .timeline-ruler { padding-left: 50px; }
-  .clip-editor-v2 .timeline-scroll-viewport .timeline-lanes { min-width: 100% !important; }
+  .clip-editor-v2 .timeline-scroll-viewport .timeline-lanes { --timeline-track-offset: 59px; min-width: 100% !important; }
   .global-theme-toggle { top: 10px; right: 62px; }
 }
 

@@ -9,6 +9,10 @@ export type RadarSuggestion = {
   reason: string;
   selected: boolean;
   source: "voice" | "fallback";
+  fadeIn?: number;
+  fadeOut?: number;
+  fadeInColor?: "black" | "white";
+  fadeOutColor?: "black" | "white";
 };
 
 type VoiceRun = { start: number; end: number; energy: number };

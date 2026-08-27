@@ -394,6 +394,9 @@
 .preview-canvas.screen-top .preview-top {
   order: 2;
 }
+.preview-canvas.screen-top .resenha-cameras {
+  order: 2;
+}
 .tiktok-preview small {
   display: block;
   color: #aab3a5;
@@ -1713,6 +1716,26 @@ body {
 .resenha-note {
   color: #d3aba2;
   line-height: 1.35;
+}
+.resenha-controls {
+  display: grid;
+  gap: 10px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--ka-border, #d8dce8) 82%, transparent);
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--ka-surface-soft, #f4f6fb) 86%, transparent);
+}
+.resenha-controls .preview-slider {
+  margin: 0;
+  font-size: 13px;
+  font-weight: 700;
+}
+.resenha-share-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  text-align: center;
 }
 .resenha-cameras {
   display: grid;

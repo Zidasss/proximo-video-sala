@@ -39,6 +39,9 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /A recording in a solo room is a proper one-person composition/);
   assert.match(page, /type VerticalCameraMode = "auto" \| "solo-mine" \| "solo-friend"/);
   assert.match(page, /TikTok solo ativo: somente a sua câmera será gravada em 9:16/);
+  assert.match(page, /resenhaMineSize/);
+  assert.match(page, /Minha câmera · \{Math\.round\(resenhaMineSize \* 100\)\}%/);
+  assert.match(page, /A tela compartilhada também será gravada exatamente como aparece aqui/);
   assert.match(page, /Câmera \/ placa de captura/);
   assert.match(page, /Placa de captura —/);
   assert.match(page, /function placeholderCameraStream/);
@@ -105,6 +108,7 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.scene-track-heading/);
   assert.match(css, /\.primary-video-clip/);
   assert.match(css, /\.screen-share-dialog/);
+  assert.match(css, /\.resenha-controls/);
   assert.match(css, /\.timeline-more/);
   assert.match(css, /\.video-properties-grid/);
   assert.match(css, /\.position-grid/);

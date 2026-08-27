@@ -457,6 +457,7 @@ export default function Home() {
     ),
     [screenPosition, setScreenPosition] = useState<"top" | "bottom">("bottom"),
     [tiktokTop, setTiktokTop] = useState(0.325),
+    [resenhaMineSize, setResenhaMineSize] = useState(0.5),
     [dragging, setDragging] = useState(""),
     [background, setBackground] = useState(""),
     [backgroundVideo, setBackgroundVideo] = useState(""),
@@ -1896,8 +1897,16 @@ export default function Home() {
         screenPosition,
         tiktokTop,
         resenhaMode,
+        resenhaMineSize,
       });
-  }, [mode, topOrder, screenPosition, tiktokTop, resenhaMode]);
+  }, [
+    mode,
+    topOrder,
+    screenPosition,
+    tiktokTop,
+    resenhaMode,
+    resenhaMineSize,
+  ]);
   useEffect(() => {
     if (!recording) return;
     const timer = window.setInterval(
@@ -1919,7 +1928,17 @@ export default function Home() {
       return;
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps -- O handler é reinstalado somente quando a composição PiP muda; incluir a função recriada a cada render causaria reinstalações contínuas.
-  }, [inRoom, vertical, topOrder, tiktokTop, sharing, remoteSharing]);
+  }, [
+    inRoom,
+    vertical,
+    topOrder,
+    screenPosition,
+    tiktokTop,
+    resenhaMode,
+    resenhaMineSize,
+    sharing,
+    remoteSharing,
+  ]);
   useEffect(() => {
     if (!inRoom) return;
     const audio = new AudioContext(),
@@ -2175,6 +2194,7 @@ export default function Home() {
           screenPosition,
           tiktokTop,
           resenhaMode,
+          resenhaMineSize,
         });
     };
     if (conn.open) {
@@ -2192,6 +2212,7 @@ export default function Home() {
         screenPosition?: string;
         tiktokTop?: number;
         resenhaMode?: boolean;
+        resenhaMineSize?: number;
       };
       if (data.kind === "name" && data.name) setFriend(data.name);
       if (data.kind === "recording") {
@@ -2214,6 +2235,12 @@ export default function Home() {
         setScreenPosition(data.screenPosition as "top" | "bottom");
         setTiktokTop(data.tiktokTop);
         setResenhaMode(Boolean(data.resenhaMode));
+        if (typeof data.resenhaMineSize === "number")
+          setResenhaMineSize(
+            mode === "guest"
+              ? 1 - data.resenhaMineSize
+              : data.resenhaMineSize,
+          );
         if (data.resenhaMode) setVertical(true);
         return;
       }
@@ -2910,7 +2937,18 @@ export default function Home() {
         bezel(0, 0, canvas.width, cameraHeight, speakingRef.current.mine);
       } else if (vertical && resenhaMode) {
         const gap = 12,
-          cameraHeight = (canvas.height - gap) / 2,
+          cameraAreaHeight = screenVideo
+            ? canvas.height * 0.56
+            : canvas.height,
+          firstIsMine = topOrder === "mine-first",
+          firstRatio = firstIsMine
+            ? resenhaMineSize
+            : 1 - resenhaMineSize,
+          firstHeight = (cameraAreaHeight - gap) * firstRatio,
+          secondHeight = cameraAreaHeight - gap - firstHeight,
+          cameraY = screenVideo && screenPosition === "top"
+            ? canvas.height - cameraAreaHeight
+            : 0,
           first = topOrder === "mine-first" ? mine.current : theirs.current,
           second = topOrder === "mine-first" ? theirs.current : mine.current,
           firstTalking =
@@ -2921,10 +2959,27 @@ export default function Home() {
             topOrder === "mine-first"
               ? speakingRef.current.friend
               : speakingRef.current.mine;
-        cover(first, 0, 0, canvas.width, cameraHeight);
-        cover(second, 0, cameraHeight + gap, canvas.width, cameraHeight);
-        bezel(0, 0, canvas.width, cameraHeight, firstTalking);
-        bezel(0, cameraHeight + gap, canvas.width, cameraHeight, secondTalking);
+        cover(first, 0, cameraY, canvas.width, firstHeight);
+        cover(
+          second,
+          0,
+          cameraY + firstHeight + gap,
+          canvas.width,
+          secondHeight,
+        );
+        bezel(0, cameraY, canvas.width, firstHeight, firstTalking);
+        bezel(
+          0,
+          cameraY + firstHeight + gap,
+          canvas.width,
+          secondHeight,
+          secondTalking,
+        );
+        if (screenVideo) {
+          const screenHeight = canvas.height - cameraAreaHeight - gap,
+            screenY = screenPosition === "top" ? 0 : cameraAreaHeight + gap;
+          cover(screenVideo, 0, screenY, canvas.width, screenHeight);
+        }
       } else if (vertical) {
         const cameraHeight = canvas.height * tiktokTop,
           gap = 12,
@@ -3199,12 +3254,39 @@ export default function Home() {
           canvas.height,
         );
       } else if (vertical && resenhaMode) {
-        const gap = 6,
-          cameraHeight = (canvas.height - gap) / 2,
+        const screenVideo = sharing
+            ? screen.current
+            : remoteSharing
+              ? remoteScreen.current
+              : null,
+          gap = 6,
+          cameraAreaHeight = screenVideo
+            ? canvas.height * 0.56
+            : canvas.height,
+          firstIsMine = topOrder === "mine-first",
+          firstRatio = firstIsMine
+            ? resenhaMineSize
+            : 1 - resenhaMineSize,
+          firstHeight = (cameraAreaHeight - gap) * firstRatio,
+          secondHeight = cameraAreaHeight - gap - firstHeight,
+          cameraY = screenVideo && screenPosition === "top"
+            ? canvas.height - cameraAreaHeight
+            : 0,
           first = topOrder === "mine-first" ? mine.current : theirs.current,
           second = topOrder === "mine-first" ? theirs.current : mine.current;
-        cover(first, 0, 0, canvas.width, cameraHeight);
-        cover(second, 0, cameraHeight + gap, canvas.width, cameraHeight);
+        cover(first, 0, cameraY, canvas.width, firstHeight);
+        cover(
+          second,
+          0,
+          cameraY + firstHeight + gap,
+          canvas.width,
+          secondHeight,
+        );
+        if (screenVideo) {
+          const screenHeight = canvas.height - cameraAreaHeight - gap,
+            screenY = screenPosition === "top" ? 0 : cameraAreaHeight + gap;
+          cover(screenVideo, 0, screenY, canvas.width, screenHeight);
+        }
       } else if (vertical) {
         const topHeight = canvas.height * tiktokTop,
           gap = 6,
@@ -4279,9 +4361,41 @@ export default function Home() {
                       )}
                     </button>
                     <small className="resenha-note">
-                      Duas câmeras empilhadas em 9:16, sem tela compartilhada —
-                      ideal para só bater papo e gravar.
+                      Duas câmeras empilhadas em 9:16. Se você compartilhar a
+                      tela, ela também entra na prévia e na gravação.
                     </small>
+                    {resenhaMode && (
+                      <div className="resenha-controls">
+                        <label className="preview-slider">
+                          Minha câmera · {Math.round(resenhaMineSize * 100)}%
+                          <input
+                            type="range"
+                            min="0.25"
+                            max="0.75"
+                            step="0.01"
+                            value={resenhaMineSize}
+                            disabled={mode === "guest"}
+                            onChange={(event) =>
+                              setResenhaMineSize(Number(event.target.value))
+                            }
+                          />
+                        </label>
+                        <button
+                          className="open-preview resenha-share-button"
+                          onClick={() => {
+                            if (sharing) void share();
+                            else setShareScreenDialogOpen(true);
+                          }}
+                        >
+                          {sharing ? (
+                            <ScreenShareOff aria-hidden="true" size={15} />
+                          ) : (
+                            <ScreenShare aria-hidden="true" size={15} />
+                          )}
+                          {sharing ? "Parar compartilhamento" : "Compartilhar tela"}
+                        </button>
+                      </div>
+                    )}
                     <label className="menu-switch">
                       <input
                         type="checkbox"
@@ -4389,6 +4503,17 @@ export default function Home() {
             : screenActive
               ? "screen-on"
               : "")
+        }
+        style={
+          resenhaMode
+            ? screenActive
+              ? {
+                  gridTemplateColumns: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
+                }
+              : {
+                  gridTemplateRows: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
+                }
+            : undefined
         }
       >
         {screenActive && (
@@ -4524,7 +4649,7 @@ export default function Home() {
                   (verticalCameraMode !== "auto"
                     ? "solo-camera-preview"
                     : resenhaMode
-                      ? "resenha-preview"
+                      ? `resenha-preview screen-${screenPosition}`
                       : "screen-" + screenPosition)
                 }
               >
@@ -4550,7 +4675,19 @@ export default function Home() {
                         topOrder
                       }
                       style={{
-                        height: resenhaMode ? "100%" : `${tiktokTop * 100}%`,
+                        height: resenhaMode
+                          ? screenActive
+                            ? "56%"
+                            : "100%"
+                          : `${tiktokTop * 100}%`,
+                        ...(resenhaMode
+                          ? {
+                              gridTemplateRows:
+                                topOrder === "mine-first"
+                                  ? `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`
+                                  : `${1 - resenhaMineSize}fr ${resenhaMineSize}fr`,
+                            }
+                          : {}),
                       }}
                     >
                       <video
@@ -4590,10 +4727,14 @@ export default function Home() {
                         playsInline
                       />
                     </div>
-                    {!resenhaMode && (
+                    {(!resenhaMode || screenActive) && (
                       <div
                         className="preview-screen"
-                        style={{ height: `${(1 - tiktokTop) * 100}%` }}
+                        style={{
+                          height: resenhaMode
+                            ? "44%"
+                            : `${(1 - tiktokTop) * 100}%`,
+                        }}
                       >
                         {sharing || remoteSharing ? (
                           <>
@@ -4624,11 +4765,27 @@ export default function Home() {
                   />
                 </label>
               )}
+              {resenhaMode && verticalCameraMode === "auto" && (
+                <label className="preview-slider">
+                  Minha câmera · {Math.round(resenhaMineSize * 100)}%
+                  <input
+                    type="range"
+                    min="0.25"
+                    max="0.75"
+                    step="0.01"
+                    value={resenhaMineSize}
+                    disabled={mode === "guest"}
+                    onChange={(event) =>
+                      setResenhaMineSize(Number(event.target.value))
+                    }
+                  />
+                </label>
+              )}
               <small>
                 {verticalCameraMode !== "auto"
                   ? "Uma câmera ocupa todo o quadro. Esta composição será usada exatamente assim na gravação."
                   : resenhaMode
-                    ? "Arraste uma câmera sobre a outra para decidir quem fica em cima. Este layout será usado na gravação."
+                    ? "Ajuste o tamanho da sua câmera e arraste para trocar a ordem. A tela compartilhada também será gravada exatamente como aparece aqui."
                     : "Arraste uma câmera sobre a outra para trocar de lado. O tamanho da prévia será usado na gravação."}
               </small>
             </>

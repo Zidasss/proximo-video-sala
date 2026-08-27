@@ -168,9 +168,31 @@ aceita em `POST /{ig-user-id}/media`.
 
 ### TikTok — TikTok for Developers
 
-Escopos `user.info.basic,video.upload,video.publish` e redirect URI
+Adicione o produto **Content Posting API** ao app, com os escopos
+`user.info.basic,video.upload,video.publish` e o redirect URI
 `https://SEU-DOMINIO/api/auth/callback/tiktok`. Preencha `TIKTOK_CLIENT_KEY` e
 `TIKTOK_CLIENT_SECRET`.
+
+O fluxo tem quatro etapas, e pular qualquer uma delas quebra a publicação:
+
+1. `creator_info/query` — obrigatório antes de postar. Devolve quais níveis de
+   privacidade a conta aceita e se o criador desabilitou comentário, duet ou
+   stitch no próprio perfil. O app respeita essas escolhas.
+2. `video/init` — abre o envio e devolve `publish_id` + `upload_url`.
+3. `PUT` do arquivo em blocos na `upload_url`.
+4. `status/fetch` — **polling até `PUBLISH_COMPLETE`**. O `init` não publica
+   nada: sem essa etapa um post que falhou aparece como sucesso.
+
+> **Envio por arquivo, não por URL.** A opção `PULL_FROM_URL` exige verificar a
+> posse do domínio que hospeda o vídeo. Como os arquivos ficam no Supabase
+> Storage (domínio de terceiros), essa verificação é impossível — por isso o
+> app usa `FILE_UPLOAD`.
+
+> **Antes da auditoria do TikTok**, um app só publica como privado
+> (`SELF_ONLY`). O código lê `privacy_level_options` do criador e rebaixa a
+> visibilidade automaticamente, em vez de estourar erro. Com
+> `TIKTOK_POST_AS_DRAFT=true` os vídeos vão para os rascunhos do app do TikTok,
+> onde o usuário finaliza a publicação na mão.
 
 ## Banco de dados
 
@@ -196,6 +218,7 @@ open redirect.
 | `lib/publishing/meta.ts` | Descoberta da conta Instagram Business e cotas |
 | `lib/publishing/youtube.ts` | Upload resumível em blocos de Shorts |
 | `lib/publishing/instagram.ts` | Container de Reels, polling e publicação |
+| `lib/publishing/tiktok.ts` | Content Posting API: creator info, upload e polling |
 | `lib/publishing/publisher.ts` | Orquestra o multi-post em paralelo |
 
 Os testes de integração ficam em `tests/social-apis.test.mjs` e rodam com

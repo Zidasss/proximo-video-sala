@@ -14,6 +14,7 @@ import {
 import { discoverInstagramTargets } from "../lib/publishing/meta.ts";
 import { ensureFreshAccount, rowToAccount } from "../lib/publishing/token-store.ts";
 import { publishToInstagramReels } from "../lib/publishing/instagram.ts";
+import { publishToTikTok } from "../lib/publishing/tiktok.ts";
 
 const realFetch = globalThis.fetch;
 
@@ -262,4 +263,172 @@ test("Instagram publisher surfaces the Meta error message instead of a generic f
   assert.equal(result.status, "failed");
   assert.match(result.errorMessage, /video file is too large/);
   assert.match(result.errorMessage, /2207026/);
+});
+
+// ---------------------------------------------------------------------------
+// TikTok — Content Posting API
+// ---------------------------------------------------------------------------
+
+/** Mock do fluxo completo: creator_info -> init -> upload -> status. */
+function mockTikTokFlow({ creator = {}, statuses = ["PUBLISH_COMPLETE"], initError } = {}) {
+  const calls = { creatorInfo: 0, init: 0, uploads: [], status: 0 };
+  let statusIndex = 0;
+
+  mockFetch(async (url, init) => {
+    if (url.includes("/creator_info/query/")) {
+      calls.creatorInfo++;
+      return jsonResponse({
+        data: {
+          creator_username: "klip.creator",
+          privacy_level_options: ["PUBLIC_TO_EVERYONE", "SELF_ONLY"],
+          ...creator,
+        },
+        error: { code: "ok" },
+      });
+    }
+
+    if (url.includes("/video/init/") || url.includes("/inbox/video/init/")) {
+      calls.init++;
+      calls.initBody = JSON.parse(String(init.body));
+      if (initError) return jsonResponse({ error: initError });
+      return jsonResponse({
+        data: { publish_id: "publish-77", upload_url: "https://upload.tiktok.test/chunk" },
+        error: { code: "ok" },
+      });
+    }
+
+    if (url.startsWith("https://upload.tiktok.test/")) {
+      calls.uploads.push(init.headers["Content-Range"]);
+      return new Response(null, { status: 201 });
+    }
+
+    if (url.includes("/status/fetch/")) {
+      calls.status++;
+      const status = statuses[Math.min(statusIndex++, statuses.length - 1)];
+      return jsonResponse({
+        data: {
+          status,
+          fail_reason: status === "FAILED" ? "video_format_unsupported" : undefined,
+          publicaly_available_post_id: status === "PUBLISH_COMPLETE" ? [7412345678] : undefined,
+        },
+        error: { code: "ok" },
+      });
+    }
+
+    if (url.includes("cdn.example")) {
+      return new Response(new Uint8Array(1024), { status: 200 });
+    }
+
+    throw new Error(`URL inesperada: ${url}`);
+  });
+
+  return calls;
+}
+
+test("TikTok publisher waits for PUBLISH_COMPLETE before reporting success", async () => {
+  const calls = mockTikTokFlow({ statuses: ["PROCESSING_UPLOAD", "PUBLISH_COMPLETE"] });
+
+  const result = await publishToTikTok({
+    accessToken: "token-real",
+    title: "Gameplay do dia",
+    hashtags: ["fyp"],
+    visibility: "public",
+    videoUrl: "https://cdn.example/video.mp4",
+  });
+
+  assert.equal(result.status, "published");
+  assert.equal(result.postId, "7412345678");
+  // A URL precisa apontar para o post real, nao para a home do TikTok.
+  assert.equal(result.postUrl, "https://www.tiktok.com/@klip.creator/video/7412345678");
+  assert.equal(calls.creatorInfo, 1, "creator_info e obrigatorio antes de publicar");
+  assert.equal(calls.status, 2, "precisa continuar consultando enquanto processa");
+});
+
+test("TikTok publisher reports failure when the platform rejects the post", async () => {
+  mockTikTokFlow({ statuses: ["FAILED"] });
+
+  const result = await publishToTikTok({
+    accessToken: "token-real",
+    title: "Video invalido",
+    videoUrl: "https://cdn.example/video.mp4",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.match(result.errorMessage, /video_format_unsupported/);
+});
+
+test("TikTok publisher downgrades visibility the account is not allowed to use", async () => {
+  const calls = mockTikTokFlow({
+    // App nao auditado / conta privada: so aceita SELF_ONLY.
+    creator: { privacy_level_options: ["SELF_ONLY"] },
+  });
+
+  const result = await publishToTikTok({
+    accessToken: "token-real",
+    title: "Teste de privacidade",
+    visibility: "public",
+    videoUrl: "https://cdn.example/video.mp4",
+  });
+
+  assert.equal(result.status, "published");
+  assert.equal(calls.initBody.post_info.privacy_level, "SELF_ONLY");
+});
+
+test("TikTok publisher honours the interaction settings of the creator profile", async () => {
+  const calls = mockTikTokFlow({
+    creator: { comment_disabled: true, duet_disabled: true, stitch_disabled: false },
+  });
+
+  await publishToTikTok({
+    accessToken: "token-real",
+    title: "Respeita o perfil",
+    videoUrl: "https://cdn.example/video.mp4",
+  });
+
+  assert.equal(calls.initBody.post_info.disable_comment, true);
+  assert.equal(calls.initBody.post_info.disable_duet, true);
+  assert.equal(calls.initBody.post_info.disable_stitch, false);
+});
+
+test("TikTok publisher uploads with FILE_UPLOAD and a correct Content-Range", async () => {
+  const calls = mockTikTokFlow();
+
+  await publishToTikTok({
+    accessToken: "token-real",
+    title: "Upload direto",
+    videoUrl: "https://cdn.example/video.mp4",
+  });
+
+  assert.equal(calls.initBody.source_info.source, "FILE_UPLOAD");
+  assert.equal(calls.initBody.source_info.video_size, 1024);
+  assert.equal(calls.initBody.source_info.total_chunk_count, 1);
+  assert.deepEqual(calls.uploads, ["bytes 0-1023/1024"]);
+});
+
+test("TikTok publisher explains the url_ownership_unverified error", async () => {
+  mockTikTokFlow({ initError: { code: "url_ownership_unverified", message: "unverified" } });
+
+  const result = await publishToTikTok({
+    accessToken: "token-real",
+    title: "Dominio nao verificado",
+    videoUrl: "https://cdn.example/video.mp4",
+  });
+
+  assert.equal(result.status, "failed");
+  assert.match(result.errorMessage, /dom[ií]nio/i);
+});
+
+test("TikTok draft mode sends to the inbox and does not claim publication", async () => {
+  const calls = mockTikTokFlow();
+
+  const result = await publishToTikTok({
+    accessToken: "token-real",
+    title: "Rascunho",
+    videoUrl: "https://cdn.example/video.mp4",
+    postAsDraft: true,
+  });
+
+  assert.equal(result.status, "processing");
+  assert.equal(calls.status, 0, "rascunho nao passa pelo polling de publicacao");
+  assert.equal(calls.initBody.post_info, undefined, "inbox nao aceita post_info");
 });

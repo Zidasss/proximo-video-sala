@@ -90,6 +90,13 @@ export async function publishToAllPlatforms(
           hashtags,
           visibility,
           videoUrl,
+          coverTimestampMs:
+            typeof coverTimeSeconds === "number"
+              ? Math.round(coverTimeSeconds * 1000)
+              : undefined,
+          // Enquanto o app não passa pela auditoria do TikTok, enviar para
+          // rascunhos evita a recusa de publicar direto no feed.
+          postAsDraft: process.env.TIKTOK_POST_AS_DRAFT === "true",
         }).then((res) => ({ platform: "tiktok" as const, result: res }))
       );
     } else if (platform === "instagram") {

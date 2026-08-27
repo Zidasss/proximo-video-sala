@@ -209,6 +209,8 @@ type AudioTrack = {
   start: number;
   end: number;
   volume: number;
+  muted?: boolean;
+  solo?: boolean;
   fadeIn: number;
   fadeOut: number;
   waveform?: number[];
@@ -5938,6 +5940,9 @@ function ClipEditorV2({
   const selectedAudio = audioTracks.find(
     (track) => track.id === selectedAudioId,
   );
+  const soloAudioActive = audioTracks.some(
+    (track) => track.solo && !track.muted,
+  );
   const sceneItems = illustrations.filter((item) => item.role === "scene");
   const overlayItems = illustrations.filter((item) => item.role !== "scene");
   const baseDuration = sourceDuration || duration;
@@ -6220,20 +6225,26 @@ function ClipEditorV2({
       const edge =
         track.fadeIn > 0 ? Math.min(1, Math.max(0, desired / track.fadeIn)) : 1;
       const remaining = Math.max(0, track.end - current);
-      element.volume = Math.max(
-        0,
-        Math.min(
-          1,
-          (track.volume / 100) *
-            edge *
-            (track.fadeOut > 0 ? Math.min(1, remaining / track.fadeOut) : 1),
-        ),
-      );
+      const audible =
+        !track.muted && (!soloAudioActive || Boolean(track.solo));
+      element.volume = audible
+        ? Math.max(
+            0,
+            Math.min(
+              1,
+              (track.volume / 100) *
+                edge *
+                (track.fadeOut > 0
+                  ? Math.min(1, remaining / track.fadeOut)
+                  : 1),
+            ),
+          )
+        : 0;
       if (isPlaying && active && element.paused)
         void element.play().catch(() => undefined);
       if ((!isPlaying || !active) && !element.paused) element.pause();
     });
-  }, [audioTracks, current, isPlaying]);
+  }, [audioTracks, current, isPlaying, soloAudioActive]);
 
   useEffect(() => {
     if (!clip) return;
@@ -7086,6 +7097,8 @@ function ClipEditorV2({
           start: from,
           end: Math.max(from + 0.1, Math.min(projectEnd, from + trackLength)),
           volume: 85,
+          muted: false,
+          solo: false,
           fadeIn: 0.08,
           fadeOut: 0.12,
           assetId: metadata?.assetId,
@@ -7179,6 +7192,40 @@ function ClipEditorV2({
       items.filter((item) => item.id !== selectedAudioId),
     );
     setSelectedAudioId("");
+  }
+  function duplicateAudioTrack() {
+    const track = audioTracks.find((item) => item.id === selectedAudioId);
+    if (!track) return;
+    remember();
+    const length = Math.max(0.1, track.end - track.start);
+    const projectEnd = Math.max(
+      length,
+      editorTimelineDuration || duration || length,
+    );
+    const startAt = Math.min(
+      Math.max(0, projectEnd - length),
+      track.end + 0.08,
+    );
+    const duplicate: AudioTrack = {
+      ...track,
+      id: crypto.randomUUID(),
+      name: `${track.name} · cópia`,
+      start: startAt,
+      end: Math.min(projectEnd, startAt + length),
+      solo: false,
+    };
+    setAudioTracks((items) => [...items, duplicate]);
+    setSelectedAudioId(duplicate.id);
+    setNotice("Canal de áudio duplicado. Arraste para posicionar.");
+  }
+  async function addAudioFiles(files?: FileList | null) {
+    if (!files?.length) return;
+    let added = 0;
+    for (const file of Array.from(files)) {
+      if (await addAudioTrack(file)) added += 1;
+    }
+    if (added > 1)
+      setNotice(`${added} canais de áudio adicionados à timeline.`);
   }
   function applyTemplate(
     template: "podcast" | "react" | "gameplay" | "interview",
@@ -7349,6 +7396,8 @@ function ClipEditorV2({
       start: track.start,
       end: track.end,
       volume: track.volume,
+      muted: Boolean(track.muted),
+      solo: Boolean(track.solo),
       fadeIn: track.fadeIn,
       fadeOut: track.fadeOut,
       assetId: track.assetId,
@@ -7506,6 +7555,8 @@ function ClipEditorV2({
               Number(stored.end) || trackStart + asset.duration,
             ),
             volume: Math.max(0, Math.min(120, Number(stored.volume) || 85)),
+            muted: Boolean(stored.muted),
+            solo: Boolean(stored.solo),
             fadeIn: Math.max(0, Number(stored.fadeIn) || 0),
             fadeOut: Math.max(0, Number(stored.fadeOut) || 0),
             assetId: asset.id,
@@ -9350,7 +9401,11 @@ function ClipEditorV2({
         element.volume = 1;
         const trackSource = exportAudio.createMediaElementSource(element);
         const trackGain = exportAudio.createGain();
-        trackGain.gain.value = Math.max(0, Math.min(1.2, track.volume / 100));
+        const audible =
+          !track.muted && (!soloAudioActive || Boolean(track.solo));
+        trackGain.gain.value = audible
+          ? Math.max(0, Math.min(1.2, track.volume / 100))
+          : 0;
         trackSource.connect(trackGain).connect(audioDestination);
         exportTrackElements.push({ track, element, gain: trackGain });
       });
@@ -9472,11 +9527,14 @@ function ClipEditorV2({
                 Math.max(0, (track.end - audioTimelineTime) / track.fadeOut),
               )
             : 1;
-        gain.gain.value =
-          Math.max(0, Math.min(1.2, track.volume / 100)) *
-          edgeIn *
-          edgeOut *
-          (1 - montageOpacity);
+        const audible =
+          !track.muted && (!soloAudioActive || Boolean(track.solo));
+        gain.gain.value = audible
+          ? Math.max(0, Math.min(1.2, track.volume / 100)) *
+            edgeIn *
+            edgeOut *
+            (1 - montageOpacity)
+          : 0;
         if (active && element.paused)
           void element.play().catch(() => undefined);
         if (!active && !element.paused) element.pause();
@@ -10635,13 +10693,27 @@ function ClipEditorV2({
                 )}
                 {clip && (
                   <div className="audio-editor-controls audio-library">
+                    <div className="audio-mixer-heading">
+                      <div>
+                        <b>Mixador de áudio</b>
+                        <small>
+                          {audioTracks.length}{" "}
+                          {audioTracks.length === 1
+                            ? "canal adicional"
+                            : "canais adicionais"}
+                        </small>
+                      </div>
+                      <span>{audioTracks.length + 1} canais no projeto</span>
+                    </div>
                     <label className="audio-import">
-                      <Plus aria-hidden="true" size={14} /> Importar áudio
+                      <Plus aria-hidden="true" size={14} /> Adicionar canais de
+                      áudio
                       <input
                         type="file"
                         accept="audio/*"
+                        multiple
                         onChange={(event) =>
-                          void addAudioTrack(event.target.files?.[0])
+                          void addAudioFiles(event.target.files)
                         }
                       />
                     </label>
@@ -10661,30 +10733,100 @@ function ClipEditorV2({
                         <Sparkles aria-hidden="true" size={14} /> Ding
                       </button>
                     </div>
-                    {audioTracks.map((track) => (
-                      <button
-                        key={track.id}
-                        className={
-                          selectedAudio?.id === track.id ? "selected" : ""
-                        }
-                        onClick={() => {
-                          setSelectedAudioId(track.id);
-                          setSelectedId("");
-                          setSelectedIllustrationId("");
-                          seek(track.start);
-                        }}
-                      >
-                        <Music2 aria-hidden="true" size={14} /> {track.name}
-                        <span>
-                          {time(track.start)}–{time(track.end)}
-                        </span>
-                      </button>
-                    ))}
+                    <div className="audio-channel-list">
+                      <div className="audio-channel-strip main-channel">
+                        <span className="channel-index">V</span>
+                        <div>
+                          <b>Áudio do vídeo</b>
+                          <small>Canal principal · {audioGain}%</small>
+                        </div>
+                        <input
+                          aria-label="Volume do áudio principal"
+                          type="range"
+                          min="0"
+                          max="160"
+                          value={audioGain}
+                          onChange={(event) =>
+                            setAudioGain(Number(event.target.value))
+                          }
+                        />
+                      </div>
+                      {audioTracks.map((track, index) => (
+                        <div
+                          key={track.id}
+                          className={`audio-channel-strip ${selectedAudio?.id === track.id ? "selected" : ""} ${track.muted ? "muted" : ""}`}
+                        >
+                          <button
+                            type="button"
+                            className="channel-select"
+                            onClick={() => {
+                              setSelectedAudioId(track.id);
+                              setSelectedId("");
+                              setSelectedIllustrationId("");
+                              seek(track.start);
+                            }}
+                          >
+                            <span className="channel-index">A{index + 1}</span>
+                            <span>
+                              <b>{track.name}</b>
+                              <small>
+                                {time(track.start)}–{time(track.end)}
+                              </small>
+                            </span>
+                          </button>
+                          <input
+                            aria-label={`Volume do canal ${track.name}`}
+                            type="range"
+                            min="0"
+                            max="120"
+                            value={track.volume}
+                            onChange={(event) =>
+                              updateAudioTrack(track.id, {
+                                volume: Number(event.target.value),
+                              })
+                            }
+                          />
+                          <div className="channel-toggles">
+                            <button
+                              type="button"
+                              className={track.muted ? "active" : ""}
+                              title="Silenciar este canal"
+                              aria-label={`Silenciar ${track.name}`}
+                              onClick={() =>
+                                updateAudioTrack(track.id, {
+                                  muted: !track.muted,
+                                })
+                              }
+                            >
+                              M
+                            </button>
+                            <button
+                              type="button"
+                              className={track.solo ? "active solo" : ""}
+                              title="Ouvir somente este canal"
+                              aria-label={`Solo ${track.name}`}
+                              onClick={() =>
+                                updateAudioTrack(track.id, {
+                                  solo: !track.solo,
+                                })
+                              }
+                            >
+                              S
+                            </button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
                     {selectedAudio && (
                       <div className="audio-track-inspector">
                         <div>
                           <b>Faixa selecionada</b>
-                          <button onClick={removeAudioTrack}>Excluir</button>
+                          <span className="audio-track-actions">
+                            <button onClick={duplicateAudioTrack}>
+                              Duplicar
+                            </button>
+                            <button onClick={removeAudioTrack}>Excluir</button>
+                          </span>
                         </div>
                         {selectedAudio.license && (
                           <small title={selectedAudio.license.summary}>
@@ -10705,6 +10847,30 @@ function ClipEditorV2({
                             }
                           />
                         </label>
+                        <div className="audio-track-switches">
+                          <button
+                            type="button"
+                            className={selectedAudio.muted ? "active" : ""}
+                            onClick={() =>
+                              updateAudioTrack(selectedAudio.id, {
+                                muted: !selectedAudio.muted,
+                              })
+                            }
+                          >
+                            Mute
+                          </button>
+                          <button
+                            type="button"
+                            className={selectedAudio.solo ? "active solo" : ""}
+                            onClick={() =>
+                              updateAudioTrack(selectedAudio.id, {
+                                solo: !selectedAudio.solo,
+                              })
+                            }
+                          >
+                            Solo
+                          </button>
+                        </div>
                         <label>
                           Fade in · {selectedAudio.fadeIn.toFixed(1)}s
                           <input
@@ -12209,20 +12375,46 @@ function ClipEditorV2({
                 <details open>
                   <summary>Volume</summary>
                   {selectedAudio ? (
-                    <label>
-                      Nível <output>{selectedAudio.volume}%</output>
-                      <input
-                        type="range"
-                        min="0"
-                        max="120"
-                        value={selectedAudio.volume}
-                        onChange={(event) =>
-                          updateAudioTrack(selectedAudio.id, {
-                            volume: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
+                    <>
+                      <label>
+                        Nível <output>{selectedAudio.volume}%</output>
+                        <input
+                          type="range"
+                          min="0"
+                          max="120"
+                          value={selectedAudio.volume}
+                          onChange={(event) =>
+                            updateAudioTrack(selectedAudio.id, {
+                              volume: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <div className="audio-track-switches pure-audio-switches">
+                        <button
+                          type="button"
+                          className={selectedAudio.muted ? "active" : ""}
+                          onClick={() =>
+                            updateAudioTrack(selectedAudio.id, {
+                              muted: !selectedAudio.muted,
+                            })
+                          }
+                        >
+                          Mute
+                        </button>
+                        <button
+                          type="button"
+                          className={selectedAudio.solo ? "active solo" : ""}
+                          onClick={() =>
+                            updateAudioTrack(selectedAudio.id, {
+                              solo: !selectedAudio.solo,
+                            })
+                          }
+                        >
+                          Solo
+                        </button>
+                      </div>
+                    </>
                   ) : (
                     <label>
                       Nível <output>{audioGain}%</output>
@@ -13175,7 +13367,7 @@ function ClipEditorV2({
                 </div>
                 {audioTracks.map((track, index) => (
                   <div
-                    className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`}
+                    className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""} ${track.muted ? "muted" : ""} ${track.solo ? "solo" : ""}`}
                     key={track.id}
                     role="button"
                     tabIndex={0}
@@ -13199,7 +13391,8 @@ function ClipEditorV2({
                     }
                   >
                     <b>
-                      <Music2 aria-hidden="true" size={12} /> {index + 1}
+                      <Music2 aria-hidden="true" size={12} /> A{index + 1}
+                      {track.muted ? " · M" : track.solo ? " · S" : ""}
                     </b>
                     <div className="lane-track">
                       <button
@@ -13269,7 +13462,11 @@ function ClipEditorV2({
                         ) : null}
                         <span>{track.name}</span>
                         <i className="timeline-clip-meta">
-                          {track.volume}% · canal
+                          {track.muted
+                            ? "MUDO"
+                            : track.solo
+                              ? `SOLO · ${track.volume}%`
+                              : `${track.volume}% · canal`}
                         </i>
                         <i
                           className="clip-fade-handle out"

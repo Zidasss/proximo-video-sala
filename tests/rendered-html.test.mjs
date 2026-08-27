@@ -51,6 +51,14 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /Placa de captura —/);
   assert.match(page, /Capturar janela, tela ou jogo/);
   assert.match(page, /function isCaptureInputLabel/);
+  assert.match(page, /Mixador de áudio/);
+  assert.match(page, /Adicionar canais de/);
+  assert.match(page, /multiple/);
+  assert.match(page, /function addAudioFiles/);
+  assert.match(page, /function duplicateAudioTrack/);
+  assert.match(page, /soloAudioActive/);
+  assert.match(page, /muted: Boolean\(track\.muted\)/);
+  assert.match(page, /solo: Boolean\(track\.solo\)/);
   assert.match(page, /function placeholderCameraStream/);
   assert.match(page, /Sala aberta sem mídia/);
   assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
@@ -115,6 +123,9 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.scene-track-heading/);
   assert.match(css, /\.primary-video-clip/);
   assert.match(css, /\.screen-share-dialog/);
+  assert.match(css, /\.audio-mixer-heading/);
+  assert.match(css, /\.audio-channel-strip/);
+  assert.match(css, /\.channel-toggles/);
   assert.match(css, /\.resenha-controls/);
   assert.match(css, /\.timeline-more/);
   assert.match(css, /\.video-properties-grid/);

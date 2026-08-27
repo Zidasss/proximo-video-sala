@@ -1,5 +1,43 @@
 import { NextRequest, NextResponse } from "next/server";
 import { createClient, isSupabaseConfigured } from "../../../../lib/supabase/server";
+import { discoverPrimaryInstagramTarget } from "../../../../lib/publishing/meta";
+import {
+  exchangeMetaLongLivedToken,
+  metaCredentials,
+  revokeGoogleToken,
+} from "../../../../lib/publishing/oauth";
+import { errorMessage, readJson } from "../../../../lib/publishing/http";
+
+/** Colunas públicas devolvidas pelo GET (sem tokens). */
+type PublicAccountRow = Pick<
+  import("../../../../lib/publishing/token-store").SocialAccountRow,
+  | "id"
+  | "platform"
+  | "platform_user_id"
+  | "account_name"
+  | "account_handle"
+  | "avatar_url"
+  | "status"
+  | "created_at"
+  | "updated_at"
+>;
+
+interface YouTubeChannelListResponse {
+  items?: {
+    id: string;
+    snippet?: {
+      title?: string;
+      customUrl?: string;
+      thumbnails?: { default?: { url?: string } };
+    };
+  }[];
+}
+
+interface TikTokUserResponse {
+  data?: {
+    user?: { open_id?: string; display_name?: string; avatar_url?: string };
+  };
+}
 
 export async function GET() {
   if (!isSupabaseConfigured) {
@@ -24,7 +62,7 @@ export async function GET() {
     return NextResponse.json({ error: error.message }, { status: 500 });
   }
 
-  const formatted = (accounts || []).map((a: any) => ({
+  const formatted = (accounts || []).map((a: PublicAccountRow) => ({
     id: a.id,
     platform: a.platform,
     platformUserId: a.platform_user_id,
@@ -55,6 +93,8 @@ export async function POST(req: NextRequest) {
     let finalHandle = accountHandle || "";
     let finalAvatar = avatarUrl || "";
     let platformUserId = `${platform}_${Date.now().toString(36)}`;
+    let finalToken: string = accessToken || "";
+    let expiresAt: number | null = null;
 
     // Se um accessToken foi fornecido, tenta validar e buscar dados oficiais diretamente da API
     if (accessToken) {
@@ -67,7 +107,7 @@ export async function POST(req: NextRequest) {
             }
           );
           if (res.ok) {
-            const data = await res.json();
+            const data = await readJson<YouTubeChannelListResponse>(res);
             const ch = data.items?.[0];
             if (ch) {
               platformUserId = ch.id;
@@ -88,7 +128,7 @@ export async function POST(req: NextRequest) {
             }
           );
           if (res.ok) {
-            const data = await res.json();
+            const data = await readJson<TikTokUserResponse>(res);
             const u = data.data?.user;
             if (u) {
               platformUserId = u.open_id || platformUserId;
@@ -102,18 +142,24 @@ export async function POST(req: NextRequest) {
         }
       } else if (platform === "instagram") {
         try {
-          const res = await fetch(
-            `https://graph.facebook.com/v19.0/me?fields=id,name,accounts{id,name,instagram_business_account{id,username,profile_picture_url}}&access_token=${accessToken}`
-          );
-          if (res.ok) {
-            const data = await res.json();
-            const igAcc = data.accounts?.data?.[0]?.instagram_business_account;
-            if (igAcc) {
-              platformUserId = igAcc.id;
-              finalName = igAcc.username || data.name || finalName || "Instagram Creator";
-              finalHandle = `@${igAcc.username || "instagram"}`;
-              finalAvatar = igAcc.profile_picture_url || finalAvatar;
+          // Estende o token para 60 dias quando o app tem credenciais Meta,
+          // senão um token de 1h seria salvo e morreria antes do primeiro post.
+          if (metaCredentials().configured) {
+            const longLived = await exchangeMetaLongLivedToken(finalToken).catch(() => null);
+            if (longLived) {
+              finalToken = longLived.accessToken;
+              expiresAt = longLived.expiresAt ?? null;
             }
+          }
+
+          const target = await discoverPrimaryInstagramTarget(finalToken);
+          if (target) {
+            platformUserId = target.igUserId;
+            finalName = target.username || finalName || "Instagram Creator";
+            finalHandle = `@${target.username || "instagram"}`;
+            finalAvatar = target.profilePictureUrl || finalAvatar;
+            // O Page access token é o que a Content Publishing API aceita.
+            finalToken = target.pageAccessToken;
           }
         } catch (e) {
           console.warn("Aviso na validação de token Instagram:", e);
@@ -146,8 +192,9 @@ export async function POST(req: NextRequest) {
             account_name: finalName,
             account_handle: finalHandle,
             avatar_url: finalAvatar,
-            access_token: accessToken || `token_${Date.now()}`,
+            access_token: finalToken || `token_${Date.now()}`,
             refresh_token: refreshToken || null,
+            expires_at: expiresAt,
             status: "connected",
             updated_at: new Date().toISOString(),
           },
@@ -170,8 +217,11 @@ export async function POST(req: NextRequest) {
         status: "connected",
       },
     });
-  } catch (err: any) {
-    return NextResponse.json({ error: err.message }, { status: 500 });
+  } catch (err: unknown) {
+    return NextResponse.json(
+      { error: errorMessage(err, "Falha ao salvar a conta social.") },
+      { status: 500 }
+    );
   }
 }
 
@@ -190,6 +240,22 @@ export async function DELETE(req: NextRequest) {
     } = await supabase.auth.getUser();
 
     if (user) {
+      // Revoga o acesso no Google antes de apagar, senão o app continuaria
+      // listado nas permissões da conta do usuário.
+      if (platform === "youtube") {
+        const { data: row } = await supabase
+          .from("social_accounts")
+          .select("refresh_token, access_token")
+          .eq("user_id", user.id)
+          .eq("platform", platform)
+          .maybeSingle();
+
+        const token = row?.refresh_token || row?.access_token;
+        if (token && token !== "mock-token") {
+          await revokeGoogleToken(token);
+        }
+      }
+
       const { error } = await supabase
         .from("social_accounts")
         .delete()

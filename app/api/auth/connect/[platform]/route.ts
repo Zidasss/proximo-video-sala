@@ -1,27 +1,44 @@
 import { NextRequest, NextResponse } from "next/server";
+import { getDynamicBaseUrl, safeReturnPath } from "../../../../../lib/http/base-url";
+import {
+  GRAPH_API_VERSION,
+  googleCredentials,
+  metaCredentials,
+  tiktokCredentials,
+} from "../../../../../lib/publishing/oauth";
+import {
+  STATE_COOKIE,
+  STATE_COOKIE_MAX_AGE,
+  createState,
+} from "../../../../../lib/publishing/oauth-state";
 
-function getDynamicBaseUrl(request: Request): string {
-  const host =
-    request.headers.get("x-forwarded-host") ||
-    request.headers.get("host");
+/** Escopos mínimos para subir Shorts e ler os dados do canal. */
+const GOOGLE_SCOPES = [
+  "https://www.googleapis.com/auth/youtube.upload",
+  "https://www.googleapis.com/auth/youtube.readonly",
+  "https://www.googleapis.com/auth/userinfo.profile",
+  "https://www.googleapis.com/auth/userinfo.email",
+].join(" ");
 
-  if (host && !host.includes("localhost")) {
-    const proto = request.headers.get("x-forwarded-proto") || "https";
-    return `${proto}://${host}`;
-  }
+/**
+ * Escopos da Content Publishing API. `instagram_content_publish` é o que
+ * autoriza o POST do Reel; os de `pages_*` são necessários porque o Reel é
+ * publicado através da Página do Facebook vinculada à conta Business.
+ */
+const META_SCOPES = [
+  "instagram_basic",
+  "instagram_content_publish",
+  "pages_show_list",
+  "pages_read_engagement",
+  "business_management",
+].join(",");
 
-  const envUrl = process.env.NEXT_PUBLIC_APP_URL;
-  if (envUrl && !envUrl.includes("localhost")) {
-    return envUrl;
-  }
+const TIKTOK_SCOPES = "user.info.basic,video.upload,video.publish";
 
-  if (host) {
-    const proto = request.headers.get("x-forwarded-proto") || "http";
-    return `${proto}://${host}`;
-  }
-
-  const { origin } = new URL(request.url);
-  return origin;
+function setupError(baseUrl: string, next: string, message: string) {
+  const setupUrl = new URL(next, baseUrl);
+  setupUrl.searchParams.set("auth_error", message);
+  return NextResponse.redirect(setupUrl.toString());
 }
 
 export async function GET(
@@ -30,79 +47,90 @@ export async function GET(
 ) {
   const { platform } = await context.params;
   const { searchParams } = new URL(req.url);
-  const next = searchParams.get("next") || "/perfil";
+  const next = safeReturnPath(searchParams.get("next"));
   const baseUrl = getDynamicBaseUrl(req);
   const redirectUri = `${baseUrl}/api/auth/callback/${platform}`;
 
-  const statePayload = Buffer.from(JSON.stringify({ platform, next })).toString("base64url");
+  const { state, nonce } = createState(platform, next);
 
-  // YouTube / Google OAuth
+  let authorizeUrl: string;
+
   if (platform === "youtube") {
-    const clientId = process.env.GOOGLE_CLIENT_ID;
-    if (!clientId || clientId.includes("your-google")) {
-      const setupUrl = new URL(next, baseUrl);
-      setupUrl.searchParams.set(
-        "auth_error",
-        "GOOGLE_CLIENT_ID não configurado. Adicione suas credenciais do Google Cloud Console para conectar ao vivo."
+    const { clientId, configured } = googleCredentials();
+    if (!configured) {
+      return setupError(
+        baseUrl,
+        next,
+        "GOOGLE_CLIENT_ID/GOOGLE_CLIENT_SECRET não configurados. Adicione as credenciais do Google Cloud Console para conectar ao vivo."
       );
-      return NextResponse.redirect(setupUrl.toString());
     }
 
-    const scopes = [
-      "https://www.googleapis.com/auth/youtube.upload",
-      "https://www.googleapis.com/auth/youtube.readonly",
-      "https://www.googleapis.com/auth/userinfo.profile",
-      "https://www.googleapis.com/auth/userinfo.email",
-    ].join(" ");
-
-    const url = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${clientId}&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&response_type=code&scope=${encodeURIComponent(
-      scopes
-    )}&access_type=offline&prompt=consent&include_granted_scopes=true&state=${statePayload}`;
-
-    return NextResponse.redirect(url);
-  }
-
-  // TikTok OAuth
-  if (platform === "tiktok") {
-    const clientKey = process.env.TIKTOK_CLIENT_KEY;
-    if (!clientKey || clientKey.includes("your-tiktok")) {
-      const setupUrl = new URL(next, baseUrl);
-      setupUrl.searchParams.set(
-        "auth_error",
-        "TIKTOK_CLIENT_KEY não configurado. Adicione suas credenciais do TikTok for Developers para conectar ao vivo."
+    // `access_type=offline` + `prompt=consent` são obrigatórios para receber o
+    // refresh token — sem ele o canal desconecta sozinho em 1 hora.
+    authorizeUrl =
+      "https://accounts.google.com/o/oauth2/v2/auth?" +
+      new URLSearchParams({
+        client_id: clientId!,
+        redirect_uri: redirectUri,
+        response_type: "code",
+        scope: GOOGLE_SCOPES,
+        access_type: "offline",
+        prompt: "consent",
+        include_granted_scopes: "true",
+        state,
+      });
+  } else if (platform === "tiktok") {
+    const { clientKey, configured } = tiktokCredentials();
+    if (!configured) {
+      return setupError(
+        baseUrl,
+        next,
+        "TIKTOK_CLIENT_KEY/TIKTOK_CLIENT_SECRET não configurados. Adicione as credenciais do TikTok for Developers para conectar ao vivo."
       );
-      return NextResponse.redirect(setupUrl.toString());
     }
 
-    const scopes = "user.info.basic,video.upload,video.publish";
-    const url = `https://www.tiktok.com/v2/auth/authorize/?client_key=${clientKey}&scope=${scopes}&response_type=code&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&state=${statePayload}`;
-
-    return NextResponse.redirect(url);
-  }
-
-  // Instagram / Meta Graph API OAuth
-  if (platform === "instagram") {
-    const fbAppId = process.env.META_APP_ID;
-    if (!fbAppId || fbAppId.includes("your-meta")) {
-      const setupUrl = new URL(next, baseUrl);
-      setupUrl.searchParams.set(
-        "auth_error",
-        "META_APP_ID não configurado. Adicione o App ID do Meta for Developers para conectar ao vivo."
+    authorizeUrl =
+      "https://www.tiktok.com/v2/auth/authorize/?" +
+      new URLSearchParams({
+        client_key: clientKey!,
+        scope: TIKTOK_SCOPES,
+        response_type: "code",
+        redirect_uri: redirectUri,
+        state,
+      });
+  } else if (platform === "instagram") {
+    const { appId, configured } = metaCredentials();
+    if (!configured) {
+      return setupError(
+        baseUrl,
+        next,
+        "META_APP_ID/META_APP_SECRET não configurados. Adicione as credenciais do Meta for Developers para conectar ao vivo."
       );
-      return NextResponse.redirect(setupUrl.toString());
     }
 
-    const scopes = "instagram_basic,instagram_content_publish,pages_show_list,pages_read_engagement,business_management";
-    const url = `https://www.facebook.com/v19.0/dialog/oauth?client_id=${fbAppId}&redirect_uri=${encodeURIComponent(
-      redirectUri
-    )}&scope=${scopes}&response_type=code&state=${statePayload}`;
-
-    return NextResponse.redirect(url);
+    authorizeUrl =
+      `https://www.facebook.com/${GRAPH_API_VERSION}/dialog/oauth?` +
+      new URLSearchParams({
+        client_id: appId!,
+        redirect_uri: redirectUri,
+        scope: META_SCOPES,
+        response_type: "code",
+        state,
+      });
+  } else {
+    return NextResponse.json({ error: "Plataforma desconhecida." }, { status: 400 });
   }
 
-  return NextResponse.json({ error: "Plataforma desconhecida." }, { status: 400 });
+  const response = NextResponse.redirect(authorizeUrl);
+
+  // O nonce fica só no servidor; o callback compara com o que voltar no `state`.
+  response.cookies.set(STATE_COOKIE, nonce, {
+    httpOnly: true,
+    secure: baseUrl.startsWith("https://"),
+    sameSite: "lax",
+    path: "/",
+    maxAge: STATE_COOKIE_MAX_AGE,
+  });
+
+  return response;
 }

@@ -1,4 +1,5 @@
 ﻿import { PlatformPublishStatus } from "../types/publishing";
+import { errorMessage } from "./http";
 
 interface PublishTikTokOptions {
   accessToken: string;
@@ -80,12 +81,12 @@ export async function publishToTikTok(
       postId: publishId,
       postUrl: `https://www.tiktok.com`,
     };
-  } catch (error: any) {
+  } catch (error: unknown) {
     return {
       platform: "tiktok",
       status: "failed",
       progress: 0,
-      errorMessage: error.message || "Erro desconhecido ao publicar no TikTok.",
+      errorMessage: errorMessage(error, "Erro desconhecido ao publicar no TikTok."),
     };
   }
 }

@@ -98,3 +98,105 @@ actions tied to the current ChatGPT user. Leave public content anonymous.
 
 - [vinext Documentation](https://github.com/cloudflare/vinext)
 - [Drizzle D1 Guide](https://orm.drizzle.team/docs/get-started/d1-new)
+
+---
+
+# Publicação multi-plataforma (YouTube, Instagram, TikTok)
+
+O Klip edita o vídeo no navegador e publica o mesmo arquivo em várias
+plataformas de uma vez. Esta seção descreve como ligar as APIs reais.
+
+## Como o fluxo funciona
+
+```
+Editor  →  POST /api/upload           (Supabase Storage → URL pública HTTPS)
+        →  POST /api/publish          (dispara as plataformas em paralelo)
+              ├─ YouTube   upload resumível em blocos (Data API v3)
+              ├─ Instagram container REELS → polling → media_publish (Graph API)
+              └─ TikTok    PULL_FROM_URL (Content Posting API)
+```
+
+Antes de qualquer envio, `/api/publish` chama `ensureFreshAccount()`
+(`lib/publishing/token-store.ts`), que renova os access tokens vencidos e grava
+os novos em `social_accounts`. Se a renovação falhar, a conta é marcada como
+`expired` e a UI pede reconexão em vez de estourar um 401 no meio do upload.
+
+## Configuração
+
+Copie `.env.example` para `.env.local` e preencha as credenciais. Sem elas o app
+continua funcionando em **modo demonstração**: as publicações são simuladas e
+devolvem IDs falsos (também forçado por `ENABLE_PUBLISH_MOCK=true`).
+
+### YouTube — Google Cloud Console
+
+1. Crie um projeto e ative a **YouTube Data API v3**.
+2. Na tela de consentimento OAuth, adicione os escopos `youtube.upload` e
+   `youtube.readonly`.
+3. Crie um **ID do cliente OAuth → Aplicativo da Web** e registre o redirect URI
+   `https://SEU-DOMINIO/api/auth/callback/youtube`.
+4. Preencha `GOOGLE_CLIENT_ID` e `GOOGLE_CLIENT_SECRET`.
+
+O consentimento é pedido com `access_type=offline&prompt=consent` porque o
+access token do Google dura **1 hora** — sem o refresh token o canal
+desconectaria sozinho antes do próximo post.
+
+> **Limite dos apps não verificados:** enquanto o app não passa pela verificação
+> do Google e pela auditoria da YouTube API, todo vídeo enviado é forçado para
+> `private`, independentemente da visibilidade escolhida na UI.
+
+### Instagram Reels — Meta for Developers
+
+1. Crie um app do tipo **Business** e adicione os produtos **Facebook Login** e
+   **Instagram Graph API**.
+2. Permissões: `instagram_basic`, `instagram_content_publish`,
+   `pages_show_list`, `pages_read_engagement`, `business_management`.
+3. Registre o redirect URI `https://SEU-DOMINIO/api/auth/callback/instagram`.
+4. Preencha `META_APP_ID` e `META_APP_SECRET`.
+
+A conta que vai publicar precisa ser **Business ou Creator**, estar **vinculada
+a uma Página do Facebook**, e quem autoriza precisa ser admin dessa Página. No
+callback o app troca o token curto por um **token de 60 dias**, varre todas as
+Páginas do usuário procurando a conta Instagram vinculada e guarda o **Page
+access token** — é ele, e não o token de usuário, que a Content Publishing API
+aceita em `POST /{ig-user-id}/media`.
+
+> O Instagram **não aceita upload de arquivo**: a Meta baixa o vídeo da URL que
+> você informar. Por isso o arquivo precisa estar publicado em HTTPS acessível
+> pela internet (o bucket `klip-videos` do Supabase Storage resolve isso) antes
+> de `/api/publish` ser chamado. Limites: 50 publicações por 24h, 3s–15min de
+> duração, proporção recomendada 9:16.
+
+### TikTok — TikTok for Developers
+
+Escopos `user.info.basic,video.upload,video.publish` e redirect URI
+`https://SEU-DOMINIO/api/auth/callback/tiktok`. Preencha `TIKTOK_CLIENT_KEY` e
+`TIKTOK_CLIENT_SECRET`.
+
+## Banco de dados
+
+Aplique as migrations em `supabase/migrations/` na ordem numérica. A
+`002_token_lifecycle.sql` adiciona os índices usados pelas rotas de publicação e
+documenta o campo `expires_at` (epoch em **milissegundos**).
+
+## Segurança do OAuth
+
+O parâmetro `state` carrega um nonce que também é gravado num cookie HttpOnly
+(`klip_oauth_state`) e conferido no callback. Sem essa checagem, um terceiro
+poderia forjar um callback e vincular a própria conta social à sessão da vítima.
+O `next` do retorno é validado para aceitar apenas caminhos relativos, evitando
+open redirect.
+
+## Arquivos relevantes
+
+| Arquivo | Responsabilidade |
+| --- | --- |
+| `lib/publishing/oauth.ts` | Credenciais, expiração e renovação de tokens |
+| `lib/publishing/oauth-state.ts` | `state` do OAuth com proteção CSRF |
+| `lib/publishing/token-store.ts` | Renova e persiste tokens antes de publicar |
+| `lib/publishing/meta.ts` | Descoberta da conta Instagram Business e cotas |
+| `lib/publishing/youtube.ts` | Upload resumível em blocos de Shorts |
+| `lib/publishing/instagram.ts` | Container de Reels, polling e publicação |
+| `lib/publishing/publisher.ts` | Orquestra o multi-post em paralelo |
+
+Os testes de integração ficam em `tests/social-apis.test.mjs` e rodam com
+`npm test` (usam `fetch` mockado, nenhuma chamada real é feita).

@@ -42,9 +42,9 @@
 .wordmark {
   fill: currentColor;
   font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Helvetica Neue", "Segoe UI", sans-serif;
-  font-size: 36px;
-  font-weight: 720;
-  letter-spacing: -1.6px;
+  font-size: 33px;
+  font-weight: 650;
+  letter-spacing: -1.35px;
 }
 
 @media (forced-colors: active) {

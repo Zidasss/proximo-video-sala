@@ -3340,3 +3340,72 @@ html[data-klip-theme] .offline-studio .offline-preview {
     display: none;
   }
 }
+
+/* Final density pass — a quieter, product-led landing header. */
+html[data-klip-theme] .landing .landing-nav {
+  top: 10px;
+  width: min(1320px, calc(100% - 28px));
+  height: 56px;
+  min-height: 56px;
+  margin-top: 10px;
+  padding: 6px 7px 6px 14px !important;
+  border-radius: 14px !important;
+  box-shadow: 0 6px 22px rgb(22 22 28 / 6%) !important;
+}
+
+html[data-klip-theme] .landing .landing-nav .brand {
+  min-width: 112px;
+}
+
+html[data-klip-theme] .landing .landing-nav .brand svg {
+  width: 116px;
+  height: 29px;
+}
+
+html[data-klip-theme] .landing .landing-nav-actions {
+  gap: 3px;
+}
+
+html[data-klip-theme] .landing .landing-nav-actions > :where(button, a),
+html[data-klip-theme] .landing .landing-nav-actions > .nav-action-btn,
+html[data-klip-theme] .landing .landing-nav-menu > summary {
+  height: 34px;
+  min-height: 34px;
+  padding-inline: 10px;
+  border-radius: 8px !important;
+  font-size: 12px !important;
+}
+
+html[data-klip-theme] .landing .landing-nav-actions > .theme-toggle,
+html[data-klip-theme] .landing .landing-nav-menu > summary:has(> svg:only-child) {
+  width: 34px;
+  min-width: 34px;
+}
+
+html[data-klip-theme] .landing .landing-nav-actions > .nav-action-btn.primary {
+  min-width: 82px;
+  padding-inline: 12px;
+  box-shadow: 0 4px 14px color-mix(in srgb, var(--landing-accent) 20%, transparent) !important;
+}
+
+html[data-klip-theme] .landing .landing-account-menu > summary > img,
+html[data-klip-theme] .landing .landing-account-menu .landing-profile-fallback {
+  width: 28px;
+  height: 28px;
+  border-radius: 7px;
+}
+
+@media (max-width: 760px) {
+  html[data-klip-theme] .landing .landing-nav {
+    width: calc(100% - 18px);
+    padding-left: 10px !important;
+  }
+
+  html[data-klip-theme] .landing .landing-nav .brand {
+    min-width: 96px;
+  }
+
+  html[data-klip-theme] .landing .landing-nav .brand svg {
+    width: 98px;
+  }
+}

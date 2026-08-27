@@ -6437,9 +6437,16 @@ function ClipEditorV2({
                   <small><Sparkles aria-hidden="true" size={14} /> KLIPAPP Studio</small>
                   <b>Transforme uma ideia em história.</b>
                   <span>Comece com um vídeo ou uma foto.</span>
-                  <label className="editor-empty-upload">
+                  <label
+                    className="editor-empty-upload"
+                    onDragOver={(event) => event.preventDefault()}
+                    onDrop={(event) => {
+                      event.preventDefault();
+                      void selectFile(event.dataTransfer.files?.[0]);
+                    }}
+                  >
                     <FileUp aria-hidden="true" size={19} />
-                    <span><strong>Escolher mídia</strong><em>Vídeo ou foto</em></span>
+                    <span><strong>Arraste ou escolha</strong><em>Vídeo ou foto</em></span>
                     <input type="file" accept="video/*,image/*" onChange={(event) => void selectFile(event.target.files?.[0])} />
                   </label>
                   <i>MP4 · WebM · MOV · JPG · PNG · WebP</i>

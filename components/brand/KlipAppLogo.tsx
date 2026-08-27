@@ -43,8 +43,8 @@ export function KlipAppLogo({
 }: KlipAppLogoProps) {
   const isSymbol = variant === "symbol";
   const isWordmark = variant === "wordmark";
-  const viewBox = isSymbol ? "0 0 64 64" : isWordmark ? "0 0 190 64" : "0 0 270 64";
-  const defaultWidth = isSymbol ? 32 : isWordmark ? 112 : 150;
+  const viewBox = isSymbol ? "0 0 64 64" : isWordmark ? "0 0 176 64" : "0 0 242 64";
+  const defaultWidth = isSymbol ? 32 : isWordmark ? 104 : 128;
   const defaultHeight = isSymbol ? 32 : 30;
   const toneClass = tone === "auto" ? "" : styles[tone];
 
@@ -62,15 +62,15 @@ export function KlipAppLogo({
       xmlns="http://www.w3.org/2000/svg"
     >
       {!isWordmark && (
-        <g transform={isSymbol ? undefined : "translate(2 2) scale(.94)"}>
+        <g transform={isSymbol ? undefined : "translate(4 4) scale(.86)"}>
           <SymbolMark />
         </g>
       )}
       {!isSymbol && (
         <text
           className={styles.wordmark}
-          x={isWordmark ? 2 : 78}
-          y="42"
+          x={isWordmark ? 2 : 70}
+          y="41"
         >
           KLIPAPP
         </text>

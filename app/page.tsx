@@ -95,9 +95,38 @@ type AudioTrack = {
   volume: number;
   fadeIn: number;
   fadeOut: number;
+  waveform?: number[];
   assetId?: string;
   license?: AudioLicense;
 };
+
+async function buildAudioWaveform(buffer: ArrayBuffer, bars: number): Promise<number[]> {
+  const context = new AudioContext();
+  try {
+    const decoded = await context.decodeAudioData(buffer);
+    const channels = Array.from(
+      { length: Math.min(2, decoded.numberOfChannels) },
+      (_, index) => decoded.getChannelData(index),
+    );
+    if (!channels.length) return [];
+    const count = Math.max(80, Math.min(2400, Math.round(bars)));
+    const block = Math.max(1, Math.floor(decoded.length / count));
+    return Array.from({ length: count }, (_, index) => {
+      let peak = 0;
+      const from = index * block;
+      const to = Math.min(decoded.length, from + block);
+      const stride = Math.max(1, Math.floor(block / 42));
+      for (let point = from; point < to; point += stride) {
+        let sample = 0;
+        for (const channel of channels) sample += Math.abs(channel[point] || 0);
+        peak = Math.max(peak, sample / channels.length);
+      }
+      return Math.max(.035, Math.min(1, Math.sqrt(peak)));
+    });
+  } finally {
+    await context.close().catch(() => undefined);
+  }
+}
 type EditorSnapshot = {
   layers: TextLayer[];
   illustrations: IllustrationLayer[];
@@ -4216,6 +4245,13 @@ function ClipEditorV2({
   const montageTimelineDuration = montageTimelineClips.at(-1)?.timelineEnd || 0;
   const hasMontageTimeline = montageTimelineClips.length > 0;
   const editorTimelineDuration = hasMontageTimeline ? montageTimelineDuration : duration;
+  const timelineWaveform = hasMontageTimeline && waveform.length && baseDuration
+    ? montageTimelineClips.flatMap((item) => {
+        const from = Math.max(0, Math.floor((item.start / baseDuration) * waveform.length));
+        const to = Math.max(from + 1, Math.ceil((item.end / baseDuration) * waveform.length));
+        return waveform.slice(from, Math.min(waveform.length, to));
+      })
+    : waveform;
   const primarySourceStart = Math.max(0, Math.min(start, Math.max(0, baseDuration - .05)));
   const primarySourceEnd = Math.max(primarySourceStart + .05, Math.min(baseDuration || end, end || baseDuration));
   const primaryClipStart = Math.max(0, primaryTimelineStart);
@@ -4343,17 +4379,7 @@ function ClipEditorV2({
       try {
         const response = await fetch(clip.url);
         const buffer = await response.arrayBuffer();
-        const context = new AudioContext();
-        const decoded = await context.decodeAudioData(buffer);
-        const data = decoded.getChannelData(0);
-        const bars = 140;
-        const block = Math.max(1, Math.floor(data.length / bars));
-        const values = Array.from({ length: bars }, (_, index) => {
-          let peak = 0;
-          for (let point = index * block; point < Math.min(data.length, (index + 1) * block); point += 8) peak = Math.max(peak, Math.abs(data[point] || 0));
-          return Math.max(.06, Math.min(1, Math.sqrt(peak)));
-        });
-        await context.close();
+        const values = await buildAudioWaveform(buffer, 1200);
         if (!cancelled) setWaveform(values);
       } catch { if (!cancelled) setWaveform([]); }
     })();
@@ -4661,6 +4687,9 @@ function ClipEditorV2({
   ): Promise<boolean> {
     if (!file) return Promise.resolve(false);
     const url = URL.createObjectURL(file);
+    const waveformPromise = file.arrayBuffer()
+      .then((buffer) => buildAudioWaveform(buffer, 640))
+      .catch(() => [] as number[]);
     managedAudioUrls.current.add(url);
     const probe = document.createElement("audio");
     probe.preload = "metadata";
@@ -4690,6 +4719,10 @@ function ClipEditorV2({
         };
         remember();
         setAudioTracks((items) => [...items, track]);
+        void waveformPromise.then((values) => {
+          if (!values.length) return;
+          setAudioTracks((items) => items.map((item) => item.id === track.id ? { ...item, waveform: values } : item));
+        });
         setSelectedAudioId(track.id);
         setSelectedId("");
         setSelectedIllustrationId("");
@@ -6332,12 +6365,12 @@ function ClipEditorV2({
         <div className="timeline-lanes" onDragOver={(event) => event.preventDefault()} onDrop={dropTransitionOnTimeline} onContextMenu={openVideoContextMenu}>
           <div className="timeline-lane video-lane"><b>VÍDEO</b><div className="lane-track timeline-scrubber" onPointerDown={selectTimeFromTimeline} onPointerMove={moveTimelineTrim} onPointerUp={endTimelineTrim} onPointerCancel={endTimelineTrim} title="Clique para mover o cursor. Arraste as alças vermelhas para cortar."><button className="primary-video-clip timeline-item-clip" type="button" style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((primaryClipEnd - primaryClipStart) / duration) * 100)}%` : "100%" }} onPointerDown={beginPrimaryTimelineMove} onPointerMove={movePrimaryTimelineMove} onPointerUp={endPrimaryTimelineMove} onPointerCancel={endPrimaryTimelineMove} onContextMenu={openVideoContextMenu} title="Arraste o corpo para mover o trecho sem alterar o corte. Use as pontas para cortar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineTrim(event, "start")} /><span>▶ VÍDEO PRINCIPAL · {clip?.name}</span><i className="timeline-clip-meta">arraste para mover</i><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineTrim(event, "end")} /></button>{sceneItems.map((item, index) => <button className={`illustration-clip scene-clip timeline-item-clip ${selectedIllustration?.id === item.id ? "selected" : ""}`} key={item.id} style={{ left: duration ? `${(item.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(1.5, ((item.end - item.start) / duration) * 100)}%` : "0%" }} onClick={(event) => { event.stopPropagation(); setSelectedIllustrationId(item.id); setSelectedId(""); setSelectedAudioId(""); }} onContextMenu={(event) => openContextMenu(event, "illustration", item.id)} onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "move", item.start, item.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag} title="Vídeo na sequência: arraste para mover; use as pontas para encurtar ou aumentar."><i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "start", item.start, item.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "in", item.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><span>▶ VÍDEO {index + 2} · {item.name}</span><i className="timeline-clip-meta">sequência</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "illustration", item.id, "out", item.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "illustration", item.id, "end", item.start, item.end)} /></button>)}{videoFadeIn > 0 && <button className="timeline-transition in" type="button" style={{ left: duration ? `${(videoFadeInAt / duration) * 100}%` : "0%", width: duration ? `${Math.max(4, (videoFadeIn / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "in")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "in"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">↘ Fade {transitionColor === "white" ? "branco" : "preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "in")}>↔</i></button>}{videoFadeOut > 0 && <button className="timeline-transition out" type="button" style={{ left: duration ? `${(videoFadeOutAt / duration) * 100}%` : "92%", width: duration ? `${Math.max(4, (videoFadeOut / duration) * 100)}%` : "8%" }} onPointerDown={(event) => beginTransitionMove(event, "out")} onPointerMove={(event) => { moveTransitionPosition(event); moveTransitionResize(event); }} onPointerUp={() => { endTransitionMove(); endTransitionResize(); }} onPointerCancel={() => { endTransitionMove(); endTransitionResize(); }} onDoubleClick={(event) => { event.stopPropagation(); applyTransition("none", "out"); }} title="Arraste o bloco para reposicionar. Arraste a alça no fim para mudar a duração. Clique duas vezes para remover.">{transitionColor === "white" ? "Fade branco" : "Fade preto"}<i className="transition-grip" onPointerDown={(event) => beginTransitionResize(event, "out")}>↔</i></button>}<button type="button" className="cut-marker start-marker" aria-label="Arrastar início do corte" onPointerDown={(event) => beginTimelineTrim(event, "start")} style={{ left: duration ? `${(primaryClipStart / duration) * 100}%` : "0%" }}><span>{time(primaryClipStart)}</span></button><button type="button" className="cut-marker end-marker" aria-label="Arrastar fim do corte" onPointerDown={(event) => beginTimelineTrim(event, "end")} style={{ left: duration ? `${(primaryClipEnd / duration) * 100}%` : "100%" }}><span>{time(primaryClipEnd)}</span></button></div></div>
           {hasMontageTimeline && <div className="timeline-lane radar-lane montage-video-lane"><b>VÍDEO + ÁUDIO</b><div className="lane-track" onPointerDown={selectTimeFromTimeline} title="Montagem contínua: os trechos recortados são reproduzidos lado a lado, com o áudio correspondente.">{montageTimelineClips.map((item, index) => <button type="button" key={item.id} className={`radar-cut montage-cut ${activeRadarCutId === item.id ? "active" : ""}`} style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%`, width: `${((item.timelineEnd - item.timelineStart) / montageTimelineDuration) * 100}%` }} onClick={(event) => { event.stopPropagation(); activateRadarCut(item); }} title={`Klip ${index + 1} · origem ${time(item.start)}–${time(item.end)} · montagem ${time(item.timelineStart)}–${time(item.timelineEnd)}`}><span>▶ K{index + 1} · {time(item.timelineEnd - item.timelineStart)}</span><small>áudio incluído</small><i className="montage-download" onClick={(event) => { event.stopPropagation(); void exportReel(false, [item], `klip-radar-${String(index + 1).padStart(2, "0")}`); }} aria-label={`Salvar Klip ${index + 1} individualmente`} title="Salvar este Klip sem remover os demais">⇩</i><i className="montage-remove" onClick={(event) => { event.stopPropagation(); removeRadarCut(item.id); }} aria-label="Remover Klip">×</i></button>)}</div></div>}
-          <div className="timeline-lane audio-lane"><b>{hasMontageTimeline ? "ÁUDIO RECORTADO" : "ÁUDIO"}</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title={hasMontageTimeline ? "O áudio acompanha automaticamente cada trecho da montagem, sem espaços vazios." : "Forma de onda do áudio. Clique para posicionar o cursor."}>{waveform.length ? waveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{!hasMontageTimeline && markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}{hasMontageTimeline && montageTimelineClips.slice(1).map((item) => <i key={item.id} className="montage-audio-boundary" style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%` }} />)}</div></div>
+          <div className="timeline-lane audio-lane"><b>{hasMontageTimeline ? "ÁUDIO RECORTADO" : "ÁUDIO"}</b><div className="lane-track waveform-track" onPointerDown={selectTimeFromTimeline} title={hasMontageTimeline ? "O áudio acompanha automaticamente cada trecho da montagem, sem espaços vazios." : "Forma de onda do áudio. Clique para posicionar o cursor."}>{timelineWaveform.length ? timelineWaveform.map((value, index) => <i key={index} style={{ height: `${Math.max(12, value * 100)}%` }} />) : <span>Importe um vídeo com áudio para analisar a forma de onda</span>}{!hasMontageTimeline && markers.map((marker) => <button type="button" key={marker} className="timeline-marker" style={{ left: duration ? `${(marker / duration) * 100}%` : "0%" }} onClick={(event) => { event.stopPropagation(); seek(marker); }} title={`Marcador ${time(marker)}`} />)}{hasMontageTimeline && montageTimelineClips.slice(1).map((item) => <i key={item.id} className="montage-audio-boundary" style={{ left: `${(item.timelineStart / montageTimelineDuration) * 100}%` }} />)}</div></div>
           {audioTracks.map((track, index) => (
             <div className={`timeline-lane audio-layer ${selectedAudio?.id === track.id ? "selected" : ""}`} key={track.id} onClick={() => { setSelectedAudioId(track.id); setSelectedId(""); setSelectedIllustrationId(""); seek(Math.max(start, track.start)); }} onContextMenu={(event) => openContextMenu(event, "audio", track.id)}>
               <b>♫ {index + 1}</b><div className="lane-track"><button className="audio-clip timeline-item-clip" style={{ left: duration ? `${(track.start / duration) * 100}%` : "0%", width: duration ? `${Math.max(2, ((track.end - track.start) / duration) * 100)}%` : "10%" }} onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "move", track.start, track.end)} onPointerMove={moveTimelineItemDrag} onPointerUp={endTimelineItemDrag} onPointerCancel={endTimelineItemDrag}>
                 <i className="timeline-clip-handle start" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "start", track.start, track.end)} /><i className="clip-fade-handle in" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "in", track.fadeIn)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} />
-                <span>{track.name}</span><i className="timeline-clip-meta">{track.volume}% · canal</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "out", track.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "end", track.start, track.end)} />
+                {track.waveform?.length ? <i className="audio-clip-waveform" aria-hidden="true">{track.waveform.map((value, point) => <i key={point} style={{ height: `${Math.max(10, value * 100)}%` }} />)}</i> : null}<span>{track.name}</span><i className="timeline-clip-meta">{track.volume}% · canal</i><i className="clip-fade-handle out" onPointerDown={(event) => beginTimelineFadeDrag(event, "audio", track.id, "out", track.fadeOut)} onPointerMove={moveTimelineFadeDrag} onPointerUp={endTimelineFadeDrag} onPointerCancel={endTimelineFadeDrag} /><i className="timeline-clip-handle end" onPointerDown={(event) => beginTimelineItemDrag(event, "audio", track.id, "end", track.start, track.end)} />
               </button></div>
             </div>
           ))}

@@ -2592,6 +2592,39 @@ html[data-klip-theme] .clip-editor-v2 .timeline-transition {
   padding: 7px 0 14px;
 }
 
+/* Every audio lane follows the same precision canvas as video. Imported music
+   and effects also expose their own waveform instead of a featureless block. */
+.clip-editor-v2 .audio-clip { isolation: isolate; overflow: hidden; }
+.clip-editor-v2 .audio-clip-waveform {
+  position: absolute;
+  z-index: 0;
+  inset: 3px 5px;
+  display: flex;
+  align-items: center;
+  gap: 1px;
+  margin: 0 !important;
+  opacity: .58;
+  pointer-events: none;
+}
+.clip-editor-v2 .audio-clip-waveform > i {
+  flex: 1 1 1px;
+  min-width: 1px;
+  max-width: 4px;
+  margin: 0 !important;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--klip-cyan) 72%, white);
+}
+.clip-editor-v2 .audio-clip > span,
+.clip-editor-v2 .audio-clip > .timeline-clip-meta,
+.clip-editor-v2 .audio-clip > .timeline-clip-handle,
+.clip-editor-v2 .audio-clip > .clip-fade-handle { z-index: 2; }
+.clip-editor-v2 .audio-clip > span,
+.clip-editor-v2 .audio-clip > .timeline-clip-meta {
+  padding: 2px 4px;
+  border-radius: 4px;
+  background: color-mix(in srgb, var(--klip-bg) 72%, transparent);
+}
+
 .clip-editor-v2 .timeline-precision {
   display: flex;
   align-items: center;

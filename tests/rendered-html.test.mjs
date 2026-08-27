@@ -63,6 +63,9 @@ test("keeps the Klip editor interaction model in the production source", async (
   assert.match(page, /Horizontal · \{Math\.round\(selectedIllustration\.x\)\}%/);
   assert.match(page, /event\.key === "Delete"/);
   assert.match(page, /event\.code === "Space"/);
+  assert.match(page, /function buildAudioWaveform/);
+  assert.match(page, /timelineWaveform/);
+  assert.match(page, /audio-clip-waveform/);
 });
 
 test("ships direct-manipulation styling for desktop and mobile timelines", async () => {
@@ -88,6 +91,7 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.position-grid/);
   assert.match(css, /\.settings-panel::-webkit-scrollbar/);
   assert.match(css, /\.virtual-effect-loading/);
+  assert.match(css, /\.audio-clip-waveform/);
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 

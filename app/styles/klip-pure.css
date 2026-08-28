@@ -2217,6 +2217,114 @@ html[data-klip-theme] .clip-editor-v2 .timeline-top .timeline-play-toggle {
   }
 }
 
+/* Timeline and contextual-panel polish — this block intentionally stays last
+   so the light theme never falls back to the legacy saturated blue. */
+html[data-klip-theme] .clip-editor-v2 .caption-tool-list {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-list > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-height: 38px;
+  padding: 7px 9px;
+  text-align: left;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-list span {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-list small {
+  color: var(--pure-muted) !important;
+  font-size: 9px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .captions-srt-upload {
+  margin-block: 8px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .pure-inspector-tabs {
+  grid-template-columns: 1fr !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-context-menu {
+  position: fixed;
+  z-index: 1000;
+  width: 220px;
+  padding: 6px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-context-menu button {
+  width: 100%;
+  justify-content: flex-start;
+  min-height: 34px;
+  padding: 7px 9px;
+}
+
+@media (min-width: 1081px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --pure-panel-w: clamp(216px, 12.5vw, 238px);
+    --pure-inspector-w: clamp(216px, 12vw, 238px);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tools {
+    scrollbar-gutter: auto;
+  }
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-scroll-viewport,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-canvas,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lanes {
+  background: #f7f8fa !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane .lane-track {
+  border-color: #c7ced6 !important;
+  background: #e8ebef !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 :where(.primary-video-clip, .scene-clip) {
+  border-color: #7d8793 !important;
+  background: #dce1e7 !important;
+  color: #1f2933 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 :where(.primary-video-clip, .scene-clip) > span {
+  color: #1f2933 !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
+  border-color: #384554 !important;
+  box-shadow: 0 0 0 2px #ffffff, 0 0 0 4px #596675 !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .waveform-track {
+  border-color: #97aa9f !important;
+  background: #e4ece7 !important;
+  color: #294b3e !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .waveform-track > i:not(.montage-audio-waveform) {
+  background: #356b58 !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-snap-guide,
+html[data-klip-theme="light"] .clip-editor-v2 .cut-marker {
+  border-color: #596675 !important;
+  background: #596675 !important;
+  color: #ffffff !important;
+}
+
 /* Final workspace lock: the late visual refinements above must not inflate
    the three editing columns again. */
 @media (min-width: 1081px) {
@@ -3899,4 +4007,49 @@ html[data-klip-theme] .clip-editor-v2 .editor-workspace-empty .editor-empty-uplo
     width: fit-content;
     min-width: 204px;
   }
+}
+
+/* Absolute final overrides: compact rails and neutral light timeline. */
+@media (min-width: 1081px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --pure-panel-w: clamp(216px, 12.5vw, 238px);
+    --pure-inspector-w: clamp(216px, 12vw, 238px);
+  }
+  html[data-klip-theme] .clip-editor-v2 .editor-tools { scrollbar-gutter: auto; }
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 :where(.timeline-scroll-viewport, .timeline-canvas, .timeline-lanes) {
+  background: #f7f8fa !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane .lane-track {
+  border-color: #c7ced6 !important;
+  background: #e8ebef !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 :where(.primary-video-clip, .scene-clip) {
+  border-color: #7d8793 !important;
+  background: #dce1e7 !important;
+  color: #1f2933 !important;
+  box-shadow: none !important;
+  text-shadow: none !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 :where(.primary-video-clip, .scene-clip) > span {
+  color: #1f2933 !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
+  border-color: #384554 !important;
+  box-shadow: 0 0 0 2px #fff, 0 0 0 4px #596675 !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 .waveform-track {
+  border-color: #97aa9f !important;
+  background: #e4ece7 !important;
+  color: #294b3e !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 .waveform-track > i:not(.montage-audio-waveform) {
+  background: #356b58 !important;
+}
+html[data-klip-theme="light"] .clip-editor-v2 :where(.timeline-snap-guide, .cut-marker) {
+  border-color: #596675 !important;
+  background: #596675 !important;
+  color: #fff !important;
 }

@@ -268,7 +268,14 @@ type EditorSnapshot = {
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type StudioPanel = "formats" | "audio" | "effects";
 type EditorTool =
-  "media" | "text" | "audio" | "effects" | "transitions" | "formats" | "radar";
+  | "media"
+  | "text"
+  | "audio"
+  | "effects"
+  | "captions"
+  | "transitions"
+  | "formats"
+  | "radar";
 type EditorInspectorTab = "edit" | "audio" | "captions";
 type BaseAudioState = "idle" | "checking" | "waveform" | "detected" | "none";
 type TimedLayer = Pick<
@@ -7451,7 +7458,9 @@ function ClipEditorV2({
     remember();
     setLayers((items) => [...items, ...captions]);
     setSelectedId(captions[0].id);
-    setInspectorTab("captions");
+    setInspectorTab("edit");
+    setActiveTool("captions");
+    setToolPanelOpen(true);
     setNotice(`${captions.length} legendas automáticas adicionadas à timeline.`);
   }
   async function generateAutomaticCaptions() {
@@ -8076,6 +8085,9 @@ function ClipEditorV2({
       setSelectedAudioId(id);
       setSelectedId("");
       setSelectedIllustrationId("");
+      setInspectorTab("edit");
+      setActiveTool("audio");
+      setToolPanelOpen(true);
     }
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -9018,13 +9030,19 @@ function ClipEditorV2({
       setSelectedId("");
       setSelectedIllustrationId("");
     }
-    setContextMenu({ x: event.clientX, y: event.clientY, kind, id });
+    setContextMenu({
+      x: Math.min(event.clientX, window.innerWidth - 232),
+      y: Math.min(event.clientY, window.innerHeight - 330),
+      kind,
+      id,
+    });
   }
   function openVideoContextMenu(event: React.MouseEvent) {
     event.preventDefault();
+    event.stopPropagation();
     setContextMenu({
-      x: event.clientX,
-      y: event.clientY,
+      x: Math.min(event.clientX, window.innerWidth - 232),
+      y: Math.min(event.clientY, window.innerHeight - 330),
       kind: "video",
       id: "",
     });
@@ -10402,6 +10420,7 @@ function ClipEditorV2({
                 { tool: "text", icon: Type, label: "Texto" },
                 { tool: "audio", icon: Music2, label: "Áudio" },
                 { tool: "effects", icon: Sparkles, label: "Efeitos" },
+                { tool: "captions", icon: Captions, label: "Legendas" },
                 { tool: "transitions", icon: Blend, label: "Transições" },
                 { tool: "formats", icon: LayoutTemplate, label: "Formatos" },
                 { tool: "radar", icon: WandSparkles, label: "Radar" },
@@ -10446,11 +10465,13 @@ function ClipEditorV2({
                         ? "Áudio"
                         : activeTool === "effects"
                           ? "Efeitos"
-                          : activeTool === "transitions"
-                            ? "Transições"
-                            : activeTool === "formats"
-                              ? "Formatos"
-                              : "Radar KLIPAPP"}
+                          : activeTool === "captions"
+                            ? "Legendas"
+                            : activeTool === "transitions"
+                              ? "Transições"
+                              : activeTool === "formats"
+                                ? "Formatos"
+                                : "Radar KLIPAPP"}
                 </b>
               </div>
               <button
@@ -10645,11 +10666,14 @@ function ClipEditorV2({
                           selectedAudio?.id === track.id ? "selected" : ""
                         }
                         onClick={() => {
-                          setSelectedAudioId(track.id);
+                          const deselect = selectedAudio?.id === track.id;
+                          setSelectedAudioId(deselect ? "" : track.id);
                           setSelectedIllustrationId("");
                           setSelectedId("");
-                          setInspectorTab("audio");
-                          seek(track.start);
+                          setInspectorTab("edit");
+                          setActiveTool(deselect ? "media" : "audio");
+                          setToolPanelOpen(true);
+                          if (!deselect) seek(track.start);
                         }}
                       >
                         <span className="pure-media-thumb pure-media-audio">
@@ -10941,10 +10965,15 @@ function ClipEditorV2({
                             type="button"
                             className="channel-select"
                             onClick={() => {
-                              setSelectedAudioId(track.id);
+                              const deselect = selectedAudio?.id === track.id;
+                              setSelectedAudioId(deselect ? "" : track.id);
                               setSelectedId("");
                               setSelectedIllustrationId("");
-                              seek(track.start);
+                              if (deselect) {
+                                setActiveTool("media");
+                              } else {
+                                seek(track.start);
+                              }
                             }}
                           >
                             <span className="channel-index">A{index + 1}</span>
@@ -11084,6 +11113,58 @@ function ClipEditorV2({
                         </label>
                       </div>
                     )}
+                  </div>
+                )}
+              </section>
+            )}
+
+            {activeTool === "captions" && (
+              <section className="editor-tool-section tool-captions-panel">
+                <button
+                  type="button"
+                  className="tool-primary-action automatic-captions"
+                  onClick={() => void generateAutomaticCaptions()}
+                  disabled={!clip || transcribing}
+                >
+                  <Captions aria-hidden="true" size={17} />
+                  <b>{transcribing ? "Transcrevendo…" : "Gerar pelo áudio"}</b>
+                </button>
+                <label className="editor-upload captions-srt-upload">
+                  <FileUp aria-hidden="true" size={14} /> Importar arquivo SRT
+                  <input
+                    type="file"
+                    accept=".srt,text/plain"
+                    onChange={(event) =>
+                      void importSubtitles(event.target.files?.[0])
+                    }
+                  />
+                </label>
+                <button type="button" onClick={addLayer} disabled={!clip}>
+                  <Plus aria-hidden="true" size={14} /> Legenda manual
+                </button>
+                {!!layers.length && (
+                  <div
+                    className="caption-tool-list"
+                    aria-label="Legendas do projeto"
+                  >
+                    {layers.map((layer) => (
+                      <button
+                        type="button"
+                        key={layer.id}
+                        className={selected?.id === layer.id ? "selected" : ""}
+                        onClick={() => {
+                          setSelectedId(layer.id);
+                          setSelectedAudioId("");
+                          setSelectedIllustrationId("");
+                          seek(layer.start);
+                        }}
+                      >
+                        <span>{layer.text}</span>
+                        <small>
+                          {time(layer.start)}–{time(layer.end)}
+                        </small>
+                      </button>
+                    ))}
                   </div>
                 )}
               </section>
@@ -12068,8 +12149,8 @@ function ClipEditorV2({
                           : "auto",
                     }}
                   >
-                    {/* eslint-disable-next-line @next/next/no-img-element -- Camadas de imagem usam URLs blob locais e precisam preservar o carregamento imediato no canvas do editor. */}
                     {item.kind === "image" ? (
+                      // eslint-disable-next-line @next/next/no-img-element -- Camadas usam URLs blob locais e precisam aparecer imediatamente no canvas.
                       <img
                         {...common}
                         src={item.url}
@@ -12280,8 +12361,6 @@ function ClipEditorV2({
               {(
                 [
                   { id: "edit", label: "Vídeo" },
-                  { id: "audio", label: "Som do clipe" },
-                  { id: "captions", label: "Legendas" },
                 ] as const
               ).map(({ id, label }) => (
                 <button
@@ -12961,7 +13040,7 @@ function ClipEditorV2({
               onClick={() => setSnapEnabled((value) => !value)}
               title="Encaixa o cursor nos cortes, camadas e marcadores"
             >
-              <Magnet aria-hidden="true" size={14} /> Ímã
+              <Magnet aria-hidden="true" size={14} /> Encaixe
             </button>
             <details className="timeline-more">
               <summary>
@@ -13537,7 +13616,7 @@ function ClipEditorV2({
                         {baseAudioState === "checking"
                           ? "Verificando o áudio do vídeo…"
                           : baseAudioState === "detected"
-                            ? "Áudio detectado · este codec não expõe a forma de onda"
+                            ? "Áudio disponível · reprodução e exportação ativas"
                             : "Este arquivo não possui uma faixa de áudio reproduzível"}
                       </span>
                     )}
@@ -13568,10 +13647,14 @@ function ClipEditorV2({
                     role="button"
                     tabIndex={0}
                     onClick={() => {
-                      setSelectedAudioId(track.id);
+                      const deselect = selectedAudio?.id === track.id;
+                      setSelectedAudioId(deselect ? "" : track.id);
                       setSelectedId("");
                       setSelectedIllustrationId("");
-                      seek(Math.max(start, track.start));
+                      setInspectorTab("edit");
+                      setActiveTool(deselect ? "media" : "audio");
+                      setToolPanelOpen(true);
+                      if (!deselect) seek(Math.max(start, track.start));
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
@@ -13579,6 +13662,9 @@ function ClipEditorV2({
                         setSelectedAudioId(track.id);
                         setSelectedId("");
                         setSelectedIllustrationId("");
+                        setInspectorTab("edit");
+                        setActiveTool("audio");
+                        setToolPanelOpen(true);
                         seek(Math.max(start, track.start));
                       }
                     }}
@@ -14367,6 +14453,9 @@ function ClipEditorV2({
       {contextMenu && (
         <div
           className="timeline-context-menu"
+          role="menu"
+          tabIndex={-1}
+          aria-label="Ações do clipe"
           style={{ left: contextMenu.x, top: contextMenu.y }}
           onMouseLeave={closeContextMenu}
         >
@@ -14424,7 +14513,7 @@ function ClipEditorV2({
               closeContextMenu();
             }}
           >
-            <Scissors aria-hidden="true" size={14} /> Dividir clipe no cursor
+            <Scissors aria-hidden="true" size={14} /> Cortar e separar aqui
           </button>
           {contextMenu.kind === "video" &&
             hasMontageTimeline &&

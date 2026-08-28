@@ -267,6 +267,11 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(css, /background: #356b58 !important/);
   assert.match(css, /\.codec-audio-indicator/);
   assert.match(css, /bottom: calc\(100% \+ 8px\) !important/);
+  assert.match(
+    css,
+    /minmax\(244px, var\(--pure-inspector-w\)\) !important/,
+  );
+  assert.match(css, /@media \(min-width: 761px\) and \(max-width: 1080px\)/);
   assert.match(css, /\.timeline-safe-area-help/);
   assert.match(css, /\.caption-detected-language/);
 });

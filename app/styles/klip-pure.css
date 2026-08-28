@@ -4266,7 +4266,10 @@ html[data-klip-theme] .clip-editor-v2 .editor-tools :where(
 
 @media (min-width: 761px) {
   html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) {
-    grid-template-columns: calc(var(--pure-rail-w) + var(--pure-panel-w)) minmax(0, 1fr) !important;
+    grid-template-columns:
+      calc(var(--pure-rail-w) + var(--pure-panel-w))
+      minmax(0, 1fr)
+      minmax(244px, var(--pure-inspector-w)) !important;
   }
 
   html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .editor-stage-wrap {
@@ -4411,6 +4414,21 @@ html[data-klip-theme] .clip-editor-v2 .editor-tools :where(
     max-height: min(320px, calc(var(--pure-timeline-h) - 76px));
     overflow-x: hidden;
     overflow-y: auto;
+  }
+}
+
+/* Tablet keeps the compact two-column editor. The contextual inspector is
+   intentionally hidden there; on desktop it must remain the third column,
+   never an auto-placed second row below the tool dock. */
+@media (min-width: 761px) and (max-width: 1080px) {
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) {
+    grid-template-columns:
+      calc(var(--pure-rail-w) + var(--pure-panel-w))
+      minmax(0, 1fr) !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector {
+    display: none !important;
   }
 }
 

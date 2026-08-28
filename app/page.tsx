@@ -184,6 +184,7 @@ type TextLayer = {
   fadeOut: number;
   effect: TextEffect;
   background: boolean;
+  kind?: "text" | "caption";
 };
 type IllustrationLayer = {
   id: string;
@@ -247,6 +248,62 @@ async function buildAudioWaveform(
   } finally {
     await context.close().catch(() => undefined);
   }
+}
+
+async function buildContainerAudioWaveform(
+  blob: Blob,
+  bars: number,
+): Promise<{ values: number[]; codec: string; decodable: boolean }> {
+  const { ALL_FORMATS, AudioSampleSink, BlobSource, Input } = await import(
+    "mediabunny"
+  );
+  const input = new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(blob),
+  });
+  if (!(await input.canRead()))
+    return { values: [], codec: "desconhecido", decodable: false };
+  const track = await input.getPrimaryAudioTrack();
+  if (!track) return { values: [], codec: "sem áudio", decodable: false };
+  const codec =
+    (await track.getCodecParameterString()) ||
+    (await track.getCodec()) ||
+    "desconhecido";
+  const decodable = await track.canDecode();
+  if (!decodable) return { values: [], codec, decodable };
+
+  const duration =
+    (await track.getDurationFromMetadata()) || (await track.computeDuration());
+  if (!Number.isFinite(duration) || duration <= 0)
+    return { values: [], codec, decodable };
+
+  // Sparse sampling avoids decoding a long recording into one giant AudioBuffer.
+  // AudioContext frequently rejects an MP4 container even when its AAC track is
+  // playable; Mediabunny demuxes the audio track before asking WebCodecs to decode.
+  const count = Math.max(160, Math.min(720, Math.round(bars)));
+  const sink = new AudioSampleSink(track);
+  const values: number[] = [];
+  for (let index = 0; index < count; index++) {
+    const timestamp = Math.min(duration - 0.001, (index / count) * duration);
+    const sample = await sink.getSample(Math.max(0, timestamp));
+    if (!sample) {
+      values.push(0.035);
+      continue;
+    }
+    try {
+      const options = { planeIndex: 0, format: "f32" as const };
+      const floats = new Float32Array(sample.allocationSize(options) / 4);
+      sample.copyTo(floats, options);
+      const stride = Math.max(1, Math.floor(floats.length / 256));
+      let peak = 0;
+      for (let point = 0; point < floats.length; point += stride)
+        peak = Math.max(peak, Math.abs(floats[point] || 0));
+      values.push(Math.max(0.035, Math.min(1, Math.sqrt(peak))));
+    } finally {
+      sample.close();
+    }
+  }
+  return { values, codec, decodable };
 }
 type EditorSnapshot = {
   layers: TextLayer[];
@@ -5901,6 +5958,7 @@ function ClipEditorV2({
     [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]),
     [waveform, setWaveform] = useState<number[]>([]),
     [baseAudioState, setBaseAudioState] = useState<BaseAudioState>("idle"),
+    [baseAudioCodec, setBaseAudioCodec] = useState(""),
     [transcribing, setTranscribing] = useState(false),
     [transcriptionProgress, setTranscriptionProgress] = useState(0),
     [captionTargetLanguage, setCaptionTargetLanguage] = useState<
@@ -5959,6 +6017,11 @@ function ClipEditorV2({
   );
   const sceneItems = illustrations.filter((item) => item.role === "scene");
   const overlayItems = illustrations.filter((item) => item.role !== "scene");
+  const isCaptionLayer = (layer: TextLayer) =>
+    layer.kind === "caption" ||
+    (layer.background && layer.effect === "pop" && layer.y >= 75);
+  const captionLayers = layers.filter(isCaptionLayer);
+  const regularTextLayers = layers.filter((layer) => !isCaptionLayer(layer));
   const baseDuration = sourceDuration || duration;
   const montageTimelineClips = approvedCuts
     .filter((item) => item.end - item.start > 0.05)
@@ -6268,6 +6331,7 @@ function ClipEditorV2({
     queueMicrotask(() => {
       if (cancelled) return;
       setBaseAudioState("checking");
+      setBaseAudioCodec("");
       setWaveform([]);
     });
     const probePlayableAudio = () => {
@@ -6294,8 +6358,15 @@ function ClipEditorV2({
     void (async () => {
       try {
         const response = await fetch(clip.url);
-        const buffer = await response.arrayBuffer();
-        const values = await buildAudioWaveform(buffer, 1200);
+        const blob = await response.blob();
+        let values: number[] = [];
+        try {
+          values = await buildAudioWaveform(await blob.arrayBuffer(), 1200);
+        } catch {
+          const extracted = await buildContainerAudioWaveform(blob, 480);
+          if (!cancelled) setBaseAudioCodec(extracted.codec);
+          values = extracted.values;
+        }
         if (!cancelled) {
           setWaveform(values);
           if (values.length) setBaseAudioState("waveform");
@@ -6309,6 +6380,12 @@ function ClipEditorV2({
       cancelled = true;
     };
   }, [clip]);
+
+  useEffect(() => {
+    const element = video.current;
+    if (!element) return;
+    element.volume = Math.max(0, Math.min(1, audioGain / 100));
+  }, [audioGain, clip]);
 
   useEffect(() => {
     let cancelled = false;
@@ -6847,6 +6924,9 @@ function ClipEditorV2({
   function applySocialPreset(preset: SocialPreset) {
     setSelectedSocialPresetId(preset.id);
     setDraftSocialPresetId(preset.id);
+    // A troca de formato começa de um enquadramento previsível. Ajustes feitos
+    // para 9:16 não devem deixar a mídia pequena ou deslocada ao ir para 16:9.
+    setVideoTransform({ x: 0, y: 0, scaleX: 1, scaleY: 1 });
     if (preset.aspectRatio.width === 9 && preset.aspectRatio.height === 16)
       setExportAspect("vertical");
     else if (preset.aspectRatio.width === 4 && preset.aspectRatio.height === 5)
@@ -6867,7 +6947,7 @@ function ClipEditorV2({
         ? ` Seu vídeo tem ${time(projectLength)}; para ${preset.title}, recomendamos até ${preset.recommendedDuration.label}.`
         : "";
     setNotice(
-      `${preset.title} configurado em ${preset.aspectRatio.label}, ${preset.resolution.width}×${preset.resolution.height} e ${preset.fps} FPS.${durationWarning}`,
+      `${preset.title} configurado em ${preset.aspectRatio.label}, ${preset.resolution.width}×${preset.resolution.height} e ${preset.fps} FPS. A mídia foi centralizada e adaptada ao novo quadro.${durationWarning}`,
     );
     closeStudioPanel();
   }
@@ -7368,9 +7448,44 @@ function ClipEditorV2({
         `Silêncios nas pontas removidos: ${time(from)} até ${time(to)}.`,
       );
     } catch {
-      setNotice(
-        "Não foi possível analisar este áudio no navegador. Você ainda pode cortar manualmente.",
-      );
+      try {
+        const blob = await fetch(clip.url).then((response) => response.blob());
+        const extracted = await buildContainerAudioWaveform(blob, 480);
+        setBaseAudioCodec(extracted.codec);
+        if (!extracted.values.length) throw new Error("codec indisponível");
+        const average =
+          extracted.values.reduce((sum, value) => sum + value, 0) /
+          extracted.values.length;
+        const threshold = Math.max(0.07, average * 0.58);
+        const first = extracted.values.findIndex((value) => value > threshold);
+        const last =
+          extracted.values.length -
+          1 -
+          [...extracted.values]
+            .reverse()
+            .findIndex((value) => value > threshold);
+        if (first < 0 || last <= first) throw new Error("sem fala clara");
+        const mediaDuration = sourceDuration || duration;
+        const from = Math.max(
+          0,
+          (first / extracted.values.length) * mediaDuration - 0.15,
+        );
+        const to = Math.min(
+          mediaDuration,
+          ((last + 1) / extracted.values.length) * mediaDuration + 0.25,
+        );
+        remember();
+        setStart(from);
+        setEnd(to);
+        seek(from);
+        setNotice(
+          `Silêncios removidos usando a faixa ${extracted.codec}: ${time(from)} até ${time(to)}.`,
+        );
+      } catch {
+        setNotice(
+          `O vídeo possui áudio${baseAudioCodec ? ` (${baseAudioCodec})` : ""}, mas este navegador não expõe as amostras necessárias para detectar silêncio. A reprodução e a exportação continuam funcionando.`,
+        );
+      }
     }
   }
   async function importSubtitles(file?: File) {
@@ -7427,6 +7542,7 @@ function ClipEditorV2({
         color: "#ffffff",
         x: 50,
         align: "center",
+        kind: "caption",
       }));
       setLayers((items) => [...items, ...made]);
       setSelectedId(made[0]?.id || "");
@@ -7459,6 +7575,7 @@ function ClipEditorV2({
         size: 52,
         effect: "pop",
         background: true,
+        kind: "caption",
       }));
     if (!captions.length) throw new Error("Nenhuma fala foi encontrada.");
     remember();
@@ -13694,18 +13811,14 @@ function ClipEditorV2({
                     ) : baseAudioState === "detected" ? (
                       <i
                         className="codec-audio-indicator"
-                        aria-label="Áudio presente; este codec não permite calcular a forma de onda completa"
-                        title="O áudio será reproduzido e exportado. A forma de onda completa não está disponível para este codec."
+                        aria-label={`Áudio presente${baseAudioCodec ? ` em ${baseAudioCodec}` : ""}; este navegador não permite calcular a forma de onda completa`}
+                        title={`O áudio será reproduzido e exportado. ${baseAudioCodec ? `Codec detectado: ${baseAudioCodec}. ` : ""}A forma de onda completa não está disponível neste navegador.`}
                       >
-                        {Array.from({ length: 96 }, (_, index) => (
-                          <i
-                            key={index}
-                            style={{
-                              height: `${18 + ((index * 17 + index * index * 7) % 48)}%`,
-                            }}
-                          />
-                        ))}
-                        <span>Áudio presente</span>
+                        <AudioLines aria-hidden="true" size={14} />
+                        <span>
+                          Áudio presente
+                          {baseAudioCodec ? ` · ${baseAudioCodec}` : ""}
+                        </span>
                       </i>
                     ) : (
                       <span>
@@ -13996,7 +14109,59 @@ function ClipEditorV2({
                     </div>
                   </div>
                 ))}
-                {layers.map((layer, index) => (
+                {!!captionLayers.length && (
+                  <div className="timeline-lane caption-lane">
+                    <b>
+                      <Captions aria-hidden="true" size={12} /> LEGENDAS
+                    </b>
+                    <div className="lane-track">
+                      {captionLayers.map((layer) => (
+                        <button
+                          type="button"
+                          key={layer.id}
+                          className={`caption-clip timeline-item-clip ${selected?.id === layer.id ? "selected" : ""}`}
+                          style={{
+                            left: duration
+                              ? `${(layer.start / duration) * 100}%`
+                              : "0%",
+                            width: duration
+                              ? `${Math.max(1.2, ((layer.end - layer.start) / duration) * 100)}%`
+                              : "0%",
+                          }}
+                          onClick={(event) => {
+                            event.stopPropagation();
+                            setSelectedId(layer.id);
+                            setSelectedIllustrationId("");
+                            setSelectedAudioId("");
+                            setActiveTool("captions");
+                            setToolPanelOpen(true);
+                            seek(Math.max(start, layer.start));
+                          }}
+                          onPointerDown={(event) =>
+                            beginTimelineItemDrag(
+                              event,
+                              "text",
+                              layer.id,
+                              "move",
+                              layer.start,
+                              layer.end,
+                            )
+                          }
+                          onPointerMove={moveTimelineItemDrag}
+                          onPointerUp={endTimelineItemDrag}
+                          onPointerCancel={endTimelineItemDrag}
+                          onContextMenu={(event) =>
+                            openContextMenu(event, "text", layer.id)
+                          }
+                          title={`${time(layer.start)} — ${time(layer.end)} · ${layer.text}`}
+                        >
+                          <span>{layer.text || "Legenda"}</span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {regularTextLayers.map((layer, index) => (
                   <div
                     className={`timeline-lane ${selected?.id === layer.id ? "selected" : ""}`}
                     key={layer.id}

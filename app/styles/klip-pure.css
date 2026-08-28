@@ -4115,6 +4115,49 @@ html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator {
   background: transparent !important;
 }
 
+html[data-klip-theme] .clip-editor-v2 .caption-lane > b {
+  color: var(--klip-blue, #2d6cdf);
+  display: flex;
+  align-items: center;
+  gap: 5px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-lane .lane-track {
+  background: color-mix(in srgb, var(--klip-blue, #2d6cdf) 7%, var(--klip-surface, #fff));
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-clip {
+  top: 6px;
+  bottom: 6px;
+  min-width: 22px;
+  padding: 0 8px;
+  border: 1px solid color-mix(in srgb, var(--klip-blue, #2d6cdf) 45%, transparent);
+  border-radius: 7px;
+  background: color-mix(in srgb, var(--klip-blue, #2d6cdf) 13%, var(--klip-surface, #fff));
+  color: var(--klip-ink, #182033);
+  overflow: hidden;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-clip span {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 10px;
+  line-height: 1;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-clip.selected {
+  border-color: var(--klip-blue, #2d6cdf);
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--klip-blue, #2d6cdf) 20%, transparent);
+}
+
+/* The exported canvas already uses a cover fit. Keep the editor preview on
+   that same rule so changing TikTok/Reels/YouTube never creates surprise bars. */
+html[data-klip-theme] .clip-editor-v2 .editor-stage .transformable-video {
+  object-fit: cover;
+}
+
 html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator > i {
   flex: 1 1 3px;
   min-width: 1px;

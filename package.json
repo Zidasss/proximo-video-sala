@@ -23,6 +23,7 @@
     "@tensorflow/tfjs": "^3.7.0",
     "drizzle-orm": "0.45.2",
     "lucide-react": "^1.34.0",
+    "mediabunny": "^1.55.3",
     "next": "16.2.6",
     "peerjs": "^1.5.5",
     "react": "19.2.6",

@@ -228,7 +228,7 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /probePlayableAudio/);
   assert.match(page, /Áudio presente/);
   assert.match(page, /function generateAutomaticCaptions/);
-  assert.match(page, /Gerar pelo áudio/);
+  assert.match(page, /Detectar idioma e gerar legendas/);
   assert.match(page, /Transcrever e traduzir/);
   assert.match(page, /caption-progress/);
   assert.match(page, /captionTargetLanguage/);
@@ -237,11 +237,21 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /tool: "captions", icon: Captions, label: "Legendas"/);
   assert.match(page, /activeTool === "captions"/);
   assert.match(page, /Cortar e separar aqui/);
-  assert.match(page, /Encaixe/);
+  assert.match(page, /Ímã automático/);
+  assert.match(page, /A área segura é só uma guia/);
+  assert.match(page, /Prévia de posição e estilo/);
+  assert.match(page, /Título central/);
+  assert.match(page, /Legenda legível/);
+  assert.match(page, /automaticCaptionButtonLabel/);
+  assert.match(page, /Áudio original · detectar idioma/);
+  assert.doesNotMatch(page, /form\.append\("language", "pt"\)/);
   assert.match(transcription, /\/v1\/audio\/transcriptions/);
   assert.match(transcription, /whisper-1/);
   assert.match(transcription, /timestamp_granularities\[\]/);
   assert.match(transcription, /targetLanguage/);
+  assert.match(transcription, /detectedLanguage/);
+  assert.match(transcription, /translationWarning/);
+  assert.match(transcription, /Não foi possível identificar fala/);
   assert.match(transcription, /\/v1\/chat\/completions/);
   assert.match(css, /--pure-panel-w: clamp\(210px, 13vw, 244px\)/);
   assert.match(css, /\.editor-reaction-upload/);
@@ -251,6 +261,8 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(css, /background: #356b58 !important/);
   assert.match(css, /\.codec-audio-indicator/);
   assert.match(css, /bottom: calc\(100% \+ 8px\) !important/);
+  assert.match(css, /\.timeline-safe-area-help/);
+  assert.match(css, /\.caption-detected-language/);
 });
 
 test("keeps a crash-safe local editor recovery with its media blobs", async () => {

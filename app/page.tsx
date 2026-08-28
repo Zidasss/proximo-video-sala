@@ -42,6 +42,7 @@ import {
   ImagePlus,
   Layers2,
   LayoutTemplate,
+  Languages,
   LogIn,
   LogOut,
   Magnet,
@@ -6013,6 +6014,10 @@ function ClipEditorV2({
     [baseAudioCodec, setBaseAudioCodec] = useState(""),
     [transcribing, setTranscribing] = useState(false),
     [transcriptionProgress, setTranscriptionProgress] = useState(0),
+    [transcriptionPhase, setTranscriptionPhase] = useState<
+      "idle" | "preparing" | "uploading" | "transcribing" | "translating" | "finalizing"
+    >("idle"),
+    [detectedCaptionLanguage, setDetectedCaptionLanguage] = useState(""),
     [captionTargetLanguage, setCaptionTargetLanguage] = useState<
       "original" | "en" | "es"
     >("original"),
@@ -6058,6 +6063,7 @@ function ClipEditorV2({
   const editorRecorder = useRef<MediaRecorder | null>(null),
     cancelExport = useRef(false);
   const exportInProgress = useRef(false);
+  const transcriptionResetTimer = useRef<number | null>(null);
   const selected =
     layers.find((layer) => layer.id === selectedId) ??
     (!selectedIllustrationId && !selectedAudioId ? layers[0] : undefined);
@@ -6067,6 +6073,36 @@ function ClipEditorV2({
   const selectedAudio = audioTracks.find(
     (track) => track.id === selectedAudioId,
   );
+  const captionLanguageNames: Record<string, string> = {
+    pt: "Português",
+    en: "Inglês",
+    es: "Espanhol",
+    fr: "Francês",
+    de: "Alemão",
+    it: "Italiano",
+    ja: "Japonês",
+    ko: "Coreano",
+    zh: "Chinês",
+  };
+  const detectedCaptionLanguageName =
+    detectedCaptionLanguage && detectedCaptionLanguage !== "unknown"
+      ? captionLanguageNames[detectedCaptionLanguage] || detectedCaptionLanguage
+      : "";
+  const automaticCaptionButtonLabel = transcribing
+    ? `Transcrevendo · ${Math.round(transcriptionProgress)}%`
+    : captionTargetLanguage !== "original"
+      ? "Transcrever e traduzir"
+      : detectedCaptionLanguageName
+        ? `Gerar legenda · ${detectedCaptionLanguageName}`
+        : "Detectar idioma e gerar legendas";
+  const transcriptionPhaseLabel = {
+    idle: "",
+    preparing: "Preparando o áudio…",
+    uploading: "Enviando o trecho com segurança…",
+    transcribing: "Detectando o idioma e sincronizando as falas…",
+    translating: "Traduzindo e preservando os tempos…",
+    finalizing: "Criando a faixa de legendas…",
+  }[transcriptionPhase];
   const soloAudioActive = audioTracks.some(
     (track) => track.solo && !track.muted,
   );
@@ -6109,6 +6145,13 @@ function ClipEditorV2({
     ),
   );
   const hasMontageTimeline = montageTimelineClips.length > 0;
+  const activeMontageClip = hasMontageTimeline
+    ? montageTimelineClips.find(
+        (item) =>
+          current >= item.timelineStart - 0.01 &&
+          current < item.timelineEnd - 0.01,
+      )
+    : undefined;
   const editorTimelineDuration = hasMontageTimeline
     ? montageTimelineDuration
     : duration;
@@ -7338,6 +7381,7 @@ function ClipEditorV2({
     setAudioTracks([]);
     setSelectedId("");
     setSelectedIllustrationId("");
+    setDetectedCaptionLanguage("");
     setRadarSuggestions([]);
     setApprovedCuts([]);
     setActiveRadarCutId("");
@@ -7908,6 +7952,8 @@ function ClipEditorV2({
   }
   function appendGeneratedCaptions(
     segments: Array<{ start: number; end: number; text: string }>,
+    languageLabel = "",
+    translationWarning = "",
   ) {
     const captions = segments
       .filter(
@@ -7939,53 +7985,122 @@ function ClipEditorV2({
     setInspectorTab("edit");
     setActiveTool("captions");
     setToolPanelOpen(true);
-    setNotice(`${captions.length} legendas automáticas adicionadas à timeline.`);
+    setNotice(
+      `${captions.length} legendas${languageLabel ? ` em ${languageLabel}` : ""} adicionadas à faixa de legendas.${translationWarning ? ` ${translationWarning}` : ""}`,
+    );
   }
   async function generateAutomaticCaptions() {
     if (!clip || transcribing) return;
+    if (transcriptionResetTimer.current !== null) {
+      window.clearTimeout(transcriptionResetTimer.current);
+      transcriptionResetTimer.current = null;
+    }
+    setDetectedCaptionLanguage("");
     setTranscribing(true);
+    setTranscriptionPhase("preparing");
     setTranscriptionProgress(6);
-    setNotice("Ouvindo o vídeo e criando legendas sincronizadas…");
+    setNotice("Preparando o áudio para detectar o idioma…");
     const progressTimer = window.setInterval(() => {
       setTranscriptionProgress((value) =>
         value >= 88 ? value : Math.min(88, value + Math.max(1, (88 - value) * 0.08)),
       );
     }, 450);
     try {
-      const source = await fetch(clip.url).then((response) => response.blob());
+      if (!navigator.onLine)
+        throw new Error(
+          "Você está sem conexão. Reconecte-se para gerar as legendas.",
+        );
+      const sourceResponse = await fetch(clip.url);
+      if (!sourceResponse.ok)
+        throw new Error("Não foi possível preparar o vídeo para transcrição.");
+      const source = await sourceResponse.blob();
+      if (!source.size)
+        throw new Error("O vídeo não contém dados que possam ser transcritos.");
+      if (source.size > 24 * 1024 * 1024)
+        throw new Error(
+          "Este arquivo ultrapassa 24 MB. Exporte e importe um trecho menor para gerar legendas, ou importe um arquivo SRT.",
+        );
       setTranscriptionProgress(16);
+      setTranscriptionPhase("uploading");
       const form = new FormData();
+      const fallbackExtension =
+        source.type.includes("webm")
+          ? ".webm"
+          : source.type.includes("quicktime")
+            ? ".mov"
+            : source.type.includes("mpeg")
+              ? ".mp3"
+              : ".mp4";
+      const sourceName = /\.[a-z0-9]{2,5}$/i.test(clip.name || "")
+        ? clip.name
+        : `${clip.name || "video"}${fallbackExtension}`;
       form.append(
         "file",
-        new File([source], `${clip.name || "video"}.mp4`, {
+        new File([source], sourceName, {
           type: source.type || "video/mp4",
         }),
       );
-      form.append("language", "pt");
       form.append("targetLanguage", captionTargetLanguage);
       setTranscriptionProgress(24);
+      setTranscriptionPhase("transcribing");
       const response = await fetch("/api/transcribe", {
         method: "POST",
         body: form,
       });
-      const result = (await response.json()) as {
+      const responseText = await response.text();
+      let result: {
         error?: string;
         segments?: Array<{ start: number; end: number; text: string }>;
-      };
+        detectedLanguage?: string;
+        translationWarning?: string;
+        translated?: boolean;
+      } = {};
+      try {
+        result = responseText ? JSON.parse(responseText) : {};
+      } catch {
+        throw new Error(
+          "O serviço de legendas retornou uma resposta inválida. Tente novamente.",
+        );
+      }
       if (!response.ok) throw new Error(result.error || "Falha na transcrição.");
+      const detectedLanguage =
+        result.detectedLanguage && result.detectedLanguage !== "unknown"
+          ? result.detectedLanguage
+          : "";
+      setDetectedCaptionLanguage(detectedLanguage);
+      const languageLabel =
+        captionLanguageNames[detectedLanguage] ||
+        detectedLanguage ||
+        "idioma original";
       setTranscriptionProgress(96);
-      appendGeneratedCaptions(result.segments || []);
+      setTranscriptionPhase("finalizing");
+      appendGeneratedCaptions(
+        result.segments || [],
+        captionTargetLanguage === "original"
+          ? languageLabel
+          : captionLanguageNames[captionTargetLanguage],
+        result.translationWarning || "",
+      );
       setTranscriptionProgress(100);
     } catch (error) {
+      const message =
+        error instanceof TypeError ||
+        (error instanceof Error && /failed to fetch/i.test(error.message))
+          ? "Não foi possível conectar ao serviço de legendas. Verifique a internet e tente novamente."
+          : error instanceof Error
+            ? error.message
+            : "Não foi possível gerar as legendas deste vídeo.";
       setNotice(
-        error instanceof Error
-          ? error.message
-          : "Não foi possível gerar as legendas deste vídeo.",
+        message,
       );
     } finally {
       window.clearInterval(progressTimer);
       setTranscribing(false);
-      window.setTimeout(() => setTranscriptionProgress(0), 900);
+      transcriptionResetTimer.current = window.setTimeout(() => {
+        setTranscriptionProgress(0);
+        setTranscriptionPhase("idle");
+        transcriptionResetTimer.current = null;
+      }, 900);
     }
   }
   function exportProject() {
@@ -11199,9 +11314,8 @@ function ClipEditorV2({
                           setSelectedIllustrationId("");
                           setSelectedId("");
                           setInspectorTab("edit");
-                          setActiveTool(deselect ? "media" : "audio");
+                          setActiveTool("audio");
                           setToolPanelOpen(true);
-                          if (!deselect) seek(track.start);
                         }}
                       >
                         <span className="pure-media-thumb pure-media-audio">
@@ -11515,11 +11629,7 @@ function ClipEditorV2({
                               setSelectedAudioId(deselect ? "" : track.id);
                               setSelectedId("");
                               setSelectedIllustrationId("");
-                              if (deselect) {
-                                setActiveTool("media");
-                              } else {
-                                seek(track.start);
-                              }
+                              setActiveTool("audio");
                             }}
                           >
                             <span className="channel-index">A{index + 1}</span>
@@ -11667,7 +11777,7 @@ function ClipEditorV2({
             {activeTool === "captions" && (
               <section className="editor-tool-section tool-captions-panel">
                 <label className="caption-language-control">
-                  <span>Idioma das legendas</span>
+                  <span>Idioma de saída</span>
                   <select
                     value={captionTargetLanguage}
                     onChange={(event) =>
@@ -11677,11 +11787,19 @@ function ClipEditorV2({
                     }
                     disabled={transcribing}
                   >
-                    <option value="original">Português original</option>
+                    <option value="original">
+                      Áudio original · detectar idioma
+                    </option>
                     <option value="en">Traduzir para inglês</option>
                     <option value="es">Traduzir para espanhol</option>
                   </select>
                 </label>
+                {detectedCaptionLanguageName && (
+                  <p className="caption-detected-language" role="status">
+                    <Languages aria-hidden="true" size={14} /> Idioma detectado:{" "}
+                    <b>{detectedCaptionLanguageName}</b>
+                  </p>
+                )}
                 <button
                   type="button"
                   className="tool-primary-action automatic-captions"
@@ -11690,11 +11808,7 @@ function ClipEditorV2({
                 >
                   <Captions aria-hidden="true" size={17} />
                   <b>
-                    {transcribing
-                      ? `Transcrevendo · ${Math.round(transcriptionProgress)}%`
-                      : captionTargetLanguage === "original"
-                        ? "Gerar pelo áudio"
-                        : "Transcrever e traduzir"}
+                    {automaticCaptionButtonLabel}
                   </b>
                 </button>
                 {transcribing && (
@@ -11707,7 +11821,7 @@ function ClipEditorV2({
                     aria-valuenow={Math.round(transcriptionProgress)}
                   >
                     <i style={{ width: `${transcriptionProgress}%` }} />
-                    <span>Processando áudio e sincronizando frases…</span>
+                    <span>{transcriptionPhaseLabel}</span>
                   </div>
                 )}
                 <label className="editor-upload captions-srt-upload">
@@ -11980,7 +12094,7 @@ function ClipEditorV2({
                     </div>
                     <div className="effect-grid">
                       <label>
-                        Encaixe
+                        Ajuste no quadro
                         <select
                           value={selectedIllustration.fit}
                           onChange={(event) =>
@@ -12030,216 +12144,511 @@ function ClipEditorV2({
             )}
 
             {activeTool === "text" && (
-              <section className="editor-tool-section tool-text-panel">
+              <section
+                className="editor-tool-section tool-text-panel"
+                aria-labelledby="text-layers-title"
+              >
                 <div className="tool-heading layer-heading">
-                  <span>03</span>
+                  <span aria-hidden="true">
+                    <Type size={15} />
+                  </span>
                   <div>
-                    <b>Camadas de texto</b>
-                    <small>Cada texto tem seu próprio tempo</small>
+                    <b id="text-layers-title">Texto</b>
+                    <small>Crie, posicione e anime cada camada</small>
                   </div>
                 </div>
-                <div className="layer-actions">
-                  <button onClick={addLayer}>
-                    <Plus aria-hidden="true" size={14} /> Texto
+                <div
+                  className="layer-actions"
+                  role="group"
+                  aria-label="Ações de texto"
+                >
+                  <button
+                    type="button"
+                    onClick={addLayer}
+                    aria-label="Adicionar nova camada de texto"
+                  >
+                    <Plus aria-hidden="true" size={14} /> Adicionar texto
                   </button>
-                  <button disabled={!selected} onClick={duplicateLayer}>
+                  <button
+                    type="button"
+                    disabled={!selected}
+                    onClick={duplicateLayer}
+                    aria-label="Duplicar camada de texto selecionada"
+                  >
                     <Copy aria-hidden="true" size={14} /> Duplicar
                   </button>
-                  <label className="subtitle-import">
+                  <label
+                    className="subtitle-import"
+                    title="Importa legendas com tempos definidos em um arquivo SRT"
+                  >
                     <Captions aria-hidden="true" size={14} /> Importar SRT
                     <input
                       type="file"
                       accept=".srt,text/plain"
+                      aria-label="Selecionar arquivo SRT para importar"
                       onChange={(event) =>
                         void importSubtitles(event.target.files?.[0])
                       }
                     />
                   </label>
                 </div>
-                <div className="layer-list">
-                  {layers.map((layer, index) => (
-                    <button
-                      key={layer.id}
-                      className={selected?.id === layer.id ? "selected" : ""}
-                      onClick={() => {
-                        setSelectedId(layer.id);
-                        setSelectedIllustrationId("");
-                        setSelectedAudioId("");
-                        seek(Math.max(start, layer.start));
-                      }}
-                    >
-                      <b>T{index + 1}</b>
-                      <span>{layer.text || "Texto vazio"}</span>
-                      <small>
-                        {time(layer.start)}–{time(layer.end)}
-                      </small>
-                    </button>
-                  ))}
-                </div>
+
+                <details className="tool-disclosure" open>
+                  <summary>
+                    Camadas no projeto ({layers.length})
+                  </summary>
+                  <div
+                    className="layer-list"
+                    aria-label="Camadas de texto do projeto"
+                  >
+                    {layers.map((layer, index) => (
+                      <button
+                        key={layer.id}
+                        type="button"
+                        className={
+                          selected?.id === layer.id ? "selected" : ""
+                        }
+                        aria-pressed={selected?.id === layer.id}
+                        aria-label={`Selecionar texto ${index + 1}: ${layer.text || "Texto vazio"}, de ${time(layer.start)} a ${time(layer.end)}`}
+                        onClick={() => {
+                          setSelectedId(layer.id);
+                          setSelectedIllustrationId("");
+                          setSelectedAudioId("");
+                          seek(Math.max(start, layer.start));
+                        }}
+                      >
+                        <b aria-hidden="true">T{index + 1}</b>
+                        <span>{layer.text || "Texto vazio"}</span>
+                        <small>
+                          {time(layer.start)}–{time(layer.end)}
+                        </small>
+                      </button>
+                    ))}
+                    {!layers.length && (
+                      <button type="button" onClick={addLayer}>
+                        <Plus aria-hidden="true" size={14} /> Criar o primeiro
+                        texto
+                      </button>
+                    )}
+                  </div>
+                </details>
 
                 {selected && (
                   <div className="layer-inspector">
                     <div className="inspector-title">
-                      <b>Editar camada</b>
-                      <button onClick={removeLayer} aria-label="Excluir camada">
+                      <b>Camada selecionada</b>
+                      <button
+                        type="button"
+                        onClick={removeLayer}
+                        aria-label="Excluir camada de texto selecionada"
+                      >
                         Excluir
                       </button>
                     </div>
-                    <textarea
-                      value={selected.text}
-                      onChange={(event) =>
-                        updateLayer(selected.id, { text: event.target.value })
-                      }
-                      placeholder="Escreva o texto…"
-                    />
-                    <div className="caption-controls">
-                      <select
-                        value={selected.font}
-                        onChange={(event) =>
-                          updateLayer(selected.id, { font: event.target.value })
-                        }
+
+                    <div
+                      role="img"
+                      aria-label={`Prévia da camada selecionada: ${selected.text || "Texto vazio"}`}
+                      style={{
+                        position: "relative",
+                        minHeight: 132,
+                        overflow: "hidden",
+                        border: "1px solid var(--pure-border)",
+                        borderRadius: 8,
+                        background:
+                          "linear-gradient(145deg, var(--pure-surface-2), var(--pure-canvas))",
+                      }}
+                    >
+                      <span
+                        style={{
+                          position: "absolute",
+                          left: `${selected.x}%`,
+                          top: `${selected.y}%`,
+                          width: "min(82%, 230px)",
+                          padding: selected.background ? "4px 8px" : 0,
+                          borderRadius: 4,
+                          background: selected.background
+                            ? "rgba(0,0,0,.72)"
+                            : "transparent",
+                          color: selected.color,
+                          fontFamily: selected.font,
+                          fontSize: `${Math.max(13, Math.min(28, selected.size * 0.28))}px`,
+                          fontWeight: 800,
+                          lineHeight: 1.12,
+                          textAlign: selected.align,
+                          textShadow: "0 1px 3px rgba(0,0,0,.78)",
+                          transform: "translate(-50%, -50%)",
+                          overflowWrap: "anywhere",
+                        }}
                       >
-                        <option>Inter</option>
-                        <option>Arial Black</option>
-                        <option>Georgia</option>
-                        <option>Courier New</option>
-                        <option>Impact</option>
-                        <option>Trebuchet MS</option>
-                      </select>
-                      <input
-                        aria-label="Cor do texto"
-                        type="color"
-                        value={selected.color}
+                        {selected.text || "Seu texto aparece aqui"}
+                      </span>
+                      <small
+                        style={{
+                          position: "absolute",
+                          left: 8,
+                          bottom: 6,
+                          color: "var(--pure-text-3)",
+                          fontSize: 10,
+                        }}
+                      >
+                        Prévia de posição e estilo
+                      </small>
+                    </div>
+
+                    <details className="tool-disclosure" open>
+                      <summary>Conteúdo</summary>
+                      <label htmlFor={`text-content-${selected.id}`}>
+                        Texto exibido
+                      </label>
+                      <textarea
+                        id={`text-content-${selected.id}`}
+                        aria-label="Conteúdo da camada de texto"
+                        value={selected.text}
                         onChange={(event) =>
-                          updateLayer(selected.id, {
-                            color: event.target.value,
-                          })
+                          updateLayer(selected.id, { text: event.target.value })
                         }
+                        placeholder="Escreva o texto…"
                       />
-                    </div>
-                    <label className="range-label">
-                      Tamanho · {selected.size}px
-                      <input
-                        type="range"
-                        min="28"
-                        max="112"
-                        value={selected.size}
-                        onChange={(event) =>
-                          updateLayer(selected.id, {
-                            size: Number(event.target.value),
-                          })
-                        }
-                      />
-                    </label>
-                    <div className="align-buttons">
-                      <button
-                        className={selected.align === "left" ? "selected" : ""}
-                        onClick={() =>
-                          updateLayer(selected.id, { align: "left" })
-                        }
-                        aria-label="Alinhar à esquerda"
-                      >
-                        <AlignLeft aria-hidden="true" size={15} />
-                      </button>
-                      <button
-                        className={
-                          selected.align === "center" ? "selected" : ""
-                        }
-                        onClick={() =>
-                          updateLayer(selected.id, { align: "center" })
-                        }
-                        aria-label="Centralizar"
-                      >
-                        <AlignCenter aria-hidden="true" size={15} />
-                      </button>
-                      <button
-                        className={selected.align === "right" ? "selected" : ""}
-                        onClick={() =>
-                          updateLayer(selected.id, { align: "right" })
-                        }
-                        aria-label="Alinhar à direita"
-                      >
-                        <AlignRight aria-hidden="true" size={15} />
-                      </button>
-                      <label className="text-bg-toggle">
-                        <input
-                          type="checkbox"
-                          checked={selected.background}
-                          onChange={(event) =>
-                            updateLayer(selected.id, {
-                              background: event.target.checked,
-                            })
-                          }
-                        />{" "}
-                        Fundo
-                      </label>
-                    </div>
-                    <div className="effect-grid">
-                      <label>
-                        Efeito
-                        <select
-                          value={selected.effect}
-                          onChange={(event) =>
-                            updateLayer(selected.id, {
-                              effect: event.target.value as TextEffect,
-                            })
-                          }
-                        >
-                          <option value="none">Sem efeito</option>
-                          <option value="pop">Pop</option>
-                          <option value="zoom">Zoom</option>
-                          <option value="bounce">Bounce</option>
-                          <option value="slide">Deslizar</option>
-                          <option value="typewriter">
-                            Máquina de escrever
-                          </option>
-                        </select>
-                      </label>
-                      <label>
-                        Fade in
-                        <input
-                          type="number"
-                          min="0"
-                          max="3"
-                          step="0.1"
-                          value={selected.fadeIn}
-                          onChange={(event) =>
-                            updateLayer(selected.id, {
-                              fadeIn: Math.max(0, Number(event.target.value)),
-                            })
-                          }
-                        />
-                      </label>
-                      <label>
-                        Fade out
-                        <input
-                          type="number"
-                          min="0"
-                          max="3"
-                          step="0.1"
-                          value={selected.fadeOut}
-                          onChange={(event) =>
-                            updateLayer(selected.id, {
-                              fadeOut: Math.max(0, Number(event.target.value)),
-                            })
-                          }
-                        />
-                      </label>
-                    </div>
-                    <div className="emoji-row">
-                      {["🔥", "😂", "🎙️", "✨", "💥", "👀"].map((emoji) => (
+                    </details>
+
+                    <div className="visual-presets">
+                      <b>Estilos prontos</b>
+                      <div role="group" aria-label="Estilos prontos de texto">
                         <button
-                          key={emoji}
+                          type="button"
+                          title="Título grande centralizado para abertura ou chamada"
+                          aria-label="Aplicar estilo Título central, indicado para abertura ou chamada"
                           onClick={() =>
                             updateLayer(selected.id, {
-                              text: `${selected.text} ${emoji}`.trim(),
+                              font: "Arial Black",
+                              color: "#ffffff",
+                              size: 72,
+                              x: 50,
+                              y: 28,
+                              align: "center",
+                              background: false,
+                              effect: "zoom",
                             })
                           }
                         >
-                          {emoji}
+                          Título central
                         </button>
-                      ))}
+                        <button
+                          type="button"
+                          title="Texto legível sobre fundo para falas e legendas"
+                          aria-label="Aplicar estilo Legenda legível, indicado para falas"
+                          onClick={() =>
+                            updateLayer(selected.id, {
+                              font: "Inter",
+                              color: "#ffffff",
+                              size: 44,
+                              x: 50,
+                              y: 82,
+                              align: "center",
+                              background: true,
+                              effect: "pop",
+                            })
+                          }
+                        >
+                          Legenda legível
+                        </button>
+                        <button
+                          type="button"
+                          title="Destaque alinhado à esquerda para nomes e contexto"
+                          aria-label="Aplicar estilo Destaque lateral, indicado para nomes e contexto"
+                          onClick={() =>
+                            updateLayer(selected.id, {
+                              font: "Trebuchet MS",
+                              color: "#ffffff",
+                              size: 52,
+                              x: 22,
+                              y: 68,
+                              align: "left",
+                              background: false,
+                              effect: "slide",
+                            })
+                          }
+                        >
+                          Destaque lateral
+                        </button>
+                        <button
+                          type="button"
+                          title="Texto monoespaçado revelado letra por letra"
+                          aria-label="Aplicar estilo Digitação, revelado letra por letra"
+                          onClick={() =>
+                            updateLayer(selected.id, {
+                              font: "Courier New",
+                              color: "#ffffff",
+                              size: 48,
+                              x: 50,
+                              y: 50,
+                              align: "center",
+                              background: true,
+                              effect: "typewriter",
+                            })
+                          }
+                        >
+                          Digitação
+                        </button>
+                      </div>
                     </div>
+
+                    <details className="tool-disclosure" open>
+                      <summary>Tipografia e aparência</summary>
+                      <div className="caption-controls">
+                        <label>
+                          Fonte
+                          <select
+                            aria-label="Fonte da camada de texto"
+                            value={selected.font}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                font: event.target.value,
+                              })
+                            }
+                          >
+                            <option>Inter</option>
+                            <option>Arial Black</option>
+                            <option>Georgia</option>
+                            <option>Courier New</option>
+                            <option>Impact</option>
+                            <option>Trebuchet MS</option>
+                          </select>
+                        </label>
+                        <label>
+                          Cor
+                          <input
+                            aria-label="Cor da camada de texto"
+                            type="color"
+                            value={selected.color}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                color: event.target.value,
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                      <label className="range-label">
+                        Tamanho <output>{selected.size}px</output>
+                        <input
+                          aria-label="Tamanho do texto"
+                          type="range"
+                          min="28"
+                          max="112"
+                          value={selected.size}
+                          onChange={(event) =>
+                            updateLayer(selected.id, {
+                              size: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <div
+                        className="align-buttons"
+                        role="group"
+                        aria-label="Alinhamento do texto"
+                      >
+                        <button
+                          type="button"
+                          className={
+                            selected.align === "left" ? "selected" : ""
+                          }
+                          onClick={() =>
+                            updateLayer(selected.id, { align: "left" })
+                          }
+                          aria-label="Alinhar texto à esquerda"
+                          aria-pressed={selected.align === "left"}
+                          title="Alinhar à esquerda"
+                        >
+                          <AlignLeft aria-hidden="true" size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            selected.align === "center" ? "selected" : ""
+                          }
+                          onClick={() =>
+                            updateLayer(selected.id, { align: "center" })
+                          }
+                          aria-label="Centralizar texto"
+                          aria-pressed={selected.align === "center"}
+                          title="Centralizar"
+                        >
+                          <AlignCenter aria-hidden="true" size={15} />
+                        </button>
+                        <button
+                          type="button"
+                          className={
+                            selected.align === "right" ? "selected" : ""
+                          }
+                          onClick={() =>
+                            updateLayer(selected.id, { align: "right" })
+                          }
+                          aria-label="Alinhar texto à direita"
+                          aria-pressed={selected.align === "right"}
+                          title="Alinhar à direita"
+                        >
+                          <AlignRight aria-hidden="true" size={15} />
+                        </button>
+                        <label className="text-bg-toggle">
+                          <input
+                            type="checkbox"
+                            checked={selected.background}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                background: event.target.checked,
+                              })
+                            }
+                          />
+                          Fundo para leitura
+                        </label>
+                      </div>
+                    </details>
+
+                    <details className="tool-disclosure">
+                      <summary>Posição e duração</summary>
+                      <label className="range-label">
+                        Posição horizontal <output>{Math.round(selected.x)}%</output>
+                        <input
+                          aria-label="Posição horizontal do texto"
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={selected.x}
+                          onChange={(event) =>
+                            updateLayer(selected.id, {
+                              x: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label className="range-label">
+                        Posição vertical <output>{Math.round(selected.y)}%</output>
+                        <input
+                          aria-label="Posição vertical do texto"
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={selected.y}
+                          onChange={(event) =>
+                            updateLayer(selected.id, {
+                              y: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <div className="effect-grid">
+                        <label>
+                          Início (s)
+                          <input
+                            aria-label="Início da camada de texto em segundos"
+                            type="number"
+                            min="0"
+                            max={Math.max(0, selected.end - 0.1)}
+                            step="0.1"
+                            value={selected.start}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                start: Math.max(
+                                  0,
+                                  Math.min(
+                                    Number(event.target.value),
+                                    selected.end - 0.1,
+                                  ),
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Fim (s)
+                          <input
+                            aria-label="Fim da camada de texto em segundos"
+                            type="number"
+                            min={selected.start + 0.1}
+                            max={duration || end || 3600}
+                            step="0.1"
+                            value={selected.end}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                end: Math.max(
+                                  selected.start + 0.1,
+                                  Math.min(
+                                    duration || end || 3600,
+                                    Number(event.target.value),
+                                  ),
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    </details>
+
+                    <details className="tool-disclosure" open>
+                      <summary>Animação</summary>
+                      <div className="effect-grid">
+                        <label>
+                          Movimento
+                          <select
+                            aria-label="Efeito de entrada do texto"
+                            value={selected.effect}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                effect: event.target.value as TextEffect,
+                              })
+                            }
+                          >
+                            <option value="none">Sem movimento</option>
+                            <option value="pop">Entrada rápida</option>
+                            <option value="zoom">Aproximar</option>
+                            <option value="bounce">Quicar</option>
+                            <option value="slide">Deslizar</option>
+                            <option value="typewriter">Digitação</option>
+                          </select>
+                        </label>
+                        <label>
+                          Aparecer (s)
+                          <input
+                            aria-label="Duração do fade in do texto"
+                            type="number"
+                            min="0"
+                            max="3"
+                            step="0.1"
+                            value={selected.fadeIn}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                fadeIn: Math.max(
+                                  0,
+                                  Number(event.target.value),
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                        <label>
+                          Desaparecer (s)
+                          <input
+                            aria-label="Duração do fade out do texto"
+                            type="number"
+                            min="0"
+                            max="3"
+                            step="0.1"
+                            value={selected.fadeOut}
+                            onChange={(event) =>
+                              updateLayer(selected.id, {
+                                fadeOut: Math.max(
+                                  0,
+                                  Number(event.target.value),
+                                ),
+                              })
+                            }
+                          />
+                        </label>
+                      </div>
+                    </details>
                   </div>
                 )}
               </section>
@@ -12378,7 +12787,7 @@ function ClipEditorV2({
                 {/* eslint-disable-next-line jsx-a11y/media-has-caption -- A mídia importada é uma prévia local; o editor não possui uma faixa VTT correspondente. */}
                 <video
                   ref={video}
-                  className={`transformable-video ${(hasMontageTimeline ? current >= montageTimelineDuration : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`}
+                  className={`transformable-video ${(hasMontageTimeline ? !activeMontageClip : current < primaryClipStart || current >= primaryClipEnd) ? "timeline-video-hidden" : ""}`}
                   src={clip.url}
                   playsInline
                   aria-label={`Prévia de ${clip.name}`}
@@ -12843,6 +13252,7 @@ function ClipEditorV2({
               <div
                 className="safe-area-guides"
                 aria-hidden="true"
+                title="Guia visual: mantém textos e rostos longe de controles, títulos e recortes da plataforma. Não aparece no vídeo exportado."
                 style={{
                   top: `${selectedSocialPreset.safeArea.insetPercent.top}%`,
                   right: `${selectedSocialPreset.safeArea.insetPercent.right}%`,
@@ -13033,7 +13443,7 @@ function ClipEditorV2({
                         </label>
                       </div>
                       <label>
-                        Encaixe
+                        Ajuste no quadro
                         <select
                           value={selectedIllustration.fit}
                           onChange={(event) =>
@@ -13348,8 +13758,26 @@ function ClipEditorV2({
                   title="Cria textos sincronizados a partir da fala do vídeo"
                 >
                   <Captions aria-hidden="true" size={15} />
-                  {transcribing ? "Transcrevendo…" : "Gerar pelo áudio"}
+                  {automaticCaptionButtonLabel}
                 </button>
+                {transcribing && (
+                  <div
+                    className="caption-progress compact"
+                    role="progressbar"
+                    aria-label="Progresso da transcrição"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(transcriptionProgress)}
+                  >
+                    <i style={{ width: `${transcriptionProgress}%` }} />
+                    <span>{transcriptionPhaseLabel}</span>
+                  </div>
+                )}
+                {detectedCaptionLanguageName && !transcribing && (
+                  <small className="caption-detected-language">
+                    Idioma detectado: {detectedCaptionLanguageName}
+                  </small>
+                )}
                 {!selected ? (
                   <button
                     type="button"
@@ -13619,9 +14047,10 @@ function ClipEditorV2({
             <button
               className={snapEnabled ? "selected" : ""}
               onClick={() => setSnapEnabled((value) => !value)}
-              title="Encaixa o cursor nos cortes, camadas e marcadores"
+              title="Ímã automático: aproxima o cursor de cortes, camadas e marcadores para alinhar com precisão"
+              aria-pressed={snapEnabled}
             >
-              <Magnet aria-hidden="true" size={14} /> Encaixe
+              <Magnet aria-hidden="true" size={14} /> Ímã automático
             </button>
             <details
               ref={timelineMore}
@@ -13638,9 +14067,15 @@ function ClipEditorV2({
                 <button
                   className={safeGuides ? "selected" : ""}
                   onClick={() => setSafeGuides((value) => !value)}
+                  title="Mostra uma guia de composição que não aparece na exportação"
                 >
                   <ShieldCheck aria-hidden="true" size={14} /> Área segura
                 </button>
+                <small className="timeline-safe-area-help">
+                  A área segura é só uma guia: mantém textos e rostos longe de
+                  controles e recortes da plataforma. Ela não aparece na
+                  exportação.
+                </small>
                 <button
                   onClick={addMarker}
                   title="Adiciona um marcador no cursor"
@@ -14252,9 +14687,8 @@ function ClipEditorV2({
                       setSelectedId("");
                       setSelectedIllustrationId("");
                       setInspectorTab("edit");
-                      setActiveTool(deselect ? "media" : "audio");
+                      setActiveTool("audio");
                       setToolPanelOpen(true);
-                      if (!deselect) seek(Math.max(start, track.start));
                     }}
                     onKeyDown={(event) => {
                       if (event.key === "Enter" || event.key === " ") {
@@ -14265,7 +14699,6 @@ function ClipEditorV2({
                         setInspectorTab("edit");
                         setActiveTool("audio");
                         setToolPanelOpen(true);
-                        seek(Math.max(start, track.start));
                       }
                     }}
                     onContextMenu={(event) =>

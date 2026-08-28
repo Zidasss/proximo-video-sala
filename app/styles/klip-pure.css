@@ -4235,3 +4235,292 @@ html[data-klip-theme="light"] .clip-editor-v2 .caption-progress > i {
     transform: rotate(360deg);
   }
 }
+
+/* --------------------------------------------------------------------------
+   Editor layout stabilization
+   Keep the canvas, side tools and timeline geometry independent from the
+   active tool and from the selected export aspect ratio.
+   -------------------------------------------------------------------------- */
+
+html[data-klip-theme] .clip-editor-v2 .editor-tools {
+  overflow-x: hidden;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+html[data-klip-theme] .clip-editor-v2 .editor-tools :where(
+  .editor-tool-section,
+  .tool-disclosure,
+  .audio-editor-controls,
+  .audio-channel-list,
+  .audio-channel-strip,
+  .visual-presets,
+  .video-properties-grid,
+  .layer-actions,
+  .layer-list
+) {
+  min-width: 0;
+  max-width: 100%;
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) {
+    grid-template-columns: calc(var(--pure-rail-w) + var(--pure-panel-w)) minmax(0, 1fr) !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .editor-stage-wrap {
+    grid-template-rows: auto minmax(0, 1fr) 48px;
+    align-content: stretch;
+    min-height: 0;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .editor-stage:not(.editor-stage-tall) {
+    box-sizing: border-box;
+    align-self: center;
+    justify-self: center;
+    width: 100% !important;
+    height: auto !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .editor-stage.editor-stage-tall {
+    box-sizing: border-box;
+    align-self: center;
+    justify-self: center;
+    width: auto !important;
+    height: 100% !important;
+    max-width: 100% !important;
+    max-height: 100% !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .stage-meta,
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .stage-meta.stage-meta-tall,
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) .pure-stage-transport {
+    width: min(100%, 1180px);
+    max-width: 100%;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tools[data-tool] {
+    padding: 0 16px 24px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tools[data-tool] .editor-tool-panel-header {
+    margin: 0 -16px 14px;
+    padding: 8px 16px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 :where(.tool-audio-panel, .tool-effects-panel, .tool-text-panel) {
+    gap: 14px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-audio-panel .audio-editor-controls,
+  html[data-klip-theme] .clip-editor-v2 .tool-effects-panel :where(.visual-presets, .video-properties-grid) {
+    gap: 10px;
+    padding: 12px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-text-panel .layer-actions {
+    display: grid;
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-text-panel .subtitle-import {
+    min-height: 40px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-effects-panel .visual-presets > div {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+    gap: 8px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-effects-panel .video-properties-grid {
+    grid-template-columns: minmax(0, 1fr);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-effects-panel .video-properties-grid > * {
+    grid-column: 1;
+    min-width: 0;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-effects-panel :where(.visual-presets button, .template-grid button) {
+    min-height: 38px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-mixer-heading {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 6px 10px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-mixer-heading > div {
+    min-width: 0;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-mixer-heading small {
+    overflow-wrap: anywhere;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-channel-strip {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px;
+    padding: 10px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-channel-strip > .channel-select {
+    grid-column: 1;
+    grid-row: 1;
+    min-width: 0;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-channel-strip > .channel-toggles {
+    grid-column: 2;
+    grid-row: 1;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-channel-strip > input[type="range"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-channel-strip.main-channel {
+    grid-template-columns: auto minmax(0, 1fr);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .audio-channel-strip.main-channel > input[type="range"] {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+    position: relative;
+    z-index: 30;
+    overflow: visible;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-more[open] {
+    z-index: 40;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-more > div {
+    top: calc(100% + 8px) !important;
+    right: 0 !important;
+    bottom: auto !important;
+    max-height: min(320px, calc(var(--pure-timeline-h) - 76px));
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}
+
+@media (min-width: 1081px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --pure-panel-w: clamp(300px, 18vw, 320px);
+  }
+}
+
+/* Empty portions of segmented lanes represent no media and should therefore
+   read as empty timeline, rather than as another video or audio clip. */
+html[data-klip-theme] .clip-editor-v2 :where(
+  .timeline-lane .lane-track:has(> .timeline-item-clip),
+  .timeline-lane.montage-video-lane .lane-track,
+  .timeline-lane .waveform-track.segmented-waveform
+) {
+  border-color: #262b32 !important;
+  background: #0b0d10 !important;
+}
+
+/* Guides remain available as an alignment aid without dimming the preview. */
+html[data-klip-theme] .clip-editor-v2 .safe-area-guides {
+  border-color: color-mix(in srgb, var(--pure-blue) 28%, transparent) !important;
+  box-shadow: inset 0 0 0 9999px color-mix(in srgb, var(--pure-blue) .8%, transparent) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .safe-area-guides i {
+  border-color: color-mix(in srgb, var(--pure-blue) 22%, transparent) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .safe-area-guides span {
+  background: rgb(5 5 6 / 66%) !important;
+  color: rgb(255 255 255 / 76%) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-safe-area-help {
+  display: block;
+  width: 100%;
+  padding: 6px 8px 10px;
+  color: var(--pure-text-3);
+  font-size: 11px;
+  line-height: 1.4;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-detected-language {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin: 0;
+  padding: 9px 10px;
+  border: 1px solid var(--pure-border);
+  border-radius: 8px;
+  background: var(--pure-surface-2);
+  color: var(--pure-text-2);
+  font-size: 12px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-progress.compact {
+  margin-top: 8px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-text-panel .layer-inspector {
+  gap: 12px;
+  min-width: 0;
+  max-width: 100%;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-text-panel .tool-disclosure {
+  padding: 10px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-text-panel .visual-presets > div {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-text-panel .visual-presets button {
+  min-height: 42px;
+  white-space: normal;
+  line-height: 1.25;
+}
+
+@media (max-width: 1080px) and (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 .tool-text-panel :where(.caption-controls, .effect-grid) {
+    grid-template-columns: minmax(0, 1fr) !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .tool-text-panel .align-buttons {
+    display: grid;
+    grid-template-columns: repeat(3, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 760px) {
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+    position: relative;
+    z-index: 30;
+    overflow: visible;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-more[open] {
+    z-index: 50;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-more > div {
+    top: calc(100% + 8px) !important;
+    right: 0 !important;
+    bottom: auto !important;
+    max-height: min(320px, 55dvh);
+    overflow-x: hidden;
+    overflow-y: auto;
+  }
+}

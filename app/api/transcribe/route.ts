@@ -19,6 +19,10 @@ type OpenAiTranscription = {
 
 const TRANSCRIPTION_TIMEOUT_MS = 230_000;
 const TRANSLATION_TIMEOUT_MS = 45_000;
+// Vercel request bodies are smaller than the upstream transcription limit.
+// The editor therefore extracts and compresses the audio locally and sends
+// sequential blocks below this ceiling instead of uploading the source video.
+const TRANSCRIPTION_CHUNK_MAX_BYTES = 4 * 1024 * 1024;
 
 const TRANSLATION_LANGUAGES: Record<string, string> = {
   en: "inglês natural",
@@ -128,11 +132,11 @@ export async function POST(request: NextRequest) {
         { error: "Envie um vídeo ou áudio para transcrever." },
         { status: 400 },
       );
-    if (file.size > 24 * 1024 * 1024)
+    if (file.size > TRANSCRIPTION_CHUNK_MAX_BYTES)
       return NextResponse.json(
         {
           error:
-            "Este arquivo ultrapassa 24 MB. Exporte e importe um trecho menor para gerar legendas, ou importe um arquivo SRT.",
+            "Este bloco de áudio ficou grande demais. O KLIP precisa compactá-lo novamente antes da transcrição.",
         },
         { status: 413 },
       );

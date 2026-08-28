@@ -313,6 +313,150 @@ async function buildContainerAudioWaveform(
   }
   return { values, codec, decodable };
 }
+
+const TRANSCRIPTION_AUDIO_BITRATE = 32_000;
+const TRANSCRIPTION_CHUNK_SECONDS = 8 * 60;
+const TRANSCRIPTION_CHUNK_OVERLAP_SECONDS = 0.4;
+const TRANSCRIPTION_UPLOAD_LIMIT = 3.75 * 1024 * 1024;
+
+type TranscriptionAudioPlan = {
+  duration: number;
+  codec: "opus" | "aac";
+  extension: ".webm" | ".mp4";
+  mimeType: "audio/webm" | "audio/mp4";
+};
+
+async function createTranscriptionAudioPlan(
+  blob: Blob,
+): Promise<TranscriptionAudioPlan> {
+  const {
+    ALL_FORMATS,
+    BlobSource,
+    Input,
+    Quality,
+    canEncodeAudio,
+  } = await import("mediabunny");
+  const input = new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(blob),
+  });
+  if (!(await input.canRead()))
+    throw new Error(
+      "O KLIP não conseguiu abrir este contêiner para extrair o áudio.",
+    );
+  const track = await input.getPrimaryAudioTrack();
+  if (!track)
+    throw new Error("Este vídeo não possui uma faixa de áudio.");
+  if (!(await track.canDecode())) {
+    const codec =
+      (await track.getCodecParameterString()) ||
+      (await track.getCodec()) ||
+      "desconhecido";
+    throw new Error(
+      `O áudio usa o codec ${codec}, que este navegador não consegue extrair. Tente o Chrome atualizado ou converta somente o áudio para AAC/Opus.`,
+    );
+  }
+  const duration =
+    (await track.getDurationFromMetadata()) || (await track.computeDuration());
+  if (!Number.isFinite(duration) || duration <= 0)
+    throw new Error("Não foi possível determinar a duração do áudio.");
+
+  const quality = new Quality({
+    bitrate: TRANSCRIPTION_AUDIO_BITRATE,
+    bitrateMode: "constant",
+  });
+  if (
+    await canEncodeAudio("opus", {
+      numberOfChannels: 1,
+      sampleRate: 16_000,
+      quality,
+    })
+  )
+    return {
+      duration,
+      codec: "opus",
+      extension: ".webm",
+      mimeType: "audio/webm",
+    };
+  if (
+    await canEncodeAudio("aac", {
+      numberOfChannels: 1,
+      sampleRate: 16_000,
+      quality,
+    })
+  )
+    return {
+      duration,
+      codec: "aac",
+      extension: ".mp4",
+      mimeType: "audio/mp4",
+    };
+  throw new Error(
+    "Este navegador não oferece um codificador de áudio compatível. Atualize o Chrome para gerar legendas de vídeos grandes.",
+  );
+}
+
+async function extractTranscriptionAudioChunk(
+  blob: Blob,
+  plan: TranscriptionAudioPlan,
+  start: number,
+  end: number,
+  onProgress?: (progress: number) => void,
+): Promise<Blob> {
+  const {
+    ALL_FORMATS,
+    BlobSource,
+    BufferTarget,
+    Conversion,
+    Input,
+    Mp4OutputFormat,
+    Output,
+    Quality,
+    WebMOutputFormat,
+  } = await import("mediabunny");
+  const input = new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(blob),
+  });
+  const target = new BufferTarget();
+  const format =
+    plan.codec === "opus"
+      ? new WebMOutputFormat()
+      : new Mp4OutputFormat({ fastStart: "in-memory" });
+  const output = new Output({ format, target });
+  const conversion = await Conversion.init({
+    input,
+    output,
+    tracks: "primary",
+    trim: { start, end },
+    video: { discard: true },
+    audio: {
+      codec: plan.codec,
+      numberOfChannels: 1,
+      sampleRate: 16_000,
+      quality: new Quality({
+        bitrate: TRANSCRIPTION_AUDIO_BITRATE,
+        bitrateMode: "constant",
+      }),
+      forceTranscode: true,
+    },
+    showWarnings: false,
+  });
+  if (!conversion.isValid)
+    throw new Error(
+      "Não foi possível preparar a faixa de áudio deste vídeo para transcrição.",
+    );
+  conversion.onProgress = (progress) => onProgress?.(progress);
+  await conversion.execute();
+  if (!target.buffer?.byteLength)
+    throw new Error("A extração de áudio retornou um trecho vazio.");
+  const chunk = new Blob([target.buffer], { type: plan.mimeType });
+  if (chunk.size > TRANSCRIPTION_UPLOAD_LIMIT)
+    throw new Error(
+      "Um bloco de áudio ficou maior que o limite de envio. Tente novamente com qualidade de áudio reduzida.",
+    );
+  return chunk;
+}
 type EditorSnapshot = {
   layers: TextLayer[];
   illustrations: IllustrationLayer[];
@@ -7998,13 +8142,8 @@ function ClipEditorV2({
     setDetectedCaptionLanguage("");
     setTranscribing(true);
     setTranscriptionPhase("preparing");
-    setTranscriptionProgress(6);
-    setNotice("Preparando o áudio para detectar o idioma…");
-    const progressTimer = window.setInterval(() => {
-      setTranscriptionProgress((value) =>
-        value >= 88 ? value : Math.min(88, value + Math.max(1, (88 - value) * 0.08)),
-      );
-    }, 450);
+    setTranscriptionProgress(2);
+    setNotice("Lendo a faixa de áudio sem enviar o vídeo…");
     try {
       if (!navigator.onLine)
         throw new Error(
@@ -8016,57 +8155,134 @@ function ClipEditorV2({
       const source = await sourceResponse.blob();
       if (!source.size)
         throw new Error("O vídeo não contém dados que possam ser transcritos.");
-      if (source.size > 24 * 1024 * 1024)
-        throw new Error(
-          "Este arquivo ultrapassa 24 MB. Exporte e importe um trecho menor para gerar legendas, ou importe um arquivo SRT.",
-        );
-      setTranscriptionProgress(16);
-      setTranscriptionPhase("uploading");
-      const form = new FormData();
-      const fallbackExtension =
-        source.type.includes("webm")
-          ? ".webm"
-          : source.type.includes("quicktime")
-            ? ".mov"
-            : source.type.includes("mpeg")
-              ? ".mp3"
-              : ".mp4";
-      const sourceName = /\.[a-z0-9]{2,5}$/i.test(clip.name || "")
-        ? clip.name
-        : `${clip.name || "video"}${fallbackExtension}`;
-      form.append(
-        "file",
-        new File([source], sourceName, {
-          type: source.type || "video/mp4",
-        }),
+      const plan = await createTranscriptionAudioPlan(source);
+      const totalChunks = Math.max(
+        1,
+        Math.ceil(plan.duration / TRANSCRIPTION_CHUNK_SECONDS),
       );
-      form.append("targetLanguage", captionTargetLanguage);
-      setTranscriptionProgress(24);
-      setTranscriptionPhase("transcribing");
-      const response = await fetch("/api/transcribe", {
-        method: "POST",
-        body: form,
-      });
-      const responseText = await response.text();
-      let result: {
-        error?: string;
-        segments?: Array<{ start: number; end: number; text: string }>;
-        detectedLanguage?: string;
-        translationWarning?: string;
-        translated?: boolean;
-      } = {};
-      try {
-        result = responseText ? JSON.parse(responseText) : {};
-      } catch {
-        throw new Error(
-          "O serviço de legendas retornou uma resposta inválida. Tente novamente.",
+      const allSegments: Array<{
+        start: number;
+        end: number;
+        text: string;
+      }> = [];
+      const translationWarnings = new Set<string>();
+      let detectedLanguage = "";
+
+      for (let index = 0; index < totalChunks; index++) {
+        const logicalStart = index * TRANSCRIPTION_CHUNK_SECONDS;
+        const logicalEnd = Math.min(
+          plan.duration,
+          (index + 1) * TRANSCRIPTION_CHUNK_SECONDS,
+        );
+        const extractionStart = Math.max(
+          0,
+          logicalStart -
+            (index ? TRANSCRIPTION_CHUNK_OVERLAP_SECONDS : 0),
+        );
+        const chunkBaseProgress = 5 + (index / totalChunks) * 88;
+        const chunkProgressSpan = 88 / totalChunks;
+        setTranscriptionPhase("preparing");
+        setNotice(
+          totalChunks === 1
+            ? "Extraindo e compactando somente o áudio…"
+            : `Extraindo áudio — bloco ${index + 1} de ${totalChunks}…`,
+        );
+        const audioChunk = await extractTranscriptionAudioChunk(
+          source,
+          plan,
+          extractionStart,
+          logicalEnd,
+          (progress) =>
+            setTranscriptionProgress(
+              Math.round(chunkBaseProgress + progress * chunkProgressSpan * 0.42),
+            ),
+        );
+
+        setTranscriptionPhase("uploading");
+        setNotice(
+          totalChunks === 1
+            ? "Enviando o áudio compacto para transcrição…"
+            : `Transcrevendo bloco ${index + 1} de ${totalChunks}…`,
+        );
+        setTranscriptionProgress(
+          Math.round(chunkBaseProgress + chunkProgressSpan * 0.5),
+        );
+        const form = new FormData();
+        form.append(
+          "file",
+          new File(
+            [audioChunk],
+            `klip-audio-${String(index + 1).padStart(3, "0")}${plan.extension}`,
+            { type: plan.mimeType },
+          ),
+        );
+        form.append("targetLanguage", captionTargetLanguage);
+        if (detectedLanguage) form.append("language", detectedLanguage);
+        form.append("chunkIndex", String(index));
+        form.append("chunkCount", String(totalChunks));
+        setTranscriptionPhase("transcribing");
+        const response = await fetch("/api/transcribe", {
+          method: "POST",
+          body: form,
+        });
+        const responseText = await response.text();
+        let result: {
+          error?: string;
+          segments?: Array<{ start: number; end: number; text: string }>;
+          detectedLanguage?: string;
+          translationWarning?: string;
+          translated?: boolean;
+        } = {};
+        try {
+          result = responseText ? JSON.parse(responseText) : {};
+        } catch {
+          throw new Error(
+            "O serviço de legendas retornou uma resposta inválida. Tente novamente.",
+          );
+        }
+        if (response.status === 422 && totalChunks > 1) {
+          setNotice(
+            `Bloco ${index + 1} sem fala detectável — seguindo para o próximo…`,
+          );
+          setTranscriptionProgress(
+            Math.round(chunkBaseProgress + chunkProgressSpan),
+          );
+          continue;
+        }
+        if (!response.ok)
+          throw new Error(
+            `${result.error || "Falha na transcrição."}${totalChunks > 1 ? ` (bloco ${index + 1} de ${totalChunks})` : ""}`,
+          );
+        if (
+          !detectedLanguage &&
+          result.detectedLanguage &&
+          result.detectedLanguage !== "unknown"
+        )
+          detectedLanguage = result.detectedLanguage;
+        if (result.translationWarning)
+          translationWarnings.add(result.translationWarning);
+
+        for (const segment of result.segments || []) {
+          const absoluteStart = extractionStart + Number(segment.start || 0);
+          const absoluteEnd = extractionStart + Number(segment.end || 0);
+          const midpoint = (absoluteStart + absoluteEnd) / 2;
+          if (
+            midpoint + 0.01 < logicalStart ||
+            absoluteStart >= logicalEnd ||
+            !segment.text.trim()
+          )
+            continue;
+          allSegments.push({
+            start: Math.max(logicalStart, absoluteStart),
+            end: Math.min(logicalEnd, absoluteEnd),
+            text: segment.text.trim(),
+          });
+        }
+        setTranscriptionProgress(
+          Math.round(chunkBaseProgress + chunkProgressSpan),
         );
       }
-      if (!response.ok) throw new Error(result.error || "Falha na transcrição.");
-      const detectedLanguage =
-        result.detectedLanguage && result.detectedLanguage !== "unknown"
-          ? result.detectedLanguage
-          : "";
+
       setDetectedCaptionLanguage(detectedLanguage);
       const languageLabel =
         captionLanguageNames[detectedLanguage] ||
@@ -8074,12 +8290,13 @@ function ClipEditorV2({
         "idioma original";
       setTranscriptionProgress(96);
       setTranscriptionPhase("finalizing");
+      setNotice("Unindo os blocos e sincronizando as legendas…");
       appendGeneratedCaptions(
-        result.segments || [],
+        allSegments,
         captionTargetLanguage === "original"
           ? languageLabel
           : captionLanguageNames[captionTargetLanguage],
-        result.translationWarning || "",
+        [...translationWarnings].join(" "),
       );
       setTranscriptionProgress(100);
     } catch (error) {
@@ -8094,7 +8311,6 @@ function ClipEditorV2({
         message,
       );
     } finally {
-      window.clearInterval(progressTimer);
       setTranscribing(false);
       transcriptionResetTimer.current = window.setTimeout(() => {
         setTranscriptionProgress(0);
@@ -11824,6 +12040,11 @@ function ClipEditorV2({
                     <span>{transcriptionPhaseLabel}</span>
                   </div>
                 )}
+                <small className="caption-local-processing-note">
+                  Vídeos grandes são processados em blocos. O vídeo permanece
+                  neste dispositivo; somente áudio compacto é enviado para
+                  transcrição.
+                </small>
                 <label className="editor-upload captions-srt-upload">
                   <FileUp aria-hidden="true" size={14} /> Importar arquivo SRT
                   <input

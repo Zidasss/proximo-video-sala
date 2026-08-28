@@ -228,6 +228,11 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /probePlayableAudio/);
   assert.match(page, /Áudio presente/);
   assert.match(page, /function generateAutomaticCaptions/);
+  assert.match(page, /createTranscriptionAudioPlan/);
+  assert.match(page, /extractTranscriptionAudioChunk/);
+  assert.match(page, /TRANSCRIPTION_CHUNK_SECONDS/);
+  assert.match(page, /somente áudio compacto é enviado/);
+  assert.doesNotMatch(page, /Este arquivo ultrapassa 24 MB/);
   assert.match(page, /Detectar idioma e gerar legendas/);
   assert.match(page, /Transcrever e traduzir/);
   assert.match(page, /caption-progress/);
@@ -251,6 +256,7 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(transcription, /targetLanguage/);
   assert.match(transcription, /detectedLanguage/);
   assert.match(transcription, /translationWarning/);
+  assert.match(transcription, /TRANSCRIPTION_CHUNK_MAX_BYTES/);
   assert.match(transcription, /Não foi possível identificar fala/);
   assert.match(transcription, /\/v1\/chat\/completions/);
   assert.match(css, /--pure-panel-w: clamp\(210px, 13vw, 244px\)/);

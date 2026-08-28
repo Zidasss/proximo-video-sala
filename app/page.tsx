@@ -5902,6 +5902,10 @@ function ClipEditorV2({
     [waveform, setWaveform] = useState<number[]>([]),
     [baseAudioState, setBaseAudioState] = useState<BaseAudioState>("idle"),
     [transcribing, setTranscribing] = useState(false),
+    [transcriptionProgress, setTranscriptionProgress] = useState(0),
+    [captionTargetLanguage, setCaptionTargetLanguage] = useState<
+      "original" | "en" | "es"
+    >("original"),
     [timelineThumbnails, setTimelineThumbnails] = useState<string[]>([]),
     [snapEnabled, setSnapEnabled] = useState(true),
     [markers, setMarkers] = useState<number[]>([]),
@@ -6039,6 +6043,7 @@ function ClipEditorV2({
   const managedAudioUrls = useRef<Set<string>>(new Set());
   const studioDialog = useRef<HTMLElement | null>(null);
   const timelineViewport = useRef<HTMLDivElement | null>(null);
+  const timelineMore = useRef<HTMLDetailsElement | null>(null);
   const timelinePanelResize = useRef<{
     startY: number;
     startHeight: number;
@@ -6071,6 +6076,7 @@ function ClipEditorV2({
     timelineStart: number;
     projectDuration: number;
     trackWidth: number;
+    moved: boolean;
   } | null>(null);
   const timelineItemDrag = useRef<{
     kind: "text" | "illustration" | "audio";
@@ -7466,9 +7472,16 @@ function ClipEditorV2({
   async function generateAutomaticCaptions() {
     if (!clip || transcribing) return;
     setTranscribing(true);
+    setTranscriptionProgress(6);
     setNotice("Ouvindo o vídeo e criando legendas sincronizadas…");
+    const progressTimer = window.setInterval(() => {
+      setTranscriptionProgress((value) =>
+        value >= 88 ? value : Math.min(88, value + Math.max(1, (88 - value) * 0.08)),
+      );
+    }, 450);
     try {
       const source = await fetch(clip.url).then((response) => response.blob());
+      setTranscriptionProgress(16);
       const form = new FormData();
       form.append(
         "file",
@@ -7477,6 +7490,8 @@ function ClipEditorV2({
         }),
       );
       form.append("language", "pt");
+      form.append("targetLanguage", captionTargetLanguage);
+      setTranscriptionProgress(24);
       const response = await fetch("/api/transcribe", {
         method: "POST",
         body: form,
@@ -7486,7 +7501,9 @@ function ClipEditorV2({
         segments?: Array<{ start: number; end: number; text: string }>;
       };
       if (!response.ok) throw new Error(result.error || "Falha na transcrição.");
+      setTranscriptionProgress(96);
       appendGeneratedCaptions(result.segments || []);
+      setTranscriptionProgress(100);
     } catch (error) {
       setNotice(
         error instanceof Error
@@ -7494,7 +7511,9 @@ function ClipEditorV2({
           : "Não foi possível gerar as legendas deste vídeo.",
       );
     } finally {
+      window.clearInterval(progressTimer);
       setTranscribing(false);
+      window.setTimeout(() => setTranscriptionProgress(0), 900);
     }
   }
   function exportProject() {
@@ -8026,6 +8045,7 @@ function ClipEditorV2({
       timelineStart: primaryClipStart,
       projectDuration: duration,
       trackWidth: Math.max(1, track.getBoundingClientRect().width),
+      moved: false,
     };
     event.currentTarget.setPointerCapture(event.pointerId);
   }
@@ -8034,6 +8054,7 @@ function ClipEditorV2({
   ) {
     const drag = primaryTimelineDrag.current;
     if (!drag) return;
+    if (Math.abs(event.clientX - drag.startX) > 3) drag.moved = true;
     const delta =
       ((event.clientX - drag.startX) / drag.trackWidth) * drag.projectDuration;
     const nextStart = Math.max(0, drag.timelineStart + delta);
@@ -8043,11 +8064,26 @@ function ClipEditorV2({
     setDuration((projectDuration) => Math.max(projectDuration, nextEnd));
     setSnapGuide(null);
   }
-  function endPrimaryTimelineMove() {
-    if (primaryTimelineDrag.current)
+  function endPrimaryTimelineMove(
+    event: React.PointerEvent<HTMLButtonElement>,
+    cancelled = false,
+  ) {
+    const drag = primaryTimelineDrag.current;
+    if (drag?.moved)
       setNotice(
         `Vídeo principal movido para ${time(primaryTimelineStart)}. O trecho cortado foi preservado.`,
       );
+    else if (drag && !cancelled) {
+      const track = event.currentTarget.parentElement;
+      if (track) {
+        const bounds = track.getBoundingClientRect();
+        const ratio = Math.max(
+          0,
+          Math.min(1, (event.clientX - bounds.left) / bounds.width),
+        );
+        seek(ratio * editorTimelineDuration);
+      }
+    }
     primaryTimelineDrag.current = null;
     setSnapGuide(null);
   }
@@ -11120,6 +11156,22 @@ function ClipEditorV2({
 
             {activeTool === "captions" && (
               <section className="editor-tool-section tool-captions-panel">
+                <label className="caption-language-control">
+                  <span>Idioma das legendas</span>
+                  <select
+                    value={captionTargetLanguage}
+                    onChange={(event) =>
+                      setCaptionTargetLanguage(
+                        event.target.value as "original" | "en" | "es",
+                      )
+                    }
+                    disabled={transcribing}
+                  >
+                    <option value="original">Português original</option>
+                    <option value="en">Traduzir para inglês</option>
+                    <option value="es">Traduzir para espanhol</option>
+                  </select>
+                </label>
                 <button
                   type="button"
                   className="tool-primary-action automatic-captions"
@@ -11127,8 +11179,27 @@ function ClipEditorV2({
                   disabled={!clip || transcribing}
                 >
                   <Captions aria-hidden="true" size={17} />
-                  <b>{transcribing ? "Transcrevendo…" : "Gerar pelo áudio"}</b>
+                  <b>
+                    {transcribing
+                      ? `Transcrevendo · ${Math.round(transcriptionProgress)}%`
+                      : captionTargetLanguage === "original"
+                        ? "Gerar pelo áudio"
+                        : "Transcrever e traduzir"}
+                  </b>
                 </button>
+                {transcribing && (
+                  <div
+                    className="caption-progress"
+                    role="progressbar"
+                    aria-label="Progresso da transcrição"
+                    aria-valuemin={0}
+                    aria-valuemax={100}
+                    aria-valuenow={Math.round(transcriptionProgress)}
+                  >
+                    <i style={{ width: `${transcriptionProgress}%` }} />
+                    <span>Processando áudio e sincronizando frases…</span>
+                  </div>
+                )}
                 <label className="editor-upload captions-srt-upload">
                   <FileUp aria-hidden="true" size={14} /> Importar arquivo SRT
                   <input
@@ -13042,7 +13113,14 @@ function ClipEditorV2({
             >
               <Magnet aria-hidden="true" size={14} /> Encaixe
             </button>
-            <details className="timeline-more">
+            <details
+              ref={timelineMore}
+              className="timeline-more"
+              onPointerUp={(event) => {
+                if ((event.target as HTMLElement).closest("button"))
+                  timelineMore.current?.removeAttribute("open");
+              }}
+            >
               <summary>
                 <MoreHorizontal aria-hidden="true" size={16} /> Mais
               </summary>
@@ -13133,8 +13211,10 @@ function ClipEditorV2({
                       }}
                       onPointerDown={beginPrimaryTimelineMove}
                       onPointerMove={movePrimaryTimelineMove}
-                      onPointerUp={endPrimaryTimelineMove}
-                      onPointerCancel={endPrimaryTimelineMove}
+                      onPointerUp={(event) => endPrimaryTimelineMove(event)}
+                      onPointerCancel={(event) =>
+                        endPrimaryTimelineMove(event, true)
+                      }
                       onContextMenu={openVideoContextMenu}
                       title="Arraste o corpo para mover o trecho sem alterar o corte. Use as pontas para cortar."
                     >
@@ -13611,13 +13691,27 @@ function ClipEditorV2({
                           style={{ height: `${Math.max(12, value * 100)}%` }}
                         />
                       ))
+                    ) : baseAudioState === "detected" ? (
+                      <i
+                        className="codec-audio-indicator"
+                        aria-label="Áudio presente; este codec não permite calcular a forma de onda completa"
+                        title="O áudio será reproduzido e exportado. A forma de onda completa não está disponível para este codec."
+                      >
+                        {Array.from({ length: 96 }, (_, index) => (
+                          <i
+                            key={index}
+                            style={{
+                              height: `${18 + ((index * 17 + index * index * 7) % 48)}%`,
+                            }}
+                          />
+                        ))}
+                        <span>Áudio presente</span>
+                      </i>
                     ) : (
                       <span>
                         {baseAudioState === "checking"
                           ? "Verificando o áudio do vídeo…"
-                          : baseAudioState === "detected"
-                            ? "Áudio disponível · reprodução e exportação ativas"
-                            : "Este arquivo não possui uma faixa de áudio reproduzível"}
+                          : "Este arquivo não possui uma faixa de áudio reproduzível"}
                       </span>
                     )}
                     {!hasMontageTimeline &&

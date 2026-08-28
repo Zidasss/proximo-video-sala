@@ -226,9 +226,12 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   const css = await readFile(new URL("app/styles/klip-pure.css", root), "utf8");
   assert.match(page, /type BaseAudioState/);
   assert.match(page, /probePlayableAudio/);
-  assert.match(page, /Áudio disponível · reprodução e exportação ativas/);
+  assert.match(page, /Áudio presente/);
   assert.match(page, /function generateAutomaticCaptions/);
   assert.match(page, /Gerar pelo áudio/);
+  assert.match(page, /Transcrever e traduzir/);
+  assert.match(page, /caption-progress/);
+  assert.match(page, /captionTargetLanguage/);
   assert.match(page, /Vídeo de reação/);
   assert.match(page, /preset === "reaction" && kind === "video"/);
   assert.match(page, /tool: "captions", icon: Captions, label: "Legendas"/);
@@ -238,10 +241,14 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(transcription, /\/v1\/audio\/transcriptions/);
   assert.match(transcription, /whisper-1/);
   assert.match(transcription, /timestamp_granularities\[\]/);
+  assert.match(transcription, /targetLanguage/);
+  assert.match(transcription, /\/v1\/chat\/completions/);
   assert.match(css, /--pure-panel-w: clamp\(210px, 13vw, 244px\)/);
   assert.match(css, /\.editor-reaction-upload/);
   assert.match(css, /background: #e0eee8 !important/);
   assert.match(css, /background: #276b59 !important/);
   assert.match(css, /background: #dce1e7 !important/);
   assert.match(css, /background: #356b58 !important/);
+  assert.match(css, /\.codec-audio-indicator/);
+  assert.match(css, /bottom: calc\(100% \+ 8px\) !important/);
 });

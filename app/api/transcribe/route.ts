@@ -6,6 +6,11 @@ export const maxDuration = 300;
 
 type OpenAiSegment = { start?: number; end?: number; text?: string };
 
+const TRANSLATION_LANGUAGES: Record<string, string> = {
+  en: "inglês natural",
+  es: "espanhol natural",
+};
+
 export async function POST(request: NextRequest) {
   try {
     if (isSupabaseConfigured) {
@@ -72,7 +77,7 @@ export async function POST(request: NextRequest) {
         { status: response.status },
       );
 
-    const segments = (result.segments || [])
+    let segments = (result.segments || [])
       .map((segment) => ({
         start: Number(segment.start || 0),
         end: Number(segment.end || 0),
@@ -85,6 +90,71 @@ export async function POST(request: NextRequest) {
           Number.isFinite(segment.end) &&
           segment.end > segment.start,
       );
+    const targetLanguage = String(incoming.get("targetLanguage") || "original");
+    const translationLanguage = TRANSLATION_LANGUAGES[targetLanguage];
+    if (translationLanguage && segments.length) {
+      const translationResponse = await fetch(
+        "https://api.openai.com/v1/chat/completions",
+        {
+          method: "POST",
+          headers: {
+            Authorization: `Bearer ${apiKey}`,
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify({
+            model: process.env.OPENAI_TRANSLATION_MODEL || "gpt-4o-mini",
+            response_format: { type: "json_object" },
+            temperature: 0.1,
+            messages: [
+              {
+                role: "system",
+                content:
+                  `Traduza cada legenda para ${translationLanguage}. Preserve nomes próprios, tom, sentido, ordem e quantidade. Responda somente JSON no formato {"translations":[{"id":0,"text":"..."}]}.`,
+              },
+              {
+                role: "user",
+                content: JSON.stringify(
+                  segments.map((segment, id) => ({ id, text: segment.text })),
+                ),
+              },
+            ],
+          }),
+        },
+      );
+      const translationResult = (await translationResponse.json()) as {
+        error?: { message?: string };
+        choices?: Array<{ message?: { content?: string } }>;
+      };
+      if (!translationResponse.ok)
+        return NextResponse.json(
+          {
+            error:
+              translationResult.error?.message ||
+              "A transcrição terminou, mas a tradução falhou.",
+          },
+          { status: translationResponse.status },
+        );
+      try {
+        const parsed = JSON.parse(
+          translationResult.choices?.[0]?.message?.content || "{}",
+        ) as { translations?: Array<{ id?: number; text?: string }> };
+        const translatedById = new Map(
+          (parsed.translations || []).map((item) => [
+            Number(item.id),
+            String(item.text || "").trim(),
+          ]),
+        );
+        segments = segments.map((segment, id) => ({
+          ...segment,
+          text: translatedById.get(id) || segment.text,
+        }));
+      } catch {
+        return NextResponse.json(
+          { error: "A tradução retornou um formato inválido. Tente novamente." },
+          { status: 502 },
+        );
+      }
+    }
     return NextResponse.json({
       text: result.text || "",
       duration: result.duration || 0,

@@ -270,6 +270,7 @@ type StudioPanel = "formats" | "audio" | "effects";
 type EditorTool =
   "media" | "text" | "audio" | "effects" | "transitions" | "formats" | "radar";
 type EditorInspectorTab = "edit" | "audio" | "captions";
+type BaseAudioState = "idle" | "checking" | "waveform" | "detected" | "none";
 type TimedLayer = Pick<
   IllustrationLayer,
   "start" | "end" | "fadeIn" | "fadeOut"
@@ -5892,6 +5893,8 @@ function ClipEditorV2({
     [audioEnhance, setAudioEnhance] = useState(true),
     [audioTracks, setAudioTracks] = useState<AudioTrack[]>([]),
     [waveform, setWaveform] = useState<number[]>([]),
+    [baseAudioState, setBaseAudioState] = useState<BaseAudioState>("idle"),
+    [transcribing, setTranscribing] = useState(false),
     [timelineThumbnails, setTimelineThumbnails] = useState<string[]>([]),
     [snapEnabled, setSnapEnabled] = useState(true),
     [markers, setMarkers] = useState<number[]>([]),
@@ -6249,14 +6252,44 @@ function ClipEditorV2({
   useEffect(() => {
     if (!clip) return;
     let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setBaseAudioState("checking");
+      setWaveform([]);
+    });
+    const probePlayableAudio = () => {
+      // AudioContext does not decode every MP4/MOV container even when the
+      // browser can play its audio. Probe playback separately so a codec
+      // limitation is never reported as "no audio".
+      const probe = document.createElement("audio");
+      probe.preload = "metadata";
+      probe.src = clip.url;
+      const finish = (state: BaseAudioState) => {
+        if (!cancelled) setBaseAudioState(state);
+        probe.removeAttribute("src");
+        probe.load();
+      };
+      probe.onloadedmetadata = () =>
+        finish(
+          Number.isFinite(probe.duration) && probe.duration > 0
+            ? "detected"
+            : "none",
+        );
+      probe.onerror = () => finish("none");
+      probe.load();
+    };
     void (async () => {
       try {
         const response = await fetch(clip.url);
         const buffer = await response.arrayBuffer();
         const values = await buildAudioWaveform(buffer, 1200);
-        if (!cancelled) setWaveform(values);
+        if (!cancelled) {
+          setWaveform(values);
+          if (values.length) setBaseAudioState("waveform");
+          else probePlayableAudio();
+        }
       } catch {
-        if (!cancelled) setWaveform([]);
+        probePlayableAudio();
       }
     })();
     return () => {
@@ -7389,6 +7422,72 @@ function ClipEditorV2({
       setNotice("Não foi possível ler o arquivo de legenda.");
     }
   }
+  function appendGeneratedCaptions(
+    segments: Array<{ start: number; end: number; text: string }>,
+  ) {
+    const captions = segments
+      .filter(
+        (item) =>
+          item.text.trim() &&
+          Number.isFinite(item.start) &&
+          Number.isFinite(item.end) &&
+          item.end > item.start,
+      )
+      .map((item): TextLayer => ({
+        ...initialLayer(),
+        id: crypto.randomUUID(),
+        text: item.text.trim(),
+        start: Math.max(0, item.start),
+        end: Math.min(
+          editorTimelineDuration || duration || item.end,
+          Math.max(item.start + 0.18, item.end),
+        ),
+        y: 82,
+        size: 52,
+        effect: "pop",
+        background: true,
+      }));
+    if (!captions.length) throw new Error("Nenhuma fala foi encontrada.");
+    remember();
+    setLayers((items) => [...items, ...captions]);
+    setSelectedId(captions[0].id);
+    setInspectorTab("captions");
+    setNotice(`${captions.length} legendas automáticas adicionadas à timeline.`);
+  }
+  async function generateAutomaticCaptions() {
+    if (!clip || transcribing) return;
+    setTranscribing(true);
+    setNotice("Ouvindo o vídeo e criando legendas sincronizadas…");
+    try {
+      const source = await fetch(clip.url).then((response) => response.blob());
+      const form = new FormData();
+      form.append(
+        "file",
+        new File([source], `${clip.name || "video"}.mp4`, {
+          type: source.type || "video/mp4",
+        }),
+      );
+      form.append("language", "pt");
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: form,
+      });
+      const result = (await response.json()) as {
+        error?: string;
+        segments?: Array<{ start: number; end: number; text: string }>;
+      };
+      if (!response.ok) throw new Error(result.error || "Falha na transcrição.");
+      appendGeneratedCaptions(result.segments || []);
+    } catch (error) {
+      setNotice(
+        error instanceof Error
+          ? error.message
+          : "Não foi possível gerar as legendas deste vídeo.",
+      );
+    } finally {
+      setTranscribing(false);
+    }
+  }
   function exportProject() {
     const persistedAudioTracks = audioTracks.map((track) => ({
       id: track.id,
@@ -7648,7 +7747,7 @@ function ClipEditorV2({
       setNotice("Arquivo de projeto inválido.");
     }
   }
-  function addIllustration(file?: File) {
+  function addIllustration(file?: File, preset: "free" | "reaction" = "free") {
     if (!file) return;
     const kind = file.type.startsWith("image/")
       ? "image"
@@ -7665,11 +7764,11 @@ function ClipEditorV2({
       kind,
       url: URL.createObjectURL(file),
       name: file.name.replace(/\.[^.]+$/, ""),
-      x: 72,
-      y: 30,
-      size: 38,
-      width: 38,
-      height: 28,
+      x: preset === "reaction" ? 76 : 72,
+      y: preset === "reaction" ? 24 : 30,
+      size: preset === "reaction" ? 26 : 38,
+      width: preset === "reaction" ? 26 : 38,
+      height: preset === "reaction" ? 34 : 28,
       start: from,
       end: Math.max(
         from + 0.4,
@@ -7684,8 +7783,19 @@ function ClipEditorV2({
     setSelectedIllustrationId(item.id);
     setSelectedId("");
     setSelectedAudioId("");
+    if (preset === "reaction" && kind === "video") {
+      // The visual stays muted in the canvas; its sound is an independent
+      // mixer channel so it can be balanced, muted or removed without echo.
+      void addAudioTrack(file, undefined, item.end - item.start).then((added) => {
+        if (!added) return;
+        setSelectedIllustrationId(item.id);
+        setSelectedAudioId("");
+      });
+    }
     setNotice(
-      `${kind === "image" ? "Imagem" : "Vídeo"} ilustrativo adicionado à linha do tempo.`,
+      preset === "reaction"
+        ? "Vídeo de reação adicionado. Arraste para qualquer canto e redimensione pelas alças."
+        : `${kind === "image" ? "Imagem" : "Vídeo"} ilustrativo adicionado à linha do tempo.`,
     );
   }
   function removeIllustration() {
@@ -10422,12 +10532,22 @@ function ClipEditorV2({
                           }
                         />
                       </label>
+                      <label className="editor-upload editor-reaction-upload">
+                        <PictureInPicture aria-hidden="true" size={15} /> Vídeo
+                        de reação
+                        <input
+                          type="file"
+                          accept="video/*"
+                          onChange={(event) =>
+                            addIllustration(event.target.files?.[0], "reaction")
+                          }
+                        />
+                      </label>
                     </div>
                     <small className="media-import-help">
-                      <b>Sequência</b> vira um novo clip na faixa VÍDEO, ao lado
-                      do principal. <b>Sobreposição</b> permite colocar webcam,
-                      gameplay ou outro vídeo simultaneamente, arrastar e
-                      redimensionar livremente.
+                      <b>Sequência</b> cria outro trecho. <b>Reação</b> entra
+                      menor sobre o vídeo principal; você pode arrastar para
+                      qualquer lado e redimensionar livremente.
                     </small>
                   </>
                 )}
@@ -12159,8 +12279,8 @@ function ClipEditorV2({
             >
               {(
                 [
-                  { id: "edit", label: "Editar" },
-                  { id: "audio", label: "Áudio" },
+                  { id: "edit", label: "Vídeo" },
+                  { id: "audio", label: "Som do clipe" },
                   { id: "captions", label: "Legendas" },
                 ] as const
               ).map(({ id, label }) => (
@@ -12560,6 +12680,16 @@ function ClipEditorV2({
                   <span>LEGENDAS</span>
                   <b>{selected ? "Texto selecionado" : "Nenhuma legenda"}</b>
                 </header>
+                <button
+                  type="button"
+                  className="pure-primary automatic-captions"
+                  onClick={() => void generateAutomaticCaptions()}
+                  disabled={transcribing}
+                  title="Cria textos sincronizados a partir da fala do vídeo"
+                >
+                  <Captions aria-hidden="true" size={15} />
+                  {transcribing ? "Transcrevendo…" : "Gerar pelo áudio"}
+                </button>
                 {!selected ? (
                   <button
                     type="button"
@@ -13404,7 +13534,11 @@ function ClipEditorV2({
                       ))
                     ) : (
                       <span>
-                        Importe um vídeo com áudio para analisar a forma de onda
+                        {baseAudioState === "checking"
+                          ? "Verificando o áudio do vídeo…"
+                          : baseAudioState === "detected"
+                            ? "Áudio detectado · este codec não expõe a forma de onda"
+                            : "Este arquivo não possui uma faixa de áudio reproduzível"}
                       </span>
                     )}
                     {!hasMontageTimeline &&

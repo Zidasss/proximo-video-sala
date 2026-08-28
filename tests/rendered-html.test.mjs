@@ -219,3 +219,24 @@ test("KLIPAPP Radar finds separate speech blocks and keeps them inside the sourc
   assert.ok(suggestions.some((item) => item.start < 10));
   assert.ok(suggestions.some((item) => item.start >= 25));
 });
+
+test("ships compact editing, reliable audio detection, automatic captions and reaction video", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const transcription = await readFile(new URL("app/api/transcribe/route.ts", root), "utf8");
+  const css = await readFile(new URL("app/styles/klip-pure.css", root), "utf8");
+  assert.match(page, /type BaseAudioState/);
+  assert.match(page, /probePlayableAudio/);
+  assert.match(page, /Áudio detectado · este codec não expõe a forma de onda/);
+  assert.match(page, /function generateAutomaticCaptions/);
+  assert.match(page, /Gerar pelo áudio/);
+  assert.match(page, /Vídeo de reação/);
+  assert.match(page, /preset === "reaction" && kind === "video"/);
+  assert.match(page, /label: "Som do clipe"/);
+  assert.match(transcription, /\/v1\/audio\/transcriptions/);
+  assert.match(transcription, /whisper-1/);
+  assert.match(transcription, /timestamp_granularities\[\]/);
+  assert.match(css, /--pure-panel-w: clamp\(210px, 13vw, 244px\)/);
+  assert.match(css, /\.editor-reaction-upload/);
+  assert.match(css, /background: #e0eee8 !important/);
+  assert.match(css, /background: #276b59 !important/);
+});

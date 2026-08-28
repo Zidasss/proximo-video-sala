@@ -4417,6 +4417,64 @@ html[data-klip-theme] .clip-editor-v2 .editor-tools :where(
   }
 }
 
+/* Timeline edge safety: the dock owns the outer geometry and only its canvas
+   scrolls. This final override keeps every edge visible at browser zoom. */
+html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+  box-sizing: border-box;
+  min-height: 240px;
+  padding: 8px 12px 12px;
+  overflow: hidden;
+  resize: none;
+}
+
+html[data-klip-theme] .clip-editor-v2 .pure-timeline-resizer {
+  top: 0;
+  height: 14px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+  flex: 0 0 54px;
+  min-height: 54px;
+  box-sizing: border-box;
+  padding: 9px 0 7px;
+  overflow: visible;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport {
+  flex: 1 1 auto;
+  min-width: 0;
+  min-height: 0;
+  box-sizing: border-box;
+  padding: 6px 0 10px;
+  overflow: auto;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport .timeline-ruler {
+  top: 0;
+  min-height: 30px;
+  box-sizing: border-box;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport .timeline-lanes {
+  box-sizing: border-box;
+  padding-top: 9px;
+  padding-bottom: 18px;
+}
+
+@media (max-width: 760px) {
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+    min-height: 240px;
+    padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+    flex-basis: 52px;
+    min-height: 52px;
+  }
+}
+
 /* Tablet keeps the compact two-column editor. The contextual inspector is
    intentionally hidden there; on desktop it must remain the third column,
    never an auto-placed second row below the tool dock. */

@@ -546,7 +546,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.22.1";
+const APP_VERSION = "v0.22.2";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",
@@ -10937,7 +10937,7 @@ function ClipEditorV2({
     setTimelineHeight(
       Math.round(
         Math.max(
-          210,
+          240,
           Math.min(
             viewportLimit,
             resize.startHeight + resize.startY - event.clientY,

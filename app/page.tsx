@@ -546,7 +546,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.21.0";
+const APP_VERSION = "v0.22.0";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",

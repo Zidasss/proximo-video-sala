@@ -252,3 +252,20 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(css, /\.codec-audio-indicator/);
   assert.match(css, /bottom: calc\(100% \+ 8px\) !important/);
 });
+
+test("keeps a crash-safe local editor recovery with its media blobs", async () => {
+  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const recovery = await readFile(new URL("lib/editor-recovery.ts", root), "utf8");
+  assert.match(page, /function saveRecoveryNow/);
+  assert.match(page, /collectRecoveryAssets/);
+  assert.match(page, /Projeto recuperado automaticamente/);
+  assert.match(page, /Recuperando seu projeto/);
+  assert.match(page, /window\.addEventListener\("pagehide", flush\)/);
+  assert.match(page, /document\.addEventListener\("visibilitychange", onVisibility\)/);
+  assert.match(page, /Proteção automática ativa/);
+  assert.match(recovery, /klipapp-editor-recovery/);
+  assert.match(recovery, /const ASSET_STORE = "assets"/);
+  assert.match(recovery, /assetStore\.put\(asset\)/);
+  assert.match(recovery, /loadEditorRecoveryAsset/);
+  assert.match(page, /navigator\.storage\?\.persist/);
+});

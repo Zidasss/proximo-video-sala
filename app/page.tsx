@@ -9,6 +9,13 @@ import { SocialAccountsModal } from "../components/SocialAccountsModal";
 import { PublishModal } from "../components/PublishModal";
 import { createClient, isSupabaseConfigured } from "../lib/supabase/client";
 import {
+  clearEditorRecovery,
+  loadEditorRecovery,
+  loadEditorRecoveryAsset,
+  saveEditorRecovery,
+  type EditorRecoveryAsset,
+} from "../lib/editor-recovery";
+import {
   Activity,
   AlignCenter,
   AlignLeft,
@@ -322,6 +329,51 @@ type EditorSnapshot = {
   visualEffectIntensity: number;
   approvedCuts: RadarSuggestion[];
 };
+type EditorRecoveryProject = {
+  version: 1;
+  clip: EditorClip;
+  duration: number;
+  sourceDuration: number;
+  current: number;
+  start: number;
+  end: number;
+  primaryTimelineStart: number;
+  videoFadeIn: number;
+  videoFadeOut: number;
+  videoFadeInAt: number;
+  videoFadeOutAt: number;
+  transitionColor: "black" | "white";
+  transitionKind: Exclude<TransitionKind, "none">;
+  videoTransform: { x: number; y: number; scaleX: number; scaleY: number };
+  exportAspect: ExportAspect;
+  exportResolution: "source" | "1080" | "720";
+  exportFps: number;
+  exportBitrate: "standard" | "high" | "ultra";
+  exportFormat: ExportFormat;
+  audioGain: number;
+  audioEnhance: boolean;
+  audioTracks: AudioTrack[];
+  visualPreset: VisualPreset;
+  visualEffect: VisualEffectApplication | null;
+  visualEffectIntensity: number;
+  selectedSocialPresetId: SocialPresetId;
+  safeGuides: boolean;
+  markers: number[];
+  timelineZoom: number;
+  timelineHeight: number;
+  layers: TextLayer[];
+  illustrations: IllustrationLayer[];
+  radarMode: RadarMode;
+  radarCount: number;
+  radarSuggestions: RadarSuggestion[];
+  approvedCuts: RadarSuggestion[];
+};
+type EditorAutosaveStatus =
+  | "restoring"
+  | "saving"
+  | "saved"
+  | "error"
+  | "idle";
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type StudioPanel = "formats" | "audio" | "effects";
 type EditorTool =
@@ -5992,6 +6044,9 @@ function ClipEditorV2({
     [radarSuggestions, setRadarSuggestions] = useState<RadarSuggestion[]>([]),
     [approvedCuts, setApprovedCuts] = useState<RadarSuggestion[]>([]),
     [activeRadarCutId, setActiveRadarCutId] = useState(""),
+    [autosaveStatus, setAutosaveStatus] =
+      useState<EditorAutosaveStatus>("restoring"),
+    [autosaveSavedAt, setAutosaveSavedAt] = useState(0),
     [contextMenu, setContextMenu] = useState<{
       x: number;
       y: number;
@@ -6205,6 +6260,12 @@ function ClipEditorV2({
   const baseLoopOffset = useRef(0);
   const autoRadarAnalyzed = useRef(false);
   const radarPreviewEnd = useRef<number | null>(null);
+  const autosaveReady = useRef(false);
+  const autosaveRunning = useRef(false);
+  const autosaveQueued = useRef(false);
+  const autosaveTimer = useRef<number | null>(null);
+  const persistedRecoveryAssets = useRef<Set<string>>(new Set());
+  const recoveryObjectUrls = useRef<Set<string>>(new Set());
 
   const releaseManagedAudioUrls = () => {
     managedAudioUrls.current.forEach((url) => URL.revokeObjectURL(url));
@@ -6212,6 +6273,300 @@ function ClipEditorV2({
   };
 
   useEffect(() => () => releaseManagedAudioUrls(), []);
+
+  const buildRecoveryProject = (): EditorRecoveryProject | null =>
+    clip
+      ? {
+          version: 1,
+          clip,
+          duration,
+          sourceDuration,
+          current,
+          start,
+          end,
+          primaryTimelineStart,
+          videoFadeIn,
+          videoFadeOut,
+          videoFadeInAt,
+          videoFadeOutAt,
+          transitionColor,
+          transitionKind,
+          videoTransform,
+          exportAspect,
+          exportResolution,
+          exportFps,
+          exportBitrate,
+          exportFormat,
+          audioGain,
+          audioEnhance,
+          audioTracks,
+          visualPreset,
+          visualEffect,
+          visualEffectIntensity,
+          selectedSocialPresetId,
+          safeGuides,
+          markers,
+          timelineZoom,
+          timelineHeight,
+          layers,
+          illustrations,
+          radarMode,
+          radarCount,
+          radarSuggestions,
+          approvedCuts,
+        }
+      : null;
+
+  async function collectRecoveryAssets(project: EditorRecoveryProject) {
+    const references = [
+      { url: project.clip.url, name: project.clip.name },
+      ...project.illustrations.map((item) => ({
+        url: item.url,
+        name: item.name,
+      })),
+      ...project.audioTracks.map((item) => ({
+        url: item.url,
+        name: item.name,
+      })),
+    ];
+    const assets: EditorRecoveryAsset[] = [];
+    for (const reference of references) {
+      if (
+        !reference.url?.startsWith("blob:") ||
+        persistedRecoveryAssets.current.has(reference.url)
+      )
+        continue;
+      const response = await fetch(reference.url);
+      if (!response.ok) throw new Error("Não foi possível guardar a mídia local.");
+      assets.push({
+        id: reference.url,
+        blob: await response.blob(),
+        name: reference.name,
+      });
+    }
+    return assets;
+  }
+
+  async function saveRecoveryNow() {
+    if (!autosaveReady.current) return;
+    if (autosaveRunning.current) {
+      autosaveQueued.current = true;
+      return;
+    }
+    const project = buildRecoveryProject();
+    if (!project) return;
+    autosaveRunning.current = true;
+    setAutosaveStatus("saving");
+    try {
+      const assets = await collectRecoveryAssets(project);
+      await saveEditorRecovery(project, assets);
+      assets.forEach((asset) =>
+        persistedRecoveryAssets.current.add(asset.id),
+      );
+      const savedAt = Date.now();
+      setAutosaveSavedAt(savedAt);
+      setAutosaveStatus("saved");
+    } catch (error) {
+      console.error("Klip autosave failed", error);
+      setAutosaveStatus("error");
+    } finally {
+      autosaveRunning.current = false;
+      if (autosaveQueued.current) {
+        autosaveQueued.current = false;
+        autosaveTimer.current = window.setTimeout(
+          () => void saveRecoveryNow(),
+          250,
+        );
+      }
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    void (async () => {
+      try {
+        await navigator.storage?.persist?.().catch(() => false);
+        if (initialClip) {
+          autosaveReady.current = true;
+          setAutosaveStatus("idle");
+          return;
+        }
+        const recovery = await loadEditorRecovery<EditorRecoveryProject>();
+        if (cancelled) return;
+        const project = recovery?.project;
+        if (!project?.clip?.url || project.version !== 1) {
+          autosaveReady.current = true;
+          setAutosaveStatus("idle");
+          return;
+        }
+        const hydratedUrls = new Map<string, string>();
+        const hydrateUrl = async (url: string) => {
+          if (!url.startsWith("blob:")) return url;
+          const existing = hydratedUrls.get(url);
+          if (existing) return existing;
+          const asset = await loadEditorRecoveryAsset(url);
+          if (!asset?.blob) return "";
+          const hydrated = URL.createObjectURL(asset.blob);
+          hydratedUrls.set(url, hydrated);
+          recoveryObjectUrls.current.add(hydrated);
+          return hydrated;
+        };
+        const clipUrl = await hydrateUrl(project.clip.url);
+        if (!clipUrl) throw new Error("Mídia principal não encontrada");
+        const restoredIllustrations = (
+          await Promise.all(
+            project.illustrations.map(async (item) => ({
+              ...item,
+              url: await hydrateUrl(item.url),
+            })),
+          )
+        ).filter((item) => Boolean(item.url));
+        const restoredAudioTracks = (
+          await Promise.all(
+            project.audioTracks.map(async (item) => ({
+              ...item,
+              url: await hydrateUrl(item.url),
+            })),
+          )
+        ).filter((item) => Boolean(item.url));
+        if (cancelled) return;
+        history.current = [];
+        future.current = [];
+        setClip({ ...project.clip, url: clipUrl });
+        setDuration(project.duration || 0);
+        setSourceDuration(project.sourceDuration || project.duration || 0);
+        setCurrent(Math.max(0, project.current || 0));
+        setStart(Math.max(0, project.start || 0));
+        setEnd(Math.max(0, project.end || project.duration || 0));
+        setPrimaryTimelineStart(Math.max(0, project.primaryTimelineStart || 0));
+        setVideoFadeIn(Math.max(0, project.videoFadeIn || 0));
+        setVideoFadeOut(Math.max(0, project.videoFadeOut || 0));
+        setVideoFadeInAt(Math.max(0, project.videoFadeInAt || 0));
+        setVideoFadeOutAt(Math.max(0, project.videoFadeOutAt || 0));
+        setTransitionColor(project.transitionColor || "black");
+        setTransitionKind(project.transitionKind || "fade-black");
+        setVideoTransform(project.videoTransform);
+        setExportAspect(project.exportAspect || "original");
+        setExportResolution(project.exportResolution || "source");
+        setExportFps(project.exportFps || 30);
+        setExportBitrate(project.exportBitrate || "high");
+        setExportFormat(project.exportFormat || "mp4");
+        setAudioGain(project.audioGain ?? 100);
+        setAudioEnhance(project.audioEnhance !== false);
+        setAudioTracks(restoredAudioTracks);
+        setVisualPreset(project.visualPreset || "clean");
+        setVisualEffect(project.visualEffect || null);
+        setVisualEffectIntensity(project.visualEffectIntensity ?? 1);
+        setSelectedSocialPresetId(project.selectedSocialPresetId || "custom");
+        setDraftSocialPresetId(project.selectedSocialPresetId || "custom");
+        setSafeGuides(project.safeGuides !== false);
+        setMarkers(project.markers || []);
+        setTimelineZoom(project.timelineZoom || 1);
+        setTimelineHeight(project.timelineHeight || 300);
+        setLayers(project.layers || []);
+        setIllustrations(restoredIllustrations);
+        setRadarMode(project.radarMode || "reels");
+        setRadarCount(project.radarCount || 10);
+        setRadarSuggestions(project.radarSuggestions || []);
+        setApprovedCuts(project.approvedCuts || []);
+        setAutosaveSavedAt(recovery?.savedAt || Date.now());
+        setAutosaveStatus("saved");
+        setNotice("Projeto recuperado automaticamente do armazenamento local.");
+      } catch (error) {
+        console.error("Klip recovery failed", error);
+        setAutosaveStatus("error");
+        setNotice(
+          "Não foi possível recuperar o projeto automático. Você ainda pode abrir um projeto manualmente.",
+        );
+      } finally {
+        if (!cancelled) autosaveReady.current = true;
+      }
+    })();
+    return () => {
+      cancelled = true;
+    };
+    // A recuperação deve acontecer uma vez por abertura do editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const recoverySignature = clip
+    ? JSON.stringify({
+        clip: clip.url,
+        duration,
+        sourceDuration,
+        start,
+        end,
+        primaryTimelineStart,
+        videoFadeIn,
+        videoFadeOut,
+        videoFadeInAt,
+        videoFadeOutAt,
+        transitionColor,
+        transitionKind,
+        videoTransform,
+        exportAspect,
+        exportResolution,
+        exportFps,
+        exportBitrate,
+        exportFormat,
+        audioGain,
+        audioEnhance,
+        audioTracks,
+        visualPreset,
+        visualEffect,
+        visualEffectIntensity,
+        selectedSocialPresetId,
+        safeGuides,
+        markers,
+        timelineZoom,
+        timelineHeight,
+        layers,
+        illustrations,
+        radarMode,
+        radarCount,
+        radarSuggestions,
+        approvedCuts,
+      })
+    : "";
+
+  useEffect(() => {
+    if (!autosaveReady.current || !clip) return;
+    if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+    autosaveTimer.current = window.setTimeout(
+      () => void saveRecoveryNow(),
+      900,
+    );
+    return () => {
+      if (autosaveTimer.current) window.clearTimeout(autosaveTimer.current);
+    };
+    // recoverySignature representa todas as alterações persistentes do editor.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [recoverySignature]);
+
+  useEffect(() => {
+    const flush = () => {
+      if (autosaveReady.current && clip) void saveRecoveryNow();
+    };
+    const onVisibility = () => {
+      if (document.visibilityState === "hidden") flush();
+    };
+    window.addEventListener("pagehide", flush);
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => {
+      window.removeEventListener("pagehide", flush);
+      document.removeEventListener("visibilitychange", onVisibility);
+    };
+    // O fechamento da página usa o estado mais recente disponível.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [clip, recoverySignature]);
+
+  useEffect(
+    () => () => {
+      recoveryObjectUrls.current.forEach((url) => URL.revokeObjectURL(url));
+      recoveryObjectUrls.current.clear();
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!notice) return;
@@ -10266,6 +10621,19 @@ function ClipEditorV2({
     event.currentTarget.releasePointerCapture?.(event.pointerId);
     timelinePanelResize.current = null;
   };
+  const autosaveLabel =
+    autosaveStatus === "restoring"
+      ? "Recuperando projeto…"
+      : autosaveStatus === "saving"
+        ? "Salvando…"
+        : autosaveStatus === "error"
+          ? "Falha no salvamento local"
+          : autosaveSavedAt
+            ? `Salvo localmente · ${new Date(autosaveSavedAt).toLocaleTimeString(
+                "pt-BR",
+                { hour: "2-digit", minute: "2-digit" },
+              )}`
+            : "Proteção automática ativa";
 
   return (
     <main
@@ -10286,7 +10654,7 @@ function ClipEditorV2({
           <div className="editor-project-status" title={clip.name}>
             <b>{clip.name}</b>
             <span>
-              <i /> Salvo localmente
+              <i /> {autosaveLabel}
             </span>
           </div>
         )}
@@ -10515,6 +10883,13 @@ function ClipEditorV2({
           )}
         </div>
       </header>
+      {autosaveStatus === "restoring" && (
+        <div className="editor-recovery-loading" role="status" aria-live="polite">
+          <span aria-hidden="true" />
+          <b>Recuperando seu projeto</b>
+          <small>Vídeos, áudios, cortes e camadas estão sendo restaurados.</small>
+        </div>
+      )}
       {clip && (
         <nav className="mobile-editor-nav" aria-label="Atalhos do editor">
           <a href="#klip-preview">
@@ -10841,6 +11216,9 @@ function ClipEditorV2({
                   </div>
                 )}
                 <div className="project-actions">
+                  <button onClick={() => void saveRecoveryNow()}>
+                    <ShieldCheck aria-hidden="true" size={14} /> Salvar agora
+                  </button>
                   <button onClick={exportProject}>
                     <FileDown aria-hidden="true" size={14} /> Salvar projeto
                   </button>
@@ -10854,6 +11232,21 @@ function ClipEditorV2({
                       }
                     />
                   </label>
+                  <button
+                    className="project-clear-recovery"
+                    onClick={() => {
+                      void clearEditorRecovery().then(() => {
+                        persistedRecoveryAssets.current.clear();
+                        setAutosaveSavedAt(0);
+                        setAutosaveStatus("idle");
+                        setNotice(
+                          "Cópia de recuperação removida. O salvamento automático recomeça na próxima alteração.",
+                        );
+                      });
+                    }}
+                  >
+                    <Trash2 aria-hidden="true" size={14} /> Limpar recuperação
+                  </button>
                 </div>
               </section>
             )}

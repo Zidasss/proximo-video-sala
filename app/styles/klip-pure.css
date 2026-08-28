@@ -4195,3 +4195,43 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-top button.selected {
 html[data-klip-theme="light"] .clip-editor-v2 .caption-progress > i {
   background: #4d5b69 !important;
 }
+/* Local crash recovery */
+.editor-recovery-loading {
+  position: fixed;
+  inset: 0;
+  z-index: 10020;
+  display: grid;
+  place-content: center;
+  justify-items: center;
+  gap: 10px;
+  padding: 24px;
+  color: var(--pure-text, #17181c);
+  text-align: center;
+  background: color-mix(in srgb, var(--pure-bg, #f7f8fb) 88%, transparent);
+  backdrop-filter: blur(18px);
+}
+
+.editor-recovery-loading > span {
+  width: 34px;
+  height: 34px;
+  border: 3px solid color-mix(in srgb, var(--pure-accent, #3273dc) 20%, transparent);
+  border-top-color: var(--pure-accent, #3273dc);
+  border-radius: 999px;
+  animation: klip-recovery-spin 0.8s linear infinite;
+}
+
+.editor-recovery-loading b {
+  font-size: 18px;
+  letter-spacing: -0.02em;
+}
+
+.editor-recovery-loading small {
+  color: var(--pure-muted, #697386);
+  font-size: 13px;
+}
+
+@keyframes klip-recovery-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}

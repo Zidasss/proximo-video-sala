@@ -1882,6 +1882,384 @@ html[data-klip-theme] .clip-editor-v2 :where(.radar-panel, .studio-hub) {
   }
 }
 
+/* --------------------------------------------------------------------------
+   KLIP Pure 0.23 — one authoritative desktop foundation
+
+   The editor used to grow through isolated visual patches. This final layer
+   deliberately owns the shell geometry, control density and timeline palette
+   so the same measurements are used by every tool and both color schemes.
+   -------------------------------------------------------------------------- */
+
+html[data-klip-theme] .clip-editor-v2 {
+  --pure-bg: #f5f5f7;
+  --pure-surface: #ffffff;
+  --pure-surface-2: #f7f7f9;
+  --pure-surface-3: #ececf0;
+  --pure-canvas: #ededf0;
+  --pure-border: #dedee3;
+  --pure-border-strong: #cfcfd5;
+  --pure-text: #1d1d1f;
+  --pure-text-2: #6e6e73;
+  --pure-text-3: #86868b;
+  --pure-blue: #0071e3;
+  --pure-blue-hover: #0068d1;
+  --pure-blue-soft: #e8f2ff;
+  --pure-blue-ink: #075aa8;
+  --pure-header-h: 54px;
+  --pure-rail-w: 58px;
+  --pure-panel-w: clamp(292px, 18vw, 324px);
+  --pure-inspector-w: clamp(276px, 17vw, 304px);
+  --pure-control-h: 34px;
+  --pure-radius-control: 8px;
+  --pure-radius-panel: 12px;
+  --pure-shadow-xs: 0 1px 2px rgb(0 0 0 / 4%);
+  --pure-shadow-sm: 0 10px 30px rgb(0 0 0 / 6%);
+  --pure-shadow-menu: 0 22px 64px rgb(0 0 0 / 14%);
+  font-size: 13px;
+}
+
+html[data-klip-theme="dark"] .clip-editor-v2 {
+  --pure-bg: #0b0b0c;
+  --pure-surface: #171719;
+  --pure-surface-2: #202023;
+  --pure-surface-3: #29292d;
+  --pure-canvas: #101012;
+  --pure-border: #2d2d31;
+  --pure-border-strong: #3b3b40;
+  --pure-text: #f5f5f7;
+  --pure-text-2: #a1a1a6;
+  --pure-text-3: #8e8e93;
+  --pure-blue: #0a84ff;
+  --pure-blue-hover: #3398ff;
+  --pure-blue-soft: rgb(10 132 255 / 14%);
+  --pure-blue-ink: #8fc5ff;
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 .editor-header.editor-header-pro {
+    min-height: var(--pure-header-h);
+    padding: 7px 12px;
+    gap: 10px;
+    border-bottom-color: var(--pure-border);
+    box-shadow: 0 1px 0 rgb(0 0 0 / 3%);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-header .brand {
+    gap: 7px;
+    font-size: 13px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-header .brand svg,
+  html[data-klip-theme] .clip-editor-v2 .editor-header .brand img {
+    max-width: 116px;
+    height: 25px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-header .brand em {
+    color: var(--pure-text-2) !important;
+    font-size: 12px;
+    font-weight: 600;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-project-status {
+    min-height: 34px;
+    padding: 5px 10px;
+    border: 0;
+    background: transparent;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-project-status b { font-size: 12px; }
+  html[data-klip-theme] .clip-editor-v2 .editor-project-status span { font-size: 11px; }
+
+  html[data-klip-theme] .clip-editor-v2 :where(
+    .editor-header-actions > button,
+    .editor-header-actions summary,
+    .pure-history-controls button
+  ) {
+    min-width: var(--pure-control-h);
+    min-height: var(--pure-control-h);
+    padding: 6px 9px;
+    border-radius: var(--pure-radius-control);
+    font-size: 12px;
+    box-shadow: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-header-actions .editor-export {
+    min-width: 112px;
+    min-height: 36px;
+    box-shadow: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) {
+    grid-template-columns:
+      calc(var(--pure-rail-w) + var(--pure-panel-w))
+      minmax(320px, 1fr)
+      minmax(260px, var(--pure-inspector-w)) !important;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed:not(.editor-workspace-empty) {
+    grid-template-columns:
+      var(--pure-rail-w)
+      minmax(320px, 1fr)
+      minmax(260px, var(--pure-inspector-w)) !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-dock {
+    grid-template-columns: var(--pure-rail-w) minmax(0, var(--pure-panel-w));
+    border-radius: var(--pure-radius-panel);
+    box-shadow: none;
+    transition: width 180ms ease, grid-template-columns 180ms ease;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed .editor-tool-dock {
+    grid-template-columns: var(--pure-rail-w) 0;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed .editor-tools {
+    display: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail {
+    gap: 2px;
+    padding: 7px 5px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button,
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button:hover {
+    min-height: 46px;
+    gap: 2px;
+    padding: 4px 2px;
+    border-radius: 8px;
+    transform: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button span { font-size: 16px; }
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button b { font-size: 9px; font-weight: 650; }
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button.active {
+    border-color: color-mix(in srgb, var(--pure-blue) 22%, transparent);
+    background: var(--pure-blue-soft) !important;
+    color: var(--pure-blue) !important;
+    box-shadow: inset 2px 0 0 var(--pure-blue);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tools {
+    padding: 0 14px 18px;
+    font-size: 12px;
+    scrollbar-gutter: stable;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-panel-header {
+    min-height: 52px;
+    margin: 0 -14px 12px;
+    padding: 8px 14px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-panel-header span { font-size: 8px; }
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-panel-header b { font-size: 17px; }
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-section { gap: 10px; }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tools :where(
+    button,
+    .editor-upload,
+    .subtitle-import,
+    .tool-primary-action,
+    select,
+    input:not([type="range"]):not([type="checkbox"]):not([type="radio"]),
+    textarea
+  ) {
+    min-height: var(--pure-control-h);
+    border-radius: var(--pure-radius-control);
+    font-size: 12px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-stage-wrap {
+    padding: 2px 8px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-stage {
+    border-radius: 10px;
+    box-shadow: 0 12px 36px rgb(0 0 0 / 12%);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector {
+    border-radius: var(--pure-radius-panel);
+    box-shadow: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-tabs {
+    min-height: 45px;
+    padding: 0 12px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-tabs button {
+    min-height: 45px;
+    font-size: 11px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-body { padding: 14px; }
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-body > header { margin-bottom: 10px; }
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-body > header b { font-size: 14px; }
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-body details {
+    border-bottom: 1px solid var(--pure-border);
+  }
+  html[data-klip-theme] .clip-editor-v2 .pure-inspector-body summary {
+    min-height: 38px;
+    font-size: 12px;
+  }
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+  min-height: 200px;
+  padding: 7px 10px 10px;
+  border-radius: 12px 12px 0 0;
+  box-shadow: 0 -8px 28px rgb(0 0 0 / 7%);
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+  flex: 0 0 48px;
+  min-height: 48px;
+  gap: 6px;
+  padding: 7px 0 6px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-top > div:first-child > b { font-size: 13px; }
+html[data-klip-theme] .clip-editor-v2 .timeline-top > div:first-child > span { font-size: 10px; }
+
+html[data-klip-theme] .clip-editor-v2 :where(.timeline-top button, .timeline-more summary) {
+  min-height: 32px;
+  padding: 6px 8px;
+  border-radius: 7px;
+  font-size: 11px;
+  font-weight: 600;
+  box-shadow: none;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-top .timeline-play-toggle {
+  min-width: 108px;
+  min-height: 34px;
+  font-size: 12px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-precision {
+  min-height: 32px;
+  padding: 2px;
+  border-radius: 8px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport {
+  padding: 4px 0 8px;
+  border-radius: 8px;
+  scrollbar-gutter: stable both-edges;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport .timeline-ruler {
+  min-height: 25px;
+  font-size: 10px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport .timeline-lanes {
+  gap: 5px;
+  padding-top: 6px;
+  padding-bottom: 12px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-lane {
+  grid-template-columns: 56px minmax(0, 1fr);
+  min-height: 40px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-lane > b {
+  padding-right: 7px;
+  font-size: 9px;
+  font-weight: 650;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-lane .lane-track { min-height: 36px; }
+html[data-klip-theme] .clip-editor-v2 .timeline-item-clip span { font-size: 10px; }
+
+html[data-klip-theme="light"] .clip-editor-v2 :where(.timeline-scroll-viewport, .timeline-canvas, .timeline-lanes) {
+  background: #f8f8fa !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane .lane-track {
+  border-color: #d7d7dc !important;
+  background: #eeeef1 !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 :where(.primary-video-clip, .scene-clip) {
+  border-color: #aab2bd !important;
+  background: #dde2e8 !important;
+  color: #28323d !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 :where(.primary-video-clip, .scene-clip) > span {
+  color: #28323d !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected {
+  background: #f0f6ff !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
+  border-color: #0071e3 !important;
+  box-shadow: 0 0 0 1px #fff, 0 0 0 3px #0071e3 !important;
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-panel-header > button {
+    display: grid;
+    place-items: center;
+    width: 28px;
+    min-width: 28px;
+    height: 28px;
+    min-height: 28px;
+    padding: 0;
+    border: 1px solid transparent;
+    border-radius: 7px;
+    background: transparent;
+    color: var(--pure-text-2);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-panel-header > button:hover {
+    border-color: var(--pure-border);
+    background: var(--pure-surface-3);
+    color: var(--pure-text);
+  }
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-more > div {
+  width: 250px;
+  padding: 7px;
+  border-radius: 10px;
+  box-shadow: var(--pure-shadow-menu);
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) {
+    grid-template-columns:
+      calc(var(--pure-rail-w) + var(--pure-panel-w))
+      minmax(0, 1fr) !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed:not(.editor-workspace-empty) {
+    grid-template-columns: var(--pure-rail-w) minmax(0, 1fr) !important;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  html[data-klip-theme] .clip-editor-v2 *,
+  html[data-klip-theme] .clip-editor-v2 *::before,
+  html[data-klip-theme] .clip-editor-v2 *::after {
+    scroll-behavior: auto !important;
+    transition-duration: .01ms !important;
+    animation-duration: .01ms !important;
+    animation-iteration-count: 1 !important;
+  }
+}
+
 /* Studio density pass ------------------------------------------------------
    The left rail is a creation library; the right side is the selected-clip
    inspector. Keep both visible without making the canvas feel boxed in. */
@@ -4599,4 +4977,73 @@ html[data-klip-theme] .clip-editor-v2 .tool-text-panel .visual-presets button {
     overflow-x: hidden;
     overflow-y: auto;
   }
+}
+
+/* 0.23 cascade lock: later compatibility fixes must not change the premium
+   measurements above. Keep this short and limited to shell geometry. */
+@media (min-width: 1081px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --pure-header-h: 54px;
+    --pure-rail-w: 58px;
+    --pure-panel-w: clamp(292px, 18vw, 324px);
+    --pure-inspector-w: clamp(276px, 17vw, 304px);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace:not(.editor-workspace-empty) {
+    grid-template-columns:
+      calc(var(--pure-rail-w) + var(--pure-panel-w))
+      minmax(320px, 1fr)
+      minmax(260px, var(--pure-inspector-w)) !important;
+    gap: 10px;
+    padding: 10px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed:not(.editor-workspace-empty) {
+    grid-template-columns:
+      var(--pure-rail-w)
+      minmax(320px, 1fr)
+      minmax(260px, var(--pure-inspector-w)) !important;
+  }
+}
+
+@media (min-width: 761px) and (max-width: 1080px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --pure-header-h: 54px;
+    --pure-rail-w: 58px;
+    --pure-panel-w: clamp(270px, 29vw, 304px);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed:not(.editor-workspace-empty) {
+    grid-template-columns: var(--pure-rail-w) minmax(0, 1fr) !important;
+  }
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed .editor-tool-dock {
+    grid-template-columns: var(--pure-rail-w) 0 !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-workspace.tools-collapsed .editor-tools {
+    display: none !important;
+  }
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+  min-height: 200px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+  flex-basis: 48px;
+  min-height: 48px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport {
+  padding-bottom: 8px;
+  scrollbar-gutter: stable both-edges;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
+  border-color: #0071e3 !important;
+  box-shadow: 0 0 0 1px #fff, 0 0 0 3px #0071e3 !important;
 }

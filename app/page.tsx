@@ -546,7 +546,7 @@ type ConnectionStats = {
 const code = (n: number) =>
   Array.from({ length: n }, () => Math.floor(Math.random() * 10)).join("");
 const hostId = (room: string, pin: string) => `proximo-${room}-${pin}`;
-const APP_VERSION = "v0.22.2";
+const APP_VERSION = "v0.23.0";
 const SOCIAL_PRESET_IDS: SocialPresetId[] = [
   "tiktok",
   "instagram-reels",
@@ -6130,7 +6130,7 @@ function ClipEditorV2({
     [visualEffectIntensity, setVisualEffectIntensity] = useState(1),
     [studioPanel, setStudioPanel] = useState<StudioPanel | null>(null),
     [activeTool, setActiveTool] = useState<EditorTool>("media"),
-    [toolPanelOpen, setToolPanelOpen] = useState(false),
+    [toolPanelOpen, setToolPanelOpen] = useState(true),
     [inspectorTab, setInspectorTab] = useState<EditorInspectorTab>("edit"),
     [selectedSocialPresetId, setSelectedSocialPresetId] =
       useState<SocialPresetId>("custom"),
@@ -6169,7 +6169,7 @@ function ClipEditorV2({
     [snapEnabled, setSnapEnabled] = useState(true),
     [markers, setMarkers] = useState<number[]>([]),
     [timelineZoom, setTimelineZoom] = useState(1),
-    [timelineHeight, setTimelineHeight] = useState(300),
+    [timelineHeight, setTimelineHeight] = useState(260),
     [safeGuides, setSafeGuides] = useState(true),
     [sourceAspect, setSourceAspect] = useState(9 / 16),
     [layers, setLayers] = useState<TextLayer[]>([]),
@@ -6649,7 +6649,7 @@ function ClipEditorV2({
         setSafeGuides(project.safeGuides !== false);
         setMarkers(project.markers || []);
         setTimelineZoom(project.timelineZoom || 1);
-        setTimelineHeight(project.timelineHeight || 300);
+        setTimelineHeight(project.timelineHeight || 260);
         setLayers(project.layers || []);
         setIllustrations(restoredIllustrations);
         setRadarMode(project.radarMode || "reels");
@@ -10937,7 +10937,7 @@ function ClipEditorV2({
     setTimelineHeight(
       Math.round(
         Math.max(
-          240,
+          200,
           Math.min(
             viewportLimit,
             resize.startHeight + resize.startY - event.clientY,
@@ -11266,7 +11266,7 @@ function ClipEditorV2({
         </nav>
       )}
       <section
-        className={`editor-workspace ${clip ? "" : "editor-workspace-empty"}`}
+        className={`editor-workspace ${clip ? "" : "editor-workspace-empty"} ${toolPanelOpen ? "" : "tools-collapsed"}`}
       >
         <aside
           className={`editor-tool-dock ${toolPanelOpen ? "panel-open" : ""}`}
@@ -11290,6 +11290,10 @@ function ClipEditorV2({
                 type="button"
                 className={activeTool === tool ? "active" : ""}
                 onClick={() => {
+                  if (activeTool === tool && toolPanelOpen) {
+                    setToolPanelOpen(false);
+                    return;
+                  }
                   setActiveTool(tool);
                   setToolPanelOpen(true);
                 }}
@@ -13572,7 +13576,17 @@ function ClipEditorV2({
             >
               {(
                 [
-                  { id: "edit", label: "Vídeo" },
+                  {
+                    id: inspectorTab,
+                    label:
+                      inspectorTab === "audio"
+                        ? "Som do clipe"
+                        : inspectorTab === "captions"
+                          ? "Legenda"
+                          : selectedIllustration
+                            ? "Camada"
+                            : "Vídeo",
+                  },
                 ] as const
               ).map(({ id, label }) => (
                 <button
@@ -14907,7 +14921,7 @@ function ClipEditorV2({
                       setSelectedAudioId(deselect ? "" : track.id);
                       setSelectedId("");
                       setSelectedIllustrationId("");
-                      setInspectorTab("edit");
+                      setInspectorTab(deselect ? "edit" : "audio");
                       setActiveTool("audio");
                       setToolPanelOpen(true);
                     }}
@@ -14917,7 +14931,7 @@ function ClipEditorV2({
                         setSelectedAudioId(track.id);
                         setSelectedId("");
                         setSelectedIllustrationId("");
-                        setInspectorTab("edit");
+                        setInspectorTab("audio");
                         setActiveTool("audio");
                         setToolPanelOpen(true);
                       }
@@ -15180,6 +15194,7 @@ function ClipEditorV2({
                             setSelectedId(layer.id);
                             setSelectedIllustrationId("");
                             setSelectedAudioId("");
+                            setInspectorTab("captions");
                             setActiveTool("captions");
                             setToolPanelOpen(true);
                             seek(Math.max(start, layer.start));
@@ -15218,6 +15233,7 @@ function ClipEditorV2({
                       setSelectedId(layer.id);
                       setSelectedIllustrationId("");
                       setSelectedAudioId("");
+                      setInspectorTab("edit");
                       seek(Math.max(start, layer.start));
                     }}
                     onKeyDown={(event) => {
@@ -15226,6 +15242,7 @@ function ClipEditorV2({
                         setSelectedId(layer.id);
                         setSelectedIllustrationId("");
                         setSelectedAudioId("");
+                        setInspectorTab("edit");
                         seek(Math.max(start, layer.start));
                       }
                     }}

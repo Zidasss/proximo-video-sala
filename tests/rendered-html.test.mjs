@@ -4,6 +4,20 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
+test("ships compact caption navigation and manual participant styling", async () => {
+  const editor = await readFile(
+    new URL("components/editor/ClipEditor.tsx", root),
+    "utf8",
+  );
+  assert.match(editor, /captionListExpanded/);
+  assert.match(editor, /Legenda atual/);
+  assert.match(editor, /Mostrar todas/);
+  assert.match(editor, /assignCaptionSpeaker/);
+  assert.match(editor, /applyCaptionSpeakerStyle/);
+  assert.match(editor, /O Whisper local não separa vozes/);
+  assert.match(editor, /const prefix = layer\.captionSpeaker/);
+});
+
 async function readProductionSource() {
   const [page, editor] = await Promise.all([
     readFile(new URL("app/page.tsx", root), "utf8"),

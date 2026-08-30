@@ -794,6 +794,11 @@ export default function ClipEditor({
     [transcribing, setTranscribing] = useState(false),
     [transcriptionProgress, setTranscriptionProgress] = useState(0),
     [transcriptionElapsedSeconds, setTranscriptionElapsedSeconds] = useState(0),
+    [captionListExpanded, setCaptionListExpanded] = useState(false),
+    [captionSpeakerStyles, setCaptionSpeakerStyles] = useState({
+      P1: { color: "#ffffff", size: 52, effect: "pop" as TextEffect },
+      P2: { color: "#72d6ff", size: 52, effect: "slide" as TextEffect },
+    }),
     [transcriptionBlock, setTranscriptionBlock] = useState({
       current: 0,
       total: 0,
@@ -925,6 +930,37 @@ export default function ClipEditor({
     (layer.background && layer.effect === "pop" && layer.y >= 75);
   const captionLayers = layers.filter(isCaptionLayer);
   const regularTextLayers = layers.filter((layer) => !isCaptionLayer(layer));
+  const activeCaptionLayer = captionLayers.find(
+    (layer) => current >= layer.start && current < layer.end,
+  );
+  const selectedCaptionLayer = selected && isCaptionLayer(selected) ? selected : undefined;
+  const savedP1Style = captionLayers.find(
+    (layer) => layer.captionSpeaker === "P1",
+  );
+  const savedP2Style = captionLayers.find(
+    (layer) => layer.captionSpeaker === "P2",
+  );
+  const effectiveCaptionSpeakerStyles = {
+    P1: savedP1Style
+      ? {
+          color: savedP1Style.color,
+          size: savedP1Style.size,
+          effect: savedP1Style.effect,
+        }
+      : captionSpeakerStyles.P1,
+    P2: savedP2Style
+      ? {
+          color: savedP2Style.color,
+          size: savedP2Style.size,
+          effect: savedP2Style.effect,
+        }
+      : captionSpeakerStyles.P2,
+  };
+  const visibleCaptionList = captionListExpanded
+    ? captionLayers
+    : [activeCaptionLayer || selectedCaptionLayer || captionLayers[0]].filter(
+        (layer): layer is TextLayer => Boolean(layer),
+      );
   const baseDuration = sourceDuration || duration;
   const montageTimelineClips = approvedCuts
     .filter((item) => item.end - item.start > 0.05)
@@ -2156,6 +2192,38 @@ export default function ClipEditor({
       items.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
     );
   };
+  const assignCaptionSpeaker = (
+    id: string,
+    speaker: TextLayer["captionSpeaker"],
+  ) => {
+    remember();
+    setLayers((items) =>
+      items.map((layer) =>
+        layer.id === id
+          ? {
+              ...layer,
+              captionSpeaker: speaker,
+              ...(speaker ? effectiveCaptionSpeakerStyles[speaker] : {}),
+            }
+          : layer,
+      ),
+    );
+  };
+  const applyCaptionSpeakerStyle = (
+    speaker: "P1" | "P2",
+    patch: Partial<Pick<TextLayer, "color" | "size" | "effect">>,
+  ) => {
+    remember();
+    setCaptionSpeakerStyles((styles) => ({
+      ...styles,
+      [speaker]: { ...styles[speaker], ...patch },
+    }));
+    setLayers((items) =>
+      items.map((layer) =>
+        layer.captionSpeaker === speaker ? { ...layer, ...patch } : layer,
+      ),
+    );
+  };
   const updateIllustration = (
     id: string,
     patch: Partial<IllustrationLayer>,
@@ -2330,9 +2398,10 @@ export default function ClipEditor({
   const effectProgress = (layer: TextLayer, at: number) =>
     Math.max(0, Math.min(1, (at - layer.start) / 0.45));
   const visibleText = (layer: TextLayer, at: number) => {
-    if (layer.effect !== "typewriter") return layer.text;
+    const prefix = layer.captionSpeaker ? `${layer.captionSpeaker}: ` : "";
+    if (layer.effect !== "typewriter") return `${prefix}${layer.text}`;
     const progress = Math.max(0, Math.min(1, (at - layer.start) / 1.6));
-    return layer.text.slice(0, Math.ceil(layer.text.length * progress));
+    return `${prefix}${layer.text.slice(0, Math.ceil(layer.text.length * progress))}`;
   };
   const visualFilter =
     visualPreset === "cinematic"
@@ -7298,31 +7367,122 @@ export default function ClipEditor({
                 >
                   <Plus aria-hidden="true" size={15} /> Adicionar legenda manual
                 </button>
-                {!!layers.length && (
-                  <div
-                    className="caption-tool-list"
-                    aria-label="Legendas do projeto"
-                  >
-                    {layers.map((layer) => (
+                {!!captionLayers.length && (
+                  <>
+                    <details className="caption-speaker-settings">
+                      <summary>Participantes e estilo global</summary>
+                      <small>
+                        O Whisper local não separa vozes. Marque P1 ou P2 em cada fala;
+                        o estilo abaixo é aplicado a todas as legendas dessa pessoa.
+                      </small>
+                      {(["P1", "P2"] as const).map((speaker) => (
+                        <div className="caption-speaker-style" key={speaker}>
+                          <b>{speaker}</b>
+                          <label>
+                            Cor
+                            <input
+                              type="color"
+                              value={effectiveCaptionSpeakerStyles[speaker].color}
+                              onChange={(event) =>
+                                applyCaptionSpeakerStyle(speaker, {
+                                  color: event.target.value,
+                                })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Tamanho
+                            <input
+                              type="range"
+                              min="28"
+                              max="112"
+                              value={effectiveCaptionSpeakerStyles[speaker].size}
+                              onChange={(event) =>
+                                applyCaptionSpeakerStyle(speaker, {
+                                  size: Number(event.target.value),
+                                })
+                              }
+                            />
+                          </label>
+                          <label>
+                            Entrada
+                            <select
+                              value={effectiveCaptionSpeakerStyles[speaker].effect}
+                              onChange={(event) =>
+                                applyCaptionSpeakerStyle(speaker, {
+                                  effect: event.target.value as TextEffect,
+                                })
+                              }
+                            >
+                              <option value="none">Direta</option>
+                              <option value="pop">Pop</option>
+                              <option value="slide">Deslizar</option>
+                              <option value="typewriter">Digitação</option>
+                              <option value="zoom">Zoom</option>
+                              <option value="bounce">Salto</option>
+                            </select>
+                          </label>
+                        </div>
+                      ))}
+                    </details>
+                    <div className="caption-list-heading">
+                      <b>
+                        {captionListExpanded
+                          ? `${captionLayers.length} legendas`
+                          : activeCaptionLayer
+                            ? "Legenda atual"
+                            : "Próxima legenda"}
+                      </b>
                       <button
                         type="button"
-                        key={layer.id}
-                        className={selected?.id === layer.id ? "selected" : ""}
-                        onClick={() => {
-                          setSelectedId(layer.id);
-                          setSelectedAudioId("");
-                          setSelectedIllustrationId("");
-                          setInspectorTab("captions");
-                          seek(layerEditTime(layer));
-                        }}
+                        onClick={() => setCaptionListExpanded((value) => !value)}
+                        aria-expanded={captionListExpanded}
                       >
-                        <span>{layer.text}</span>
-                        <small>
-                          {time(layer.start)}–{time(layer.end)}
-                        </small>
+                        {captionListExpanded ? "Minimizar" : "Mostrar todas"}
                       </button>
-                    ))}
-                  </div>
+                    </div>
+                    <div
+                      className={`caption-tool-list ${captionListExpanded ? "expanded" : "compact"}`}
+                      aria-label="Legendas do projeto"
+                    >
+                      {visibleCaptionList.map((layer) => (
+                        <div
+                          key={layer.id}
+                          className={`caption-tool-row ${selected?.id === layer.id ? "selected" : ""} ${activeCaptionLayer?.id === layer.id ? "active" : ""}`}
+                        >
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setSelectedId(layer.id);
+                              setSelectedAudioId("");
+                              setSelectedIllustrationId("");
+                              setInspectorTab("captions");
+                              seek(layerEditTime(layer));
+                            }}
+                          >
+                            <span>
+                              {layer.captionSpeaker && <b>{layer.captionSpeaker}:</b>} {layer.text}
+                            </span>
+                            <small>{time(layer.start)}–{time(layer.end)}</small>
+                          </button>
+                          <select
+                            aria-label={`Participante da legenda: ${layer.text}`}
+                            value={layer.captionSpeaker || ""}
+                            onChange={(event) =>
+                              assignCaptionSpeaker(
+                                layer.id,
+                                (event.target.value || undefined) as TextLayer["captionSpeaker"],
+                              )
+                            }
+                          >
+                            <option value="">Voz</option>
+                            <option value="P1">P1</option>
+                            <option value="P2">P2</option>
+                          </select>
+                        </div>
+                      ))}
+                    </div>
+                  </>
                 )}
               </section>
             )}

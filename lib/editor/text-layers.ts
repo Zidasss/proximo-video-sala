@@ -18,6 +18,7 @@ export type TextLayer = {
   background: boolean;
   kind?: "text" | "caption";
   captionOrigin?: "generated" | "imported" | "manual";
+  captionSpeaker?: "P1" | "P2";
 };
 
 const TEXT_EFFECTS = [
@@ -100,6 +101,9 @@ export function sanitizeTextLayers(
     )
       ? (item.captionOrigin as TextLayer["captionOrigin"])
       : undefined;
+    const captionSpeaker = ["P1", "P2"].includes(String(item.captionSpeaker))
+      ? (item.captionSpeaker as TextLayer["captionSpeaker"])
+      : undefined;
 
     return [
       {
@@ -122,6 +126,7 @@ export function sanitizeTextLayers(
         background: Boolean(item.background),
         ...(kind ? { kind } : {}),
         ...(captionOrigin ? { captionOrigin } : {}),
+        ...(captionSpeaker ? { captionSpeaker } : {}),
       },
     ];
   });

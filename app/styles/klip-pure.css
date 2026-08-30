@@ -2886,6 +2886,96 @@ html[data-klip-theme] .clip-editor-v2 .caption-tool-list {
   margin-top: 10px;
 }
 
+html[data-klip-theme] .clip-editor-v2 .caption-list-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-top: 12px;
+  color: var(--pure-text-2);
+  font-size: 11px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-list-heading button {
+  min-height: 30px;
+  padding: 4px 8px;
+  color: var(--pure-blue);
+  font-size: 10px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-list.expanded {
+  max-height: 310px;
+  overflow: auto;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-row {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 56px;
+  gap: 5px;
+  padding: 3px;
+  border: 1px solid transparent;
+  border-radius: 9px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-row:is(.selected, .active) {
+  border-color: color-mix(in srgb, var(--pure-blue) 38%, var(--pure-border));
+  background: var(--pure-blue-soft);
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-row > button {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  min-height: 38px;
+  padding: 7px 8px;
+  text-align: left;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-tool-row > select {
+  min-width: 0;
+  padding-inline: 4px;
+  font-size: 10px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-settings {
+  margin-top: 10px;
+  padding: 8px;
+  border: 1px solid var(--pure-border);
+  border-radius: 9px;
+  background: var(--pure-surface-2);
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-settings > small {
+  display: block;
+  margin: 7px 0;
+  color: var(--pure-text-3);
+  font-size: 9px;
+  line-height: 1.35;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-style {
+  display: grid;
+  grid-template-columns: 24px 48px minmax(72px, 1fr) 82px;
+  align-items: end;
+  gap: 6px;
+  margin-top: 7px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-style label {
+  display: grid;
+  gap: 3px;
+  min-width: 0;
+  color: var(--pure-text-3);
+  font-size: 8px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-style input[type="color"] {
+  width: 100%;
+  min-height: 30px;
+}
+
 html[data-klip-theme] .clip-editor-v2 .caption-tool-list > button {
   display: grid;
   grid-template-columns: minmax(0, 1fr) auto;

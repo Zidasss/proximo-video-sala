@@ -32,6 +32,7 @@ test("sanitizes malformed saved captions without losing valid content", () => {
         background: true,
         kind: "caption",
         captionOrigin: "generated",
+        captionSpeaker: "P2",
       },
     ],
     10,
@@ -41,6 +42,7 @@ test("sanitizes malformed saved captions without losing valid content", () => {
   assert.equal(layer.text, "Legenda preservada");
   assert.equal(layer.kind, "caption");
   assert.equal(layer.captionOrigin, "generated");
+  assert.equal(layer.captionSpeaker, "P2");
   assert.equal(layer.start, 2);
   assert.equal(layer.end, 4);
 });

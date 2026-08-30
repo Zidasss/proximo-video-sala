@@ -2943,6 +2943,16 @@ html[data-klip-theme] .clip-editor-v2 .manual-caption-action:disabled {
   opacity: .52;
 }
 
+/* Waveform samples represent equal slices of timeline time. Let every slice
+   grow with the shared timeline canvas instead of capping it at a fixed pixel
+   width; otherwise video zooms while audio appears to stop zooming. */
+html[data-klip-theme] .clip-editor-v2 .waveform-track > i:not(.montage-audio-waveform):not(.codec-audio-indicator),
+html[data-klip-theme] .clip-editor-v2 :where(.montage-audio-waveform, .audio-clip-waveform) > i {
+  flex: 1 1 0 !important;
+  min-width: 0 !important;
+  max-width: none !important;
+}
+
 html[data-klip-theme] .clip-editor-v2 .pure-inspector-tabs {
   grid-template-columns: 1fr !important;
 }

@@ -41,8 +41,22 @@ test("does not render one sparse sample as a complete audio waveform", async () 
     "utf8",
   );
 
-  assert.match(editorSource, /minimumUsableSamples/);
-  assert.match(editorSource, /values\.length < minimumUsableSamples/);
+  assert.match(editorSource, /values\.length !== count/);
   assert.match(editorSource, /values\.length < minimumDisplayedSamples/);
   assert.match(editorSource, /Adicionar legenda manual/);
+});
+
+test("audio waveform uses the same horizontal zoom as the video timeline", async () => {
+  const css = await readFile(
+    new URL("../app/styles/klip-pure.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(
+    css,
+    /waveform-track > i:not\(\.montage-audio-waveform\):not\(\.codec-audio-indicator\)/,
+  );
+  assert.match(css, /flex: 1 1 0 !important/);
+  assert.match(css, /min-width: 0 !important/);
+  assert.match(css, /max-width: none !important/);
 });

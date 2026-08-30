@@ -287,11 +287,10 @@ async function buildContainerAudioWaveform(
   // Some browsers can identify the audio track in very large MP4 files but
   // stop random-access decoding after the first sample. One isolated bar looks
   // like a broken waveform, so keep the honest codec-presence state instead.
-  const minimumUsableSamples = Math.min(
-    24,
-    Math.max(8, Math.round(count * 0.08)),
-  );
-  if (values.length < minimumUsableSamples)
+  // The iterator contract yields one item (including null) per requested
+  // timestamp. A shorter result means decoding stopped midway; rendering that
+  // prefix would falsely make the audio look shorter than the video.
+  if (values.length !== count)
     return { values: [], codec, decodable };
   return { values, codec, decodable };
 }

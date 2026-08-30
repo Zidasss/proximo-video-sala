@@ -6,6 +6,11 @@ const MODEL_HOST = "https://huggingface.co/";
 const ONNX_WASM_PATH = new URL("/_klip-ai/ort/", self.location.origin).href;
 const MODEL_ID = "onnx-community/whisper-tiny";
 const SAMPLE_RATE = 16_000;
+const nativeFetch = self.fetch.bind(self);
+const CPU_MODEL_DTYPE = {
+  encoder_model: "q8",
+  decoder_model_merged: "q4",
+};
 
 let runtimePromise;
 let transcriberPromise;
@@ -25,6 +30,43 @@ function normalizeProgress(value) {
   return Math.max(0, Math.min(100, progress <= 1 ? progress * 100 : progress));
 }
 
+function waitForRetry(delay, signal) {
+  return new Promise((resolve, reject) => {
+    const timeout = setTimeout(resolve, delay);
+    signal?.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timeout);
+        reject(new DOMException("Download cancelado.", "AbortError"));
+      },
+      { once: true },
+    );
+  });
+}
+
+async function fetchWithRetry(input, init) {
+  const signal = init?.signal || (input instanceof Request ? input.signal : undefined);
+  let lastError;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const response = await nativeFetch(input, init);
+      if (
+        response.ok ||
+        ![408, 425, 429, 500, 502, 503, 504].includes(response.status) ||
+        attempt === 2
+      )
+        return response;
+      lastError = new Error(`Download interrompido (${response.status}).`);
+    } catch (error) {
+      if (error?.name === "AbortError") throw error;
+      lastError = error;
+      if (attempt === 2) throw error;
+    }
+    await waitForRetry(750 * 2 ** attempt, signal);
+  }
+  throw lastError || new Error("Não foi possível baixar o modelo local.");
+}
+
 async function getRuntime() {
   runtimePromise ??= import(TRANSFORMERS_MODULE_URL);
   return runtimePromise;
@@ -36,6 +78,7 @@ async function createTranscriber(device) {
   env.remoteHost = MODEL_HOST;
   env.remotePathTemplate = "{model}/resolve/{revision}/";
   env.useBrowserCache = true;
+  env.fetch = fetchWithRetry;
   env.logLevel = "error";
   if (env.backends?.onnx?.wasm) {
     env.backends.onnx.wasm.wasmPaths = ONNX_WASM_PATH;
@@ -50,7 +93,7 @@ async function createTranscriber(device) {
     dtype:
       device === "webgpu"
         ? { encoder_model: "fp32", decoder_model_merged: "q4" }
-        : "fp32",
+        : CPU_MODEL_DTYPE,
     progress_callback: (event) => {
       if (event?.status !== "progress" && event?.status !== "progress_total") return;
       const nextProgress = Math.min(99, normalizeProgress(event.progress));

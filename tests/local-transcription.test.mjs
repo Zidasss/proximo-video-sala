@@ -45,7 +45,7 @@ test("rejects malformed local audio before starting the model", () => {
 test("explains how to recover the local model download on a network failure", () => {
   assert.match(
     friendlyLocalTranscriptionError(new TypeError("Failed to fetch")),
-    /baixar o Whisper pelo KLIP/,
+    /versão compacta do modelo/,
   );
 });
 
@@ -57,6 +57,9 @@ test("loads the Whisper runtime and ONNX engine through the KLIP origin", async 
   assert.match(workerSource, /\/_klip-ai\/runtime/);
   assert.match(workerSource, /\/_klip-ai\/ort\//);
   assert.match(workerSource, /https:\/\/huggingface\.co\//);
+  assert.match(workerSource, /encoder_model: "q8"/);
+  assert.match(workerSource, /decoder_model_merged: "q4"/);
+  assert.match(workerSource, /env\.fetch = fetchWithRetry/);
   assert.doesNotMatch(workerSource, /TRANSFORMERS_MODULE_URL\s*=\s*["']https:/);
 });
 

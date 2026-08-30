@@ -3537,6 +3537,21 @@ body {
   object-fit: contain;
   background: #050605;
 }
+.stage.resenha-solo-stage {
+  grid-template-columns: minmax(0, 1fr);
+  max-width: min(760px, 100%);
+}
+.stage.resenha-solo-stage .mine {
+  order: 1;
+}
+.stage.resenha-solo-stage .shared {
+  grid-column: auto;
+  grid-row: auto;
+  order: 2;
+}
+.stage.resenha-solo-stage .waiting {
+  display: none;
+}
 @media (max-width: 700px) {
   .stage.resenha-with-screen {
     grid-template-columns: 1fr;

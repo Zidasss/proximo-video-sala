@@ -2682,10 +2682,13 @@ export default function Home() {
     setVerticalCameraMode("auto");
     setScreenPosition("bottom");
     setPreviewOpen(true);
-    if (next === "solo") setResenhaMineSize(0.36);
+    if (next === "solo") {
+      setResenhaMineSize(0.36);
+      if (!sharing && !remoteSharing) setShareScreenDialogOpen(true);
+    }
     setNotice(
       next === "solo"
-        ? "Resenha para 1 pessoa: câmera em cima e vídeo embaixo, preenchendo todo o quadro."
+        ? "Resenha Eu + tela: sua câmera fica em cima e a tela compartilhada embaixo, preenchendo todo o quadro."
         : "Resenha para 2 pessoas: duas câmeras empilhadas.",
     );
   }
@@ -4315,7 +4318,7 @@ export default function Home() {
                     </button>
                     <small className="resenha-note">
                       {resenhaLayout === "solo"
-                        ? "Uma câmera em cima e o vídeo compartilhado embaixo, ocupando todo o quadro sem faixa preta."
+                        ? "Sua câmera em cima e a tela compartilhada embaixo, ocupando todo o quadro sem faixa preta."
                         : "Duas câmeras empilhadas em 9:16. Se você compartilhar a tela, ela também entra na prévia e na gravação."}
                     </small>
                     {resenhaMode && (
@@ -4323,14 +4326,15 @@ export default function Home() {
                         <div
                           className="resenha-layout-options"
                           role="group"
-                          aria-label="Quantidade de pessoas no Modo Resenha"
+                          aria-label="Composição do Modo Resenha"
                         >
                           <button
                             type="button"
                             className={resenhaLayout === "solo" ? "selected" : ""}
                             onClick={() => selectResenhaLayout("solo")}
                           >
-                            <User aria-hidden="true" size={14} /> 1 pessoa
+                            <ScreenShare aria-hidden="true" size={14} /> Eu +
+                            tela
                           </button>
                           <button
                             type="button"
@@ -4475,20 +4479,30 @@ export default function Home() {
         className={
           "stage " +
           (resenhaMode
-            ? `resenha-stage${screenActive ? " resenha-with-screen" : ""}`
+            ? `resenha-stage${resenhaLayout === "solo" ? " resenha-solo-stage" : ""}${screenActive ? " resenha-with-screen" : ""}`
             : screenActive
               ? "screen-on"
               : "")
         }
         style={
           resenhaMode
-            ? screenActive
-              ? {
-                  gridTemplateColumns: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
-                }
-              : {
-                  gridTemplateRows: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
-                }
+            ? resenhaLayout === "solo"
+              ? screenActive
+                ? {
+                    gridTemplateColumns: "minmax(0, 1fr)",
+                    gridTemplateRows: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
+                  }
+                : {
+                    gridTemplateColumns: "minmax(0, 1fr)",
+                    gridTemplateRows: "minmax(0, 1fr)",
+                  }
+              : screenActive
+                ? {
+                    gridTemplateColumns: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
+                  }
+                : {
+                    gridTemplateRows: `${resenhaMineSize}fr ${1 - resenhaMineSize}fr`,
+                  }
             : undefined
         }
       >

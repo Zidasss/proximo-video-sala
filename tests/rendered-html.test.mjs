@@ -84,8 +84,8 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   );
   assert.match(page, /resenhaMineSize/);
   assert.match(page, /resenhaLayout === "solo"/);
-  assert.match(page, /Quantidade de pessoas no Modo Resenha/);
-  assert.match(page, /1 pessoa/);
+  assert.match(page, /Composição do Modo Resenha/);
+  assert.match(page, /Eu \+\s*\n?\s*tela/);
   assert.match(page, /câmera em cima e vídeo embaixo/i);
   assert.match(page, /className="preview-screen resenha-solo-video"/);
   assert.match(page, /setRecordingFinishedPrompt\(true\)/);
@@ -449,8 +449,13 @@ test("keeps recorder controls compact and theme-safe", async () => {
   assert.match(page, /camera-effects-more/);
   assert.match(page, /Mais efeitos/);
   assert.match(page, /Fundo animado/);
+  assert.match(page, /Eu \+\s*\n?\s*tela/);
+  assert.match(page, /resenha-solo-stage/);
+  assert.match(page, /if \(!sharing && !remoteSharing\) setShareScreenDialogOpen\(true\)/);
   assert.match(theme, /\.screen-share-dialog > header \{/);
   assert.match(theme, /background: transparent !important/);
   assert.match(theme, /\.screen-audio-option span \{ color: var\(--ka-text\) !important/);
   assert.match(theme, /\.audio-profile-warning button \{[\s\S]*?var\(--ka-brand-soft\)/);
+  assert.match(theme, /\.webcam-text-layer > div button\.selected/);
+  assert.match(theme, /\.menu-switch input \{ accent-color: var\(--ka-brand\) !important/);
 });

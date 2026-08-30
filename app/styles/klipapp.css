@@ -1028,6 +1028,30 @@ html[data-klip-theme] .settings-menu summary::after { color: var(--ka-brand) !im
 html[data-klip-theme] .settings-menu summary small { color: var(--ka-text-muted) !important; }
 html[data-klip-theme] :where(.menu-field, .layout-selects label, .menu-switch) { color: var(--ka-text-secondary) !important; }
 
+html[data-klip-theme] .webcam-text-layer {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .webcam-text-layer b { color: var(--ka-text) !important; }
+html[data-klip-theme] .webcam-text-layer small { color: var(--ka-text-muted) !important; }
+html[data-klip-theme] .webcam-text-layer > div button {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface) !important;
+  color: var(--ka-text-secondary) !important;
+}
+html[data-klip-theme] .webcam-text-layer > div button:hover {
+  border-color: color-mix(in srgb, var(--ka-brand) 44%, var(--ka-border)) !important;
+  background: var(--ka-surface-3) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .webcam-text-layer > div button.selected {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+  box-shadow: var(--ka-glow) !important;
+}
+html[data-klip-theme] .menu-switch input { accent-color: var(--ka-brand) !important; }
+
 html[data-klip-theme] .mic-tuning {
   border-color: var(--ka-border-subtle) !important;
   background: var(--ka-surface-2) !important;

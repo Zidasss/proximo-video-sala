@@ -42,11 +42,22 @@ test("rejects malformed local audio before starting the model", () => {
   );
 });
 
-test("explains the one-time local model download on a network failure", () => {
+test("explains how to recover the local model download on a network failure", () => {
   assert.match(
     friendlyLocalTranscriptionError(new TypeError("Failed to fetch")),
-    /Conecte-se uma vez/,
+    /baixar o Whisper pelo KLIP/,
   );
+});
+
+test("loads the Whisper runtime and ONNX engine through the KLIP origin", async () => {
+  const workerSource = await import("node:fs/promises").then(({ readFile }) =>
+    readFile(new URL("../public/workers/local-transcription.js", import.meta.url), "utf8"),
+  );
+
+  assert.match(workerSource, /\/_klip-ai\/runtime/);
+  assert.match(workerSource, /\/_klip-ai\/ort\//);
+  assert.match(workerSource, /https:\/\/huggingface\.co\//);
+  assert.doesNotMatch(workerSource, /TRANSFORMERS_MODULE_URL\s*=\s*["']https:/);
 });
 
 test("falls back from WebGPU and reuses the CPU worker for later blocks", async (t) => {

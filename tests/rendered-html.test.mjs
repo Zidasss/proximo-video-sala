@@ -373,7 +373,7 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(localTranscription, /LocalTranscriptionSession/);
   assert.match(localTranscription, /worker \?\?= new Worker/);
   assert.match(localTranscription, /parseFloat32Wave/);
-  assert.match(localWorker, /@huggingface\/transformers@4\.2\.0/);
+  assert.match(localWorker, /\/_klip-ai\/runtime/);
   assert.match(localWorker, /onnx-community\/whisper-tiny/);
   assert.match(localWorker, /useBrowserCache = true/);
   assert.match(localWorker, /navigator\.gpu\.requestAdapter\(\)/);

@@ -284,6 +284,15 @@ async function buildContainerAudioWaveform(
       sample.close();
     }
   }
+  // Some browsers can identify the audio track in very large MP4 files but
+  // stop random-access decoding after the first sample. One isolated bar looks
+  // like a broken waveform, so keep the honest codec-presence state instead.
+  const minimumUsableSamples = Math.min(
+    24,
+    Math.max(8, Math.round(count * 0.08)),
+  );
+  if (values.length < minimumUsableSamples)
+    return { values: [], codec, decodable };
   return { values, codec, decodable };
 }
 
@@ -1714,6 +1723,13 @@ export default function ClipEditor({
             // unavailable to WebCodecs and AudioContext.
           }
         }
+        // A decoder may return one token sample for an unsupported or
+        // zero-duration container. Never promote that artifact to a waveform.
+        const minimumDisplayedSamples = Math.min(
+          24,
+          Math.max(8, Math.round(waveformBars * 0.08)),
+        );
+        if (values.length < minimumDisplayedSamples) values = [];
         if (!cancelled) {
           waveformReady = values.length > 0;
           setWaveform(values);
@@ -7202,8 +7218,13 @@ export default function ClipEditor({
                     }
                   />
                 </label>
-                <button type="button" onClick={addLayer} disabled={!clip}>
-                  <Plus aria-hidden="true" size={14} /> Legenda manual
+                <button
+                  type="button"
+                  className="manual-caption-action"
+                  onClick={addLayer}
+                  disabled={!clip}
+                >
+                  <Plus aria-hidden="true" size={15} /> Adicionar legenda manual
                 </button>
                 {!!layers.length && (
                   <div

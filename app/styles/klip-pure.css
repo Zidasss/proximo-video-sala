@@ -2911,6 +2911,38 @@ html[data-klip-theme] .clip-editor-v2 .captions-srt-upload {
   margin-block: 8px;
 }
 
+html[data-klip-theme] .clip-editor-v2 .manual-caption-action {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+  width: 100%;
+  min-height: 42px;
+  padding: 8px 10px;
+  border: 1px solid var(--pure-border-strong) !important;
+  border-radius: 9px !important;
+  background: var(--pure-surface) !important;
+  box-shadow: var(--pure-shadow-xs) !important;
+  color: var(--pure-text) !important;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+html[data-klip-theme] .clip-editor-v2 .manual-caption-action svg {
+  color: var(--pure-blue);
+}
+
+html[data-klip-theme] .clip-editor-v2 .manual-caption-action:is(:hover, :focus-visible) {
+  border-color: var(--pure-blue) !important;
+  background: var(--pure-blue-soft) !important;
+  color: var(--pure-blue-ink) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .manual-caption-action:disabled {
+  cursor: not-allowed;
+  opacity: .52;
+}
+
 html[data-klip-theme] .clip-editor-v2 .pure-inspector-tabs {
   grid-template-columns: 1fr !important;
 }
@@ -4812,12 +4844,17 @@ html[data-klip-theme] .clip-editor-v2 .caption-progress > span {
 html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator {
   position: absolute;
   inset: 5px 8px;
+  flex: none;
   display: flex;
   align-items: center;
   gap: 2px;
+  width: auto;
+  min-width: 0;
+  max-width: none;
   overflow: hidden;
   border-radius: 5px;
   background: transparent !important;
+  opacity: 1 !important;
 }
 
 html[data-klip-theme] .clip-editor-v2 .caption-lane > b {
@@ -4869,6 +4906,11 @@ html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator > i {
   border-radius: 99px;
   background: var(--pure-green-ink);
   opacity: .58;
+}
+
+html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator > svg {
+  flex: 0 0 auto;
+  color: var(--pure-green-ink);
 }
 
 html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator > span {

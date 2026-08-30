@@ -4,6 +4,7 @@ import {
   sourceTimeToTimelineTime,
   timelineTimeToSourceTime,
 } from "../lib/editor/timeline.ts";
+import { readFile } from "node:fs/promises";
 
 test("preview and export share timeline time after trim and move", () => {
   const range = { sourceStart: 12, sourceEnd: 20, timelineStart: 4 };
@@ -32,4 +33,16 @@ test("conversion clamps seek and render drift to range boundaries", () => {
   assert.equal(sourceTimeToTimelineTime(range, 14.2), 10);
   assert.equal(timelineTimeToSourceTime(range, 5), 10);
   assert.equal(timelineTimeToSourceTime(range, 11), 14);
+});
+
+test("does not render one sparse sample as a complete audio waveform", async () => {
+  const editorSource = await readFile(
+    new URL("../components/editor/ClipEditor.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(editorSource, /minimumUsableSamples/);
+  assert.match(editorSource, /values\.length < minimumUsableSamples/);
+  assert.match(editorSource, /values\.length < minimumDisplayedSamples/);
+  assert.match(editorSource, /Adicionar legenda manual/);
 });

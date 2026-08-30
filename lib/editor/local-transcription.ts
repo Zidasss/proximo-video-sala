@@ -92,7 +92,7 @@ export function friendlyLocalTranscriptionError(error: unknown) {
   const message = error instanceof Error ? error.message : String(error || "");
   if (/abort|cancel/i.test(message)) return "Transcrição cancelada. Nenhuma legenda foi alterada.";
   if (/fetch|network|load failed|importing a module/i.test(message))
-    return "O modelo local ainda não está no navegador. Conecte-se uma vez para baixar o Whisper e tente novamente; depois ele fica armazenado neste dispositivo.";
+    return "Não foi possível baixar o Whisper pelo KLIP. Verifique a conexão, desative bloqueadores apenas para este site e tente novamente; depois do primeiro download, o modelo fica armazenado neste dispositivo.";
   if (/memory|allocation|out of bounds/i.test(message))
     return "O navegador ficou sem memória para este bloco. Feche abas pesadas e tente novamente; o vídeo original continua intacto.";
   return message || "O modelo local não conseguiu transcrever este trecho.";

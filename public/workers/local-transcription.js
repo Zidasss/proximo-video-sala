@@ -1,5 +1,9 @@
-const TRANSFORMERS_MODULE_URL =
-  "https://cdn.jsdelivr.net/npm/@huggingface/transformers@4.2.0";
+const TRANSFORMERS_MODULE_URL = new URL(
+  "/_klip-ai/runtime",
+  self.location.origin,
+).href;
+const MODEL_HOST = "https://huggingface.co/";
+const ONNX_WASM_PATH = new URL("/_klip-ai/ort/", self.location.origin).href;
 const MODEL_ID = "onnx-community/whisper-tiny";
 const SAMPLE_RATE = 16_000;
 
@@ -29,9 +33,12 @@ async function getRuntime() {
 async function createTranscriber(device) {
   const { env, pipeline } = await getRuntime();
   env.allowLocalModels = false;
+  env.remoteHost = MODEL_HOST;
+  env.remotePathTemplate = "{model}/resolve/{revision}/";
   env.useBrowserCache = true;
   env.logLevel = "error";
   if (env.backends?.onnx?.wasm) {
+    env.backends.onnx.wasm.wasmPaths = ONNX_WASM_PATH;
     env.backends.onnx.wasm.numThreads = self.crossOriginIsolated
       ? Math.max(1, Math.min(4, navigator.hardwareConcurrency || 1))
       : 1;

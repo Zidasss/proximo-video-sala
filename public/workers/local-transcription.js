@@ -4,7 +4,7 @@ const TRANSFORMERS_MODULE_URL = new URL(
 ).href;
 const MODEL_HOST = "https://huggingface.co/";
 const ONNX_WASM_PATH = new URL("/_klip-ai/ort/", self.location.origin).href;
-const MODEL_ID = "onnx-community/whisper-tiny";
+const MODEL_ID = "onnx-community/whisper-base";
 const SAMPLE_RATE = 16_000;
 const nativeFetch = self.fetch.bind(self);
 const CPU_MODEL_DTYPE = {
@@ -179,10 +179,11 @@ async function transcribe(message) {
     send({ type: "status", phase: "transcribing", progress: 100, device });
     const output = await transcriber(audio, {
       return_timestamps: true,
-      chunk_length_s: 28,
-      stride_length_s: 4,
+      chunk_length_s: 30,
+      stride_length_s: 5,
       task: message.targetLanguage === "en" ? "translate" : "transcribe",
       ...(message.targetLanguage === "pt" ? { language: "portuguese" } : {}),
+      temperature: 0,
     });
     const segments = normalizeOutput(output, audio.length / SAMPLE_RATE);
     send({ type: "result", segments, device });

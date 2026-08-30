@@ -117,7 +117,7 @@ export function createLocalTranscriptionSession(
       throw new Error(
         "Este navegador não oferece Web Workers para a transcrição local.",
       );
-    worker ??= new Worker("/workers/local-transcription.js", {
+    worker ??= new Worker("/workers/local-transcription.js?v=pt-br-2", {
       type: "module",
       name: "klip-local-whisper",
     });

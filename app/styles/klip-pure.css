@@ -4998,9 +4998,10 @@ html[data-klip-theme] .clip-editor-v2 .caption-lane .lane-track {
 }
 
 html[data-klip-theme] .clip-editor-v2 .caption-clip {
+  position: absolute;
   top: 6px;
   bottom: 6px;
-  min-width: 22px;
+  min-width: 8px;
   padding: 0 8px;
   border: 1px solid color-mix(in srgb, var(--klip-blue, #2d6cdf) 45%, transparent);
   border-radius: 7px;

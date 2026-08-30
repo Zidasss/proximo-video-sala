@@ -358,10 +358,13 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /Português \(Brasil\) · sem tradução/);
   assert.match(page, /captionTargetLanguage === "pt" \? "pt" : detectedLanguage/);
   assert.doesNotMatch(page, /form\.append\("language", "pt"\)/);
+  assert.match(css, /\.caption-clip\s*\{[\s\S]*?position:\s*absolute/);
+  assert.match(localTranscription, /local-transcription\.js\?v=pt-br-2/);
   assert.match(transcription, /\/v1\/audio\/transcriptions/);
   assert.match(transcription, /whisper-1/);
   assert.match(transcription, /timestamp_granularities\[\]/);
   assert.match(transcription, /targetLanguage/);
+  assert.match(transcription, /targetLanguage === "pt"[\s\S]*?\? "pt"/);
   assert.match(transcription, /detectedLanguage/);
   assert.match(transcription, /translationWarning/);
   assert.match(transcription, /TRANSCRIPTION_CHUNK_MAX_BYTES/);

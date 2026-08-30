@@ -140,14 +140,20 @@ export async function POST(request: NextRequest) {
         { status: 413 },
       );
 
+    const targetLanguage = String(
+      incoming.get("targetLanguage") || "original",
+    )
+      .trim()
+      .toLowerCase();
     const form = new FormData();
     form.append("file", file, file.name || "klip-video.mp4");
     form.append("model", "whisper-1");
     form.append("response_format", "verbose_json");
     form.append("timestamp_granularities[]", "segment");
-    const requestedLanguage = String(incoming.get("language") || "")
-      .trim()
-      .toLowerCase();
+    const requestedLanguage =
+      targetLanguage === "pt"
+        ? "pt"
+        : String(incoming.get("language") || "").trim().toLowerCase();
     if (requestedLanguage && requestedLanguage !== "auto")
       form.append("language", requestedLanguage);
 
@@ -199,7 +205,6 @@ export async function POST(request: NextRequest) {
         },
         { status: 422 },
       );
-    const targetLanguage = String(incoming.get("targetLanguage") || "original");
     const translationLanguage = TRANSLATION_LANGUAGES[targetLanguage];
     let translated =
       targetLanguage === "original" || targetLanguage === detectedLanguage;

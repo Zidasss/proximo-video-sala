@@ -52,14 +52,13 @@ async function fetchWithTimeout(
   input: Parameters<typeof fetch>[0],
   init: Parameters<typeof fetch>[1],
   timeoutMs: number,
+  parentSignal?: AbortSignal,
 ) {
-  const controller = new AbortController();
-  const timer = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    return await fetch(input, { ...init, signal: controller.signal });
-  } finally {
-    clearTimeout(timer);
-  }
+  const timeoutSignal = AbortSignal.timeout(timeoutMs);
+  const signal = parentSignal
+    ? AbortSignal.any([parentSignal, timeoutSignal])
+    : timeoutSignal;
+  return fetch(input, { ...init, signal });
 }
 
 async function readJson<T>(response: Response): Promise<T> {
@@ -160,6 +159,7 @@ export async function POST(request: NextRequest) {
         body: form,
       },
       TRANSCRIPTION_TIMEOUT_MS,
+      request.signal,
     );
     const result = await readJson<OpenAiTranscription>(response);
     if (!response.ok) {
@@ -237,6 +237,7 @@ export async function POST(request: NextRequest) {
             }),
           },
           TRANSLATION_TIMEOUT_MS,
+          request.signal,
         );
         const translationResult = await readJson<{
           error?: { message?: string };

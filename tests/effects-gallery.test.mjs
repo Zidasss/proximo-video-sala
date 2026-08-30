@@ -34,9 +34,16 @@ test("publishes the four creator-facing categories and required effects", () => 
     assert.ok(names.has(required), `missing ${required}`);
   }
 
-  assert.equal(new Set(VISUAL_EFFECTS.map((effect) => effect.id)).size, VISUAL_EFFECTS.length);
+  assert.equal(
+    new Set(VISUAL_EFFECTS.map((effect) => effect.id)).size,
+    VISUAL_EFFECTS.length,
+  );
   assert.ok(VISUAL_EFFECTS.every((effect) => effect.durationMs > 0));
-  assert.ok(VISUAL_EFFECTS.every((effect) => Object.keys(effect.exportParameters).length > 0));
+  assert.ok(
+    VISUAL_EFFECTS.every(
+      (effect) => Object.keys(effect.exportParameters).length > 0,
+    ),
+  );
 });
 
 test("generates deterministic, normalized frames for canvas export", () => {
@@ -66,7 +73,9 @@ test("exposes portable parameters rather than CSS-only effect names", () => {
   assert.equal(getVisualEffectFrame("soft-zoom", 0).transform.scale, 1);
   assert.equal(getVisualEffectFrame("soft-zoom", 0.5).transform.scale, 1.075);
 
-  const filter = visualEffectFrameToCssFilter(getVisualEffectFrame("black-and-white", 0.2));
+  const filter = visualEffectFrameToCssFilter(
+    getVisualEffectFrame("black-and-white", 0.2),
+  );
   assert.match(filter, /grayscale\(1\.0000\)/);
   assert.match(filter, /contrast\(1\.1800\)/);
 });
@@ -96,14 +105,19 @@ test("draws a frame through the canvas adapter and returns its parameters", () =
   );
 
   assert.equal(frame.color.saturation, 1.42);
-  assert.ok(calls.some((call) => Array.isArray(call) && call[0] === "drawImage"));
+  assert.ok(
+    calls.some((call) => Array.isArray(call) && call[0] === "drawImage"),
+  );
   assert.match(context.filter, /saturate\(1\.4200\)/);
 });
 
 test("ships current-media previews with accessible and mobile controls", async () => {
   const [component, css] = await Promise.all([
     readFile(new URL("components/effects/EffectsGallery.tsx", root), "utf8"),
-    readFile(new URL("components/effects/EffectsGallery.module.css", root), "utf8"),
+    readFile(
+      new URL("components/effects/EffectsGallery.module.css", root),
+      "utf8",
+    ),
   ]);
 
   assert.match(component, /media\.type === "video"/);
@@ -113,6 +127,9 @@ test("ships current-media previews with accessible and mobile controls", async (
   assert.match(component, /role="tabpanel"/);
   assert.match(component, /aria-live="polite"/);
   assert.match(component, /playsInline/);
+  assert.match(component, /previewingEffectId === effect\.id/);
+  assert.match(component, /element\.pause\(\)/);
+  assert.doesNotMatch(component, /\sautoPlay/);
   assert.match(css, /@media \(max-width: 680px\)/);
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\[data-effect="glitch"\]/);

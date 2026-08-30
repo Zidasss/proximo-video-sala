@@ -4,9 +4,17 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
+async function readProductionSource() {
+  const [page, editor] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("components/editor/ClipEditor.tsx", root), "utf8"),
+  ]);
+  return `${page}\n${editor}`;
+}
+
 test("keeps the KLIPAPP editor interaction model in the production source", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
-  assert.match(page, /function ClipEditorV2/);
+  const page = await readProductionSource();
+  assert.match(page, /export default function ClipEditor/);
   assert.match(page, /function beginTimelineItemDrag/);
   assert.match(page, /function beginPrimaryTimelineMove/);
   assert.match(page, /function movePrimaryTimelineMove/);
@@ -39,14 +47,32 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /function togglePreviewPlayback/);
   assert.match(page, /function playTimelineAt/);
   assert.match(page, /const baseLoopOffset/);
-  assert.match(page, /onEnded=\{\(\) => \{ if \(!exportInProgress\.current\) void playTimelineAt/);
+  assert.match(
+    page,
+    /onEnded=\{\(\) => \{\s*if \(!exportInProgress\.current\)\s*void playTimelineAt/,
+  );
   assert.match(page, /const hasFriendVideo/);
-  assert.match(page, /A recording in a solo room is a proper one-person composition/);
-  assert.match(page, /type VerticalCameraMode = "auto" \| "solo-mine" \| "solo-friend"/);
-  assert.match(page, /TikTok solo ativo: somente a sua câmera será gravada em 9:16/);
+  assert.match(
+    page,
+    /A recording in a solo room is a proper one-person composition/,
+  );
+  assert.match(
+    page,
+    /type VerticalCameraMode = "auto" \| "solo-mine" \| "solo-friend"/,
+  );
+  assert.match(
+    page,
+    /TikTok solo ativo: somente a sua câmera será gravada em 9:16/,
+  );
   assert.match(page, /resenhaMineSize/);
-  assert.match(page, /Minha câmera · \{Math\.round\(resenhaMineSize \* 100\)\}%/);
-  assert.match(page, /A tela compartilhada também será gravada exatamente como aparece aqui/);
+  assert.match(
+    page,
+    /Minha câmera · \{Math\.round\(resenhaMineSize \* 100\)\}%/,
+  );
+  assert.match(
+    page,
+    /A tela compartilhada também será gravada exatamente como aparece aqui/,
+  );
   assert.match(page, /Câmera \/ placa de captura/);
   assert.match(page, /Placa de captura —/);
   assert.match(page, /Capturar janela, tela ou jogo/);
@@ -61,30 +87,51 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /solo: Boolean\(track\.solo\)/);
   assert.match(page, /function placeholderCameraStream/);
   assert.match(page, /Sala aberta sem mídia/);
-  assert.match(page, /Nunca abra uma segunda chamada ao alterar fundo\/overlay/);
-  assert.match(page, /const stream = processedLocal\.current \|\| local\.current/);
+  assert.match(
+    page,
+    /Nunca abra uma segunda chamada ao alterar fundo\/overlay/,
+  );
+  assert.match(
+    page,
+    /const stream = processedLocal\.current \|\| local\.current/,
+  );
   assert.match(page, /let loadedOverlaySource = cameraOverlayRef\.current/);
   assert.match(page, /if \(background\) image\.src = background/);
   assert.match(page, /Nunca faça composição em 4K implícita/);
   assert.match(page, /Usando IA Premium compatível com este navegador/);
-  assert.match(page, /const usePremiumMatting = mattingQuality === "premium" && !isMacOS/);
+  assert.match(
+    page,
+    /const usePremiumMatting = mattingQuality === "premium" && !isMacOS/,
+  );
   assert.match(page, /"Identity:0", "Identity_1:0", "Identity_2:0"/);
   assert.match(page, /frameRate: \{ ideal: 30, max: 30 \}/);
   assert.match(page, /shareScreenDialogOpen/);
   assert.match(page, /Tela com áudio/);
   assert.match(page, /Somente imagem/);
   assert.match(page, /systemAudio: includeAudio \? "include" : "exclude"/);
-  assert.match(page, /setRemoteScreenAudioActive\(shared\.getAudioTracks\(\)\.length > 0\)/);
+  assert.match(
+    page,
+    /setRemoteScreenAudioActive\(shared\.getAudioTracks\(\)\.length > 0\)/,
+  );
   assert.match(page, /firstMaskTimer = window\.setTimeout/);
   assert.match(page, /const macPort: SegmentPort/);
   assert.match(page, /Recorte compatível com macOS pronto/);
   assert.match(page, /selfie_multiclass_256x256\.tflite/);
-  assert.match(page, /worker\.postMessage\(\{ type: "segment", frame: inferenceCanvas/);
+  assert.match(
+    page,
+    /worker\.postMessage\(\{ type: "segment", frame: inferenceCanvas/,
+  );
   assert.match(page, /Carregando e preparando o GIF/);
   assert.match(page, /inferenceDuration > 95 \? 384/);
   assert.match(page, /Vídeo e enquadramento/);
-  assert.match(page, /Arraste diretamente na prévia ou faça o ajuste preciso aqui/);
-  assert.match(page, /Horizontal · \{Math\.round\(selectedIllustration\.x\)\}%/);
+  assert.match(
+    page,
+    /Arraste diretamente na prévia ou faça o ajuste preciso aqui/,
+  );
+  assert.match(
+    page,
+    /Horizontal · \{Math\.round\(selectedIllustration\.x\)\}%/,
+  );
   assert.match(page, /event\.key === "Delete"/);
   assert.match(page, /event\.code === "Space"/);
   assert.match(page, /function buildAudioWaveform/);
@@ -103,7 +150,13 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /\[5, 10, 15, 20, 30\]/);
   assert.match(page, /function dropTransitionOnRadarClip/);
   assert.match(page, /application\/x-klip-transition", "flash"/);
-  assert.match(page, /application\/x-klip-transition", "dissolve"/);
+  assert.match(page, /application\/x-klip-transition", "noise"/);
+  const transitions = await readFile(
+    new URL("lib/editor/transitions.ts", root),
+    "utf8",
+  );
+  assert.match(transitions, /if \(value === "dissolve"\) return "noise"/);
+  assert.doesNotMatch(page, /> Dissolver/);
   assert.match(page, /application\/x-klip-transition", "wipe"/);
   assert.match(page, /activeTransitionKind === "wipe"/);
   assert.match(page, /timeline-split-toggle/);
@@ -146,9 +199,18 @@ test("ships direct-manipulation styling for desktop and mobile timelines", async
   assert.match(css, /\.transition-shelf button:hover/);
   assert.match(css, /Studio control-density pass/);
   assert.match(css, /--studio-panel-w: 350px/);
-  assert.match(css, /\.editor-tool-rail button:hover \{ min-height: 50px/);
-  assert.match(css, /\.editor-tools \.tool-primary-action \{ min-height: 36px/);
-  assert.match(css, /\.editor-tools \.tool-primary-action \{ min-height: 44px; font-size: 14px/);
+  assert.match(
+    css,
+    /\.editor-tool-rail button:hover\s*\{[^}]*min-height:\s*50px/,
+  );
+  assert.match(
+    css,
+    /\.editor-tools \.tool-primary-action\s*\{[^}]*min-height:\s*36px/,
+  );
+  assert.match(
+    css,
+    /\.editor-tools \.tool-primary-action\s*\{[^}]*min-height:\s*44px;[^}]*font-size:\s*14px/,
+  );
   assert.match(css, /@media \(max-width: 760px\)/);
 });
 
@@ -169,7 +231,7 @@ test("ships the image-to-GIF motion studio and camera background handoff", async
 });
 
 test("ships the local KLIPAPP Radar review flow without replacing the source", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const page = await readProductionSource();
   const radar = await readFile(new URL("app/klip-radar.ts", root), "utf8");
   const css = await readFile(new URL("app/globals.css", root), "utf8");
   assert.match(page, /autoAnalyze\?: boolean/);
@@ -183,11 +245,13 @@ test("ships the local KLIPAPP Radar review flow without replacing the source", a
   assert.match(page, /\? "ÁUDIOS" : "ÁUDIO"/);
   assert.match(page, /vídeo e áudio independentes/);
   assert.match(page, /Salvar este clipe sem remover os demais/);
-  assert.match(page, /exportReel\(false, \[item\]/);
+  assert.match(page, /exportReel\(\s*false,\s*\[item\]/);
   assert.match(page, /Os demais clipes continuam na montagem/);
   assert.match(page, /const exportInProgress = useRef\(false\)/);
   assert.match(page, /if \(exportInProgress\.current\) return/);
   assert.match(page, /finishExportWithError/);
+  assert.match(page, /const hasExportAudio/);
+  assert.match(page, /mimeForExport\(exportFormat, hasExportAudio\)/);
   assert.match(page, /document\.body\.appendChild\(link\)/);
   assert.match(page, /function advanceMontageRange/);
   assert.match(page, /fades automáticos/);
@@ -210,19 +274,26 @@ test("ships the local KLIPAPP Radar review flow without replacing the source", a
 test("KLIPAPP Radar finds separate speech blocks and keeps them inside the source", async () => {
   const { buildSuggestions } = await import("../app/klip-radar.ts");
   const levels = Array.from({ length: 900 }, () => 0.002);
-  for (let index = 50; index < 300; index += 1) levels[index] = index % 37 < 3 ? 0.004 : 0.08;
-  for (let index = 380; index < 680; index += 1) levels[index] = index % 43 < 4 ? 0.004 : 0.065;
+  for (let index = 50; index < 300; index += 1)
+    levels[index] = index % 37 < 3 ? 0.004 : 0.08;
+  for (let index = 380; index < 680; index += 1)
+    levels[index] = index % 43 < 4 ? 0.004 : 0.065;
   const suggestions = buildSuggestions(levels, 0.1, 90, "reels", 5);
   assert.ok(suggestions.length >= 2);
   assert.ok(suggestions.every((item) => item.start >= 0 && item.end <= 90));
-  assert.ok(suggestions.every((item) => item.end > item.start && item.selected));
+  assert.ok(
+    suggestions.every((item) => item.end > item.start && item.selected),
+  );
   assert.ok(suggestions.some((item) => item.start < 10));
   assert.ok(suggestions.some((item) => item.start >= 25));
 });
 
 test("ships compact editing, reliable audio detection, automatic captions and reaction video", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
-  const transcription = await readFile(new URL("app/api/transcribe/route.ts", root), "utf8");
+  const page = await readProductionSource();
+  const transcription = await readFile(
+    new URL("app/api/transcribe/route.ts", root),
+    "utf8",
+  );
   const css = await readFile(new URL("app/styles/klip-pure.css", root), "utf8");
   assert.match(page, /type BaseAudioState/);
   assert.match(page, /probePlayableAudio/);
@@ -267,28 +338,35 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(css, /background: #356b58 !important/);
   assert.match(css, /\.codec-audio-indicator/);
   assert.match(css, /bottom: calc\(100% \+ 8px\) !important/);
-  assert.match(
-    css,
-    /minmax\(244px, var\(--pure-inspector-w\)\) !important/,
-  );
+  assert.match(css, /minmax\(244px, var\(--pure-inspector-w\)\) !important/);
   assert.match(css, /@media \(min-width: 761px\) and \(max-width: 1080px\)/);
   assert.match(css, /\.timeline-safe-area-help/);
   assert.match(css, /\.caption-detected-language/);
 });
 
 test("keeps a crash-safe local editor recovery with its media blobs", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
-  const recovery = await readFile(new URL("lib/editor-recovery.ts", root), "utf8");
+  const page = await readProductionSource();
+  const recovery = await readFile(
+    new URL("lib/editor-recovery.ts", root),
+    "utf8",
+  );
   assert.match(page, /function saveRecoveryNow/);
+  assert.match(page, /MAX_PROJECT_FILE_BYTES/);
+  assert.match(page, /project\.version > PROJECT_FILE_VERSION/);
   assert.match(page, /collectRecoveryAssets/);
   assert.match(page, /Projeto recuperado automaticamente/);
   assert.match(page, /Recuperando seu projeto/);
   assert.match(page, /window\.addEventListener\("pagehide", flush\)/);
-  assert.match(page, /document\.addEventListener\("visibilitychange", onVisibility\)/);
+  assert.match(
+    page,
+    /document\.addEventListener\("visibilitychange", onVisibility\)/,
+  );
   assert.match(page, /Proteção automática ativa/);
   assert.match(recovery, /klipapp-editor-recovery/);
   assert.match(recovery, /const ASSET_STORE = "assets"/);
   assert.match(recovery, /assetStore\.put\(asset\)/);
   assert.match(recovery, /loadEditorRecoveryAsset/);
+  assert.match(recovery, /assetStore\.getAllKeys\(\)/);
+  assert.match(recovery, /retained\.has\(String\(id\)\)/);
   assert.match(page, /navigator\.storage\?\.persist/);
 });

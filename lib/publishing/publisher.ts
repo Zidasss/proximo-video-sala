@@ -8,6 +8,7 @@ import {
 import { publishToYouTubeShorts } from "./youtube";
 import { publishToTikTok } from "./tiktok";
 import { publishToInstagramReels } from "./instagram";
+import { MAX_PUBLISH_VIDEO_BYTES, normalizeVideoContentType } from "./upload-policy";
 
 export interface TokenRefreshEvent {
   platform: SocialPlatform;
@@ -19,6 +20,25 @@ export interface TokenRefreshEvent {
 export interface PublishOptions {
   /** Notificado quando uma plataforma renova o token no meio do envio. */
   onTokenRefreshed?: (event: TokenRefreshEvent) => void;
+}
+
+async function loadSharedVideoBuffer(videoUrl: string) {
+  const response = await fetch(videoUrl);
+  if (!response.ok) {
+    throw new Error(
+      `Falha ao baixar o vídeo para publicação: ${response.status} ${response.statusText}`,
+    );
+  }
+  const announcedSize = Number(response.headers.get("content-length") || 0);
+  if (announcedSize > MAX_PUBLISH_VIDEO_BYTES) {
+    throw new Error("O vídeo ultrapassa o limite de 500 MB para publicação.");
+  }
+  const buffer = Buffer.from(await response.arrayBuffer());
+  if (!buffer.byteLength) throw new Error("O arquivo de vídeo está vazio.");
+  if (buffer.byteLength > MAX_PUBLISH_VIDEO_BYTES) {
+    throw new Error("O vídeo ultrapassa o limite de 500 MB para publicação.");
+  }
+  return buffer;
 }
 
 export async function publishToAllPlatforms(
@@ -33,6 +53,7 @@ export async function publishToAllPlatforms(
     hashtags,
     visibility,
     videoUrl,
+    videoContentType,
     coverTimeSeconds,
   } = request;
 
@@ -46,9 +67,52 @@ export async function publishToAllPlatforms(
   };
 
   const tasks: Promise<{ platform: SocialPlatform; result: PlatformPublishStatus }>[] = [];
+  const mockMode = process.env.ENABLE_PUBLISH_MOCK === "true";
+  const byteUploadRequested = !mockMode && platforms.some((platform) => {
+    const account = connectedAccounts[platform];
+    return (
+      (platform === "youtube" || platform === "tiktok") &&
+      Boolean(account?.accessToken) &&
+      account?.accessToken !== "mock-token"
+    );
+  });
+  let sharedVideoBuffer: Buffer | undefined;
+  let sharedVideoError = "";
+  if (byteUploadRequested && videoUrl) {
+    try {
+      sharedVideoBuffer = await loadSharedVideoBuffer(videoUrl);
+    } catch (error) {
+      sharedVideoError =
+        error instanceof Error ? error.message : "Não foi possível ler o vídeo.";
+    }
+  }
+  const normalizedContentType =
+    normalizeVideoContentType(videoContentType) || "video/mp4";
 
   for (const platform of platforms) {
     const account = connectedAccounts[platform];
+    if ((!account || !account.accessToken) && !mockMode) {
+      results[platform] = {
+        platform,
+        status: "failed",
+        progress: 0,
+        errorMessage: `Conecte sua conta do ${platform === "youtube" ? "YouTube" : platform === "tiktok" ? "TikTok" : "Instagram"} antes de publicar.`,
+      };
+      continue;
+    }
+    if (
+      sharedVideoError &&
+      (platform === "youtube" || platform === "tiktok") &&
+      account?.accessToken !== "mock-token"
+    ) {
+      results[platform] = {
+        platform,
+        status: "failed",
+        progress: 0,
+        errorMessage: sharedVideoError,
+      };
+      continue;
+    }
     const accessToken = account?.accessToken || "mock-token";
 
     // Conta marcada como expirada e sem renovação possível: falha explícita,
@@ -74,6 +138,8 @@ export async function publishToAllPlatforms(
           hashtags,
           visibility,
           videoUrl,
+          videoBuffer: sharedVideoBuffer,
+          videoContentType: normalizedContentType,
           onTokenRefreshed: (token) =>
             options.onTokenRefreshed?.({
               platform: "youtube",
@@ -90,6 +156,8 @@ export async function publishToAllPlatforms(
           hashtags,
           visibility,
           videoUrl,
+          videoBuffer: sharedVideoBuffer,
+          videoContentType: normalizedContentType,
           coverTimestampMs:
             typeof coverTimeSeconds === "number"
               ? Math.round(coverTimeSeconds * 1000)

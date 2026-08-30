@@ -213,6 +213,8 @@ export default function ProfilePage() {
 
   const handleOAuthConnect = (platform: string) => {
     setActionLoading(platform);
+    // OAuth exige navegação completa para seguir o redirecionamento externo.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.href = `/api/auth/connect/${platform}?next=/perfil`;
   };
 

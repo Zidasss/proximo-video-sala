@@ -1,3 +1,8 @@
+import {
+  normalizeOptionalTransitionKind,
+  type AppliedTransitionKind,
+} from "../lib/editor/transitions.ts";
+
 export type RadarMode = "reels" | "shorts" | "highlights";
 
 export type RadarSuggestion = {
@@ -15,9 +20,68 @@ export type RadarSuggestion = {
   fadeOut?: number;
   fadeInColor?: "black" | "white";
   fadeOutColor?: "black" | "white";
-  fadeInKind?: "fade-black" | "fade-white" | "flash" | "dissolve" | "wipe";
-  fadeOutKind?: "fade-black" | "fade-white" | "flash" | "dissolve" | "wipe";
+  fadeInKind?: AppliedTransitionKind;
+  fadeOutKind?: AppliedTransitionKind;
 };
+
+const MAX_STORED_RADAR_CUTS = 200;
+
+export function sanitizeRadarSuggestions(
+  value: unknown,
+  mediaDuration: number,
+  createId: () => string = () => crypto.randomUUID(),
+): RadarSuggestion[] {
+  if (!Array.isArray(value)) return [];
+  const duration = Math.max(
+    0.05,
+    Number.isFinite(mediaDuration) ? mediaDuration : 0.05,
+  );
+  const clamp = (number: number, minimum: number, maximum: number) =>
+    Math.max(minimum, Math.min(maximum, number));
+  const finite = (candidate: unknown, fallback: number) => {
+    const number = Number(candidate);
+    return Number.isFinite(number) ? number : fallback;
+  };
+  const text = (candidate: unknown, fallback: string, maximum: number) =>
+    typeof candidate === "string" ? candidate.slice(0, maximum) : fallback;
+
+  return value.slice(0, MAX_STORED_RADAR_CUTS).flatMap((candidate) => {
+    if (!candidate || typeof candidate !== "object") return [];
+    const item = candidate as Record<string, unknown>;
+    const start = clamp(finite(item.start, 0), 0, duration - 0.05);
+    const end = clamp(finite(item.end, duration), start + 0.05, duration);
+    if (end <= start) return [];
+    const clipDuration = end - start;
+    const timelineStart = finite(item.timelineStart, -1);
+    const fadeInKind = normalizeOptionalTransitionKind(item.fadeInKind);
+    const fadeOutKind = normalizeOptionalTransitionKind(item.fadeOutKind);
+
+    return [
+      {
+        id:
+          typeof item.id === "string" && item.id.trim()
+            ? item.id.slice(0, 128)
+            : createId(),
+        start,
+        end,
+        ...(timelineStart >= 0
+          ? { timelineStart: clamp(timelineStart, 0, 86_400) }
+          : {}),
+        score: Math.round(clamp(finite(item.score, 50), 0, 100)),
+        title: text(item.title, "Trecho restaurado", 160),
+        reason: text(item.reason, "Trecho preservado do projeto salvo.", 600),
+        selected: item.selected !== false,
+        source: item.source === "voice" ? "voice" : "fallback",
+        fadeIn: clamp(finite(item.fadeIn, 0), 0, clipDuration / 2),
+        fadeOut: clamp(finite(item.fadeOut, 0), 0, clipDuration / 2),
+        fadeInColor: item.fadeInColor === "white" ? "white" : "black",
+        fadeOutColor: item.fadeOutColor === "white" ? "white" : "black",
+        ...(fadeInKind ? { fadeInKind } : {}),
+        ...(fadeOutKind ? { fadeOutKind } : {}),
+      },
+    ];
+  });
+}
 
 type VoiceRun = { start: number; end: number; energy: number };
 
@@ -33,7 +97,10 @@ const overlapRatio = (first: RadarSuggestion, second: RadarSuggestion) => {
     0,
     Math.min(first.end, second.end) - Math.max(first.start, second.start),
   );
-  return intersection / Math.max(0.01, Math.min(first.end - first.start, second.end - second.start));
+  return (
+    intersection /
+    Math.max(0.01, Math.min(first.end - first.start, second.end - second.start))
+  );
 };
 
 function titleFor(duration: number, energy: number, pauses: number) {
@@ -51,9 +118,13 @@ export function buildSuggestions(
   wanted: number,
 ) {
   const sorted = [...levels].sort((a, b) => a - b),
-    percentile = (ratio: number) => sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ratio))] || 0,
+    percentile = (ratio: number) =>
+      sorted[Math.min(sorted.length - 1, Math.floor(sorted.length * ratio))] ||
+      0,
     noiseFloor = percentile(0.2),
-    average = levels.reduce((sum, value) => sum + value, 0) / Math.max(1, levels.length),
+    average =
+      levels.reduce((sum, value) => sum + value, 0) /
+      Math.max(1, levels.length),
     loudReference = Math.max(0.012, percentile(0.88)),
     threshold = Math.max(0.0065, noiseFloor * 2.4, average * 0.3),
     speech = levels.map((value) => value >= threshold),
@@ -102,11 +173,24 @@ export function buildSuggestions(
       if (length > profile.maximum) break;
       if (length < profile.minimum) continue;
       const speechRatio = Math.min(1, spoken / Math.max(0.01, length)),
-        normalizedEnergy = Math.min(1, energy / Math.max(0.001, spoken * loudReference)),
-        durationFit = Math.max(0, 1 - Math.abs(length - profile.ideal) / profile.ideal),
+        normalizedEnergy = Math.min(
+          1,
+          energy / Math.max(0.001, spoken * loudReference),
+        ),
+        durationFit = Math.max(
+          0,
+          1 - Math.abs(length - profile.ideal) / profile.ideal,
+        ),
         pauses = Math.max(0, last - first),
         score = Math.round(
-          Math.min(98, 45 + speechRatio * 24 + durationFit * 17 + normalizedEnergy * 9 + Math.min(3, pauses)),
+          Math.min(
+            98,
+            45 +
+              speechRatio * 24 +
+              durationFit * 17 +
+              normalizedEnergy * 9 +
+              Math.min(3, pauses),
+          ),
         ),
         reason = `${Math.round(speechRatio * 100)}% de fala, ${pauses ? `${pauses} pausa${pauses > 1 ? "s" : ""} natural${pauses > 1 ? "is" : ""}` : "entrada e saída limpas"} e duração boa para ${mode === "reels" ? "Reels" : mode === "shorts" ? "Shorts" : "destaque"}.`;
       candidates.push({
@@ -128,18 +212,28 @@ export function buildSuggestions(
   if (mediaDuration >= profile.minimum) {
     const windowLength = Math.min(profile.ideal, mediaDuration),
       windowStep = Math.max(profile.minimum * 0.7, windowLength * 0.45);
-    for (let from = 0; from < mediaDuration - profile.minimum / 2; from += windowStep) {
+    for (
+      let from = 0;
+      from < mediaDuration - profile.minimum / 2;
+      from += windowStep
+    ) {
       const to = Math.min(mediaDuration, from + windowLength),
         firstBlock = Math.max(0, Math.floor(from / blockSeconds)),
         lastBlock = Math.min(levels.length, Math.ceil(to / blockSeconds)),
         sampleLevels = levels.slice(firstBlock, lastBlock);
       if (to - from < profile.minimum || !sampleLevels.length) continue;
-      const speechBlocks = sampleLevels.filter((value) => value >= threshold).length,
+      const speechBlocks = sampleLevels.filter(
+          (value) => value >= threshold,
+        ).length,
         speechRatio = speechBlocks / sampleLevels.length;
       if (speechRatio < 0.34) continue;
-      const meanEnergy = sampleLevels.reduce((sum, value) => sum + value, 0) / sampleLevels.length,
+      const meanEnergy =
+          sampleLevels.reduce((sum, value) => sum + value, 0) /
+          sampleLevels.length,
         normalizedEnergy = Math.min(1, meanEnergy / loudReference),
-        score = Math.round(Math.min(96, 43 + speechRatio * 30 + normalizedEnergy * 15)),
+        score = Math.round(
+          Math.min(96, 43 + speechRatio * 30 + normalizedEnergy * 15),
+        ),
         cleanStart = Math.max(0, Math.round(from * 100) / 100),
         cleanEnd = Math.min(mediaDuration, Math.round(to * 100) / 100);
       candidates.push({
@@ -160,30 +254,45 @@ export function buildSuggestions(
     .sort((first, second) => second.score - first.score)
     .forEach((candidate) => {
       if (chosen.length >= wanted) return;
-      if (chosen.every((item) => overlapRatio(item, candidate) < 0.58)) chosen.push(candidate);
+      if (chosen.every((item) => overlapRatio(item, candidate) < 0.58))
+        chosen.push(candidate);
     });
 
   // Arquivos sem áudio decodificável ou com fala praticamente contínua ainda
   // recebem pontos de revisão, mas são identificados como estimativas.
   if (chosen.length < Math.min(2, wanted) && mediaDuration >= 6) {
     const fallbackLength = Math.min(profile.ideal, mediaDuration),
-      slots = Math.max(1, Math.min(wanted, Math.ceil(mediaDuration / fallbackLength)));
+      slots = Math.max(
+        1,
+        Math.min(wanted, Math.ceil(mediaDuration / fallbackLength)),
+      );
     for (let index = 0; index < slots && chosen.length < wanted; index += 1) {
-      const start = Math.max(0, Math.min(mediaDuration - fallbackLength, (mediaDuration / slots) * index)),
+      const start = Math.max(
+          0,
+          Math.min(
+            mediaDuration - fallbackLength,
+            (mediaDuration / slots) * index,
+          ),
+        ),
         candidate: RadarSuggestion = {
           id: crypto.randomUUID(),
           start: Math.round(start * 100) / 100,
-          end: Math.round(Math.min(mediaDuration, start + fallbackLength) * 100) / 100,
+          end:
+            Math.round(Math.min(mediaDuration, start + fallbackLength) * 100) /
+            100,
           score: 58,
           title: "Trecho para revisão",
           reason: "Estimativa pela duração; confira a fala antes de aplicar.",
           selected: true,
           source: "fallback",
         };
-      if (chosen.every((item) => overlapRatio(item, candidate) < 0.7)) chosen.push(candidate);
+      if (chosen.every((item) => overlapRatio(item, candidate) < 0.7))
+        chosen.push(candidate);
     }
   }
-  return chosen.sort((first, second) => first.start - second.start).slice(0, wanted);
+  return chosen
+    .sort((first, second) => first.start - second.start)
+    .slice(0, wanted);
 }
 
 export async function analyzeClipForRadar(
@@ -203,13 +312,21 @@ export async function analyzeClipForRadar(
       blockSeconds = 0.1,
       blockSize = Math.max(1, Math.floor(decoded.sampleRate * blockSeconds)),
       levels: number[] = [],
-      channels = Array.from({ length: decoded.numberOfChannels }, (_, index) => decoded.getChannelData(index));
+      channels = Array.from({ length: decoded.numberOfChannels }, (_, index) =>
+        decoded.getChannelData(index),
+      );
     for (let offset = 0; offset < decoded.length; offset += blockSize) {
       let sum = 0,
         samples = 0;
-      for (let point = offset; point < Math.min(decoded.length, offset + blockSize); point += 4) {
+      for (
+        let point = offset;
+        point < Math.min(decoded.length, offset + blockSize);
+        point += 4
+      ) {
         let mixed = 0;
-        channels.forEach((channel) => { mixed += channel[point] || 0; });
+        channels.forEach((channel) => {
+          mixed += channel[point] || 0;
+        });
         mixed /= Math.max(1, channels.length);
         sum += mixed * mixed;
         samples += 1;
@@ -217,7 +334,10 @@ export async function analyzeClipForRadar(
       levels.push(Math.sqrt(sum / Math.max(1, samples)));
       if (levels.length % 160 === 0) {
         const ratio = offset / Math.max(1, decoded.length);
-        onProgress(25 + Math.round(ratio * 48), "Mapeando ritmo e intensidade…");
+        onProgress(
+          25 + Math.round(ratio * 48),
+          "Mapeando ritmo e intensidade…",
+        );
         await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
       }
     }
@@ -225,7 +345,9 @@ export async function analyzeClipForRadar(
     const suggestions = buildSuggestions(
       levels,
       blockSeconds,
-      Number.isFinite(decoded.duration) && decoded.duration > 0 ? decoded.duration : mediaDuration,
+      Number.isFinite(decoded.duration) && decoded.duration > 0
+        ? decoded.duration
+        : mediaDuration,
       mode,
       wanted,
     );

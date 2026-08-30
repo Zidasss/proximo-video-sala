@@ -31,6 +31,10 @@ export interface PlatformPublishStatus {
 
 export interface MultiPublishRequest {
   videoUrl?: string;
+  /** MIME real do arquivo; evita anunciar WebM/MOV como MP4 nas APIs. */
+  videoContentType?: string;
+  /** Objeto temporário criado pelo upload direto e removido após publicar. */
+  uploadPath?: string;
   videoBase64?: string;
   videoBlobName?: string;
   title: string;

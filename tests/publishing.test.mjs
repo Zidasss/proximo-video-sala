@@ -103,3 +103,29 @@ test("Unified publisher orchestrates all 3 platforms concurrently", async () => 
   assert.equal(response.results.tiktok.status, "published");
   assert.equal(response.results.instagram.status, "published");
 });
+
+test("Unified publisher never reports fake success without connected accounts", async () => {
+  const previousMock = process.env.ENABLE_PUBLISH_MOCK;
+  delete process.env.ENABLE_PUBLISH_MOCK;
+  try {
+    const response = await publishToAllPlatforms(
+      {
+        title: "Publicação real",
+        hashtags: [],
+        platforms: ["youtube", "tiktok", "instagram"],
+        visibility: "private",
+        videoUrl: "https://example.com/video.mp4",
+      },
+      { youtube: undefined, tiktok: undefined, instagram: undefined },
+    );
+
+    assert.equal(response.success, false);
+    assert.equal(response.results.youtube.status, "failed");
+    assert.equal(response.results.tiktok.status, "failed");
+    assert.equal(response.results.instagram.status, "failed");
+    assert.match(response.results.youtube.errorMessage, /Conecte sua conta/);
+  } finally {
+    if (previousMock === undefined) delete process.env.ENABLE_PUBLISH_MOCK;
+    else process.env.ENABLE_PUBLISH_MOCK = previousMock;
+  }
+});

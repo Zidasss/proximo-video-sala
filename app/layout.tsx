@@ -1,7 +1,6 @@
 import type { Metadata, Viewport } from "next";
 import "./globals.css";
 import "./styles/klipapp.css";
-import "./styles/klip-pure.css";
 
 import { ThemeScript } from "../components/theme/ThemeScript";
 import accessibilityStyles from "../components/theme/Accessibility.module.css";

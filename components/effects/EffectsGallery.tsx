@@ -1,7 +1,7 @@
 "use client";
 
 import Image from "next/image";
-import React, { useMemo, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { ArrowRight } from "lucide-react";
 import {
   createVisualEffectApplication,
@@ -45,7 +45,22 @@ type PreviewStyle = React.CSSProperties & {
   "--preview-filter": string;
 };
 
-function EffectMedia({ media }: { media: EffectPreviewMedia | null }) {
+function EffectMedia({
+  media,
+  playing,
+}: {
+  media: EffectPreviewMedia | null;
+  playing: boolean;
+}) {
+  const videoRef = useRef<HTMLVideoElement>(null);
+
+  useEffect(() => {
+    const element = videoRef.current;
+    if (!element) return;
+    if (playing) void element.play().catch(() => undefined);
+    else element.pause();
+  }, [playing]);
+
   if (!media) {
     return (
       <span className={styles.emptyMedia} aria-hidden="true">
@@ -58,12 +73,12 @@ function EffectMedia({ media }: { media: EffectPreviewMedia | null }) {
   if (media.type === "video") {
     return (
       <video
+        ref={videoRef}
         className={styles.media}
         src={media.src}
         poster={media.poster}
         muted
         loop
-        autoPlay
         playsInline
         preload="metadata"
         aria-hidden="true"
@@ -87,10 +102,12 @@ function EffectPreview({
   effect,
   media,
   intensity,
+  playing,
 }: {
   effect: VisualEffectDefinition;
   media: EffectPreviewMedia | null;
   intensity: number;
+  playing: boolean;
 }) {
   const sampleFrame = getVisualEffectFrame(effect.id, 0.36, intensity);
   const previewStyle: PreviewStyle = {
@@ -106,7 +123,7 @@ function EffectPreview({
       aria-hidden="true"
     >
       <span className={styles.mediaMotion}>
-        <EffectMedia media={media} />
+        <EffectMedia media={media} playing={playing} />
       </span>
       <span className={styles.rgbGhost} />
       <span className={styles.scanlines} />
@@ -135,14 +152,15 @@ export function EffectsGallery({
     selectedEffectId ?? null,
   );
   const [announcement, setAnnouncement] = useState("");
+  const [previewingEffectId, setPreviewingEffectId] =
+    useState<VisualEffectId | null>(null);
 
   const visibleEffects = useMemo(
     () => VISUAL_EFFECTS.filter((effect) => effect.category === activeCategory),
     [activeCategory],
   );
-  const effectiveSelection = selectedEffectId === undefined
-    ? localSelection
-    : selectedEffectId;
+  const effectiveSelection =
+    selectedEffectId === undefined ? localSelection : selectedEffectId;
 
   const applicationFor = (effect: VisualEffectDefinition) =>
     createVisualEffectApplication(effect.id, intensity);
@@ -155,8 +173,9 @@ export function EffectsGallery({
   };
 
   const handlePreview = (effect: VisualEffectDefinition | null) => {
-    if (disabled || !onPreview) return;
-    onPreview(effect, effect ? applicationFor(effect) : null);
+    if (disabled) return;
+    setPreviewingEffectId(effect?.id ?? null);
+    onPreview?.(effect, effect ? applicationFor(effect) : null);
   };
 
   const handleTabKey = (
@@ -166,13 +185,20 @@ export function EffectsGallery({
     if (!["ArrowLeft", "ArrowRight", "Home", "End"].includes(event.key)) return;
     event.preventDefault();
     let target = index;
-    if (event.key === "ArrowLeft") target = (index - 1 + VISUAL_EFFECT_CATEGORIES.length) % VISUAL_EFFECT_CATEGORIES.length;
-    if (event.key === "ArrowRight") target = (index + 1) % VISUAL_EFFECT_CATEGORIES.length;
+    if (event.key === "ArrowLeft")
+      target =
+        (index - 1 + VISUAL_EFFECT_CATEGORIES.length) %
+        VISUAL_EFFECT_CATEGORIES.length;
+    if (event.key === "ArrowRight")
+      target = (index + 1) % VISUAL_EFFECT_CATEGORIES.length;
     if (event.key === "Home") target = 0;
     if (event.key === "End") target = VISUAL_EFFECT_CATEGORIES.length - 1;
     const category = VISUAL_EFFECT_CATEGORIES[target];
     setActiveCategory(category.id);
-    const tabs = event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>("[role='tab']");
+    const tabs =
+      event.currentTarget.parentElement?.querySelectorAll<HTMLButtonElement>(
+        "[role='tab']",
+      );
     tabs?.[target]?.focus();
   };
 
@@ -193,7 +219,11 @@ export function EffectsGallery({
         </span>
       </header>
 
-      <div className={styles.tabs} role="tablist" aria-label="Categorias de efeitos">
+      <div
+        className={styles.tabs}
+        role="tablist"
+        aria-label="Categorias de efeitos"
+      >
         {VISUAL_EFFECT_CATEGORIES.map((category, index) => {
           const selected = category.id === activeCategory;
           return (
@@ -236,14 +266,24 @@ export function EffectsGallery({
               onBlur={() => handlePreview(null)}
               onPointerEnter={() => handlePreview(effect)}
               onPointerLeave={() => handlePreview(null)}
+              onPointerDown={() => handlePreview(effect)}
+              onPointerUp={() => handlePreview(null)}
+              onPointerCancel={() => handlePreview(null)}
             >
-              <EffectPreview effect={effect} media={media} intensity={intensity} />
+              <EffectPreview
+                effect={effect}
+                media={media}
+                intensity={intensity}
+                playing={previewingEffectId === effect.id}
+              />
               <span className={styles.cardCopy}>
                 <strong>{effect.name}</strong>
                 <small>{effect.description}</small>
                 <span className={styles.applyLabel}>
                   {selected ? "Aplicado" : "Aplicar"}
-                  <i aria-hidden="true"><ArrowRight size={14} /></i>
+                  <i aria-hidden="true">
+                    <ArrowRight size={14} />
+                  </i>
                 </span>
               </span>
             </button>

@@ -18,6 +18,11 @@ import {
 } from "lucide-react";
 import { Badge, Button, Input, Modal, Select, Textarea } from "./ui";
 import { SocialPlatform, PlatformPublishStatus } from "../lib/types/publishing";
+import {
+  cleanupPublishingUpload,
+  uploadVideoForPublishing,
+} from "../lib/publishing/direct-upload";
+import { validatePublishVideoMetadata } from "../lib/publishing/upload-policy";
 import styles from "./SocialPublishing.module.css";
 
 const YouTubeIcon = ({ className }: { className?: string }) => (
@@ -81,6 +86,7 @@ export function PublishModal({
   const [platformStatus, setPlatformStatus] = useState(emptyStatus);
   const [isCompleted, setIsCompleted] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const publishAbortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     const timer = window.setTimeout(() => {
@@ -112,8 +118,13 @@ export function PublishModal({
   }, [isOpen]);
 
   const handleProcessFile = (file: File) => {
-    if (!file.type.startsWith("video/")) {
-      setFormError("Escolha um arquivo de vídeo em MP4, MOV ou WebM.");
+    const validation = validatePublishVideoMetadata({
+      size: file.size,
+      contentType: file.type,
+      fileName: file.name,
+    });
+    if (!validation.ok) {
+      setFormError(validation.error);
       return;
     }
     setFormError("");
@@ -153,18 +164,35 @@ export function PublishModal({
     setIsPublishing(true);
     setIsCompleted(false);
     setPublishStep("Preparando o vídeo…");
+    const abortController = new AbortController();
+    publishAbortRef.current?.abort();
+    publishAbortRef.current = abortController;
+    let uploadedPath = "";
+    let publishRequested = false;
 
     try {
       let finalVideoUrl = videoPreviewUrl;
+      let videoContentType = activeBlob?.type || "";
       if (activeBlob) {
-        const formData = new FormData();
-        formData.append("video", activeBlob, videoFileName || "klipapp-video.mp4");
-        const uploadRes = await fetch("/api/upload", { method: "POST", body: formData });
-        const uploadData = await uploadRes.json().catch(() => ({}));
-        if (!uploadRes.ok || !uploadData.videoUrl) {
-          throw new Error(uploadData.error || "Não foi possível enviar o vídeo.");
-        }
-        finalVideoUrl = uploadData.videoUrl;
+        const uploadFile =
+          activeBlob instanceof File
+            ? activeBlob
+            : new File(
+                [activeBlob],
+                videoFileName ||
+                  (activeBlob.type.includes("webm")
+                    ? "klipapp-video.webm"
+                    : "klipapp-video.mp4"),
+                { type: activeBlob.type },
+              );
+        const ticket = await uploadVideoForPublishing(uploadFile, {
+          signal: abortController.signal,
+          onProgress: (progress) =>
+            setPublishStep(`Enviando vídeo com segurança… ${progress}%`),
+        });
+        uploadedPath = ticket.mock ? "" : ticket.path;
+        finalVideoUrl = ticket.videoUrl;
+        videoContentType = ticket.contentType || uploadFile.type;
       }
 
       setPublishStep("Publicando nas redes selecionadas…");
@@ -176,9 +204,11 @@ export function PublishModal({
         return next;
       });
 
+      publishRequested = true;
       const response = await fetch("/api/publish", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
+        signal: abortController.signal,
         body: JSON.stringify({
           title: title.trim(),
           description,
@@ -186,6 +216,8 @@ export function PublishModal({
           platforms: selectedPlatforms,
           visibility,
           videoUrl: finalVideoUrl,
+          videoContentType,
+          uploadPath: uploadedPath || undefined,
         }),
       });
       const data = await response.json().catch(() => ({}));
@@ -194,12 +226,32 @@ export function PublishModal({
       setIsCompleted(true);
       setPublishStep("Publicação concluída.");
     } catch (error) {
-      console.error(error);
-      setFormError(error instanceof Error ? error.message : "Ocorreu um erro durante a publicação.");
+      if (uploadedPath && !publishRequested)
+        await cleanupPublishingUpload(uploadedPath);
+      if (!(error instanceof DOMException && error.name === "AbortError"))
+        console.error(error);
+      setFormError(
+        error instanceof DOMException && error.name === "AbortError"
+          ? "Publicação cancelada com segurança."
+          : error instanceof Error
+            ? error.message
+            : "Ocorreu um erro durante a publicação.",
+      );
       setPublishStep("");
     } finally {
+      if (publishAbortRef.current === abortController)
+        publishAbortRef.current = null;
       setIsPublishing(false);
     }
+  };
+
+  const handleClose = () => {
+    if (isPublishing) {
+      publishAbortRef.current?.abort();
+      setPublishStep("Cancelando envio…");
+      return;
+    }
+    onClose();
   };
 
   const suggestedTags = ["Shorts", "Reels", "TikTok", "Viral", "FYP", "Trending", "KLIPAPP", "Dicas", "Humor"];
@@ -207,7 +259,7 @@ export function PublishModal({
   return (
     <Modal
       open={isOpen}
-      onClose={onClose}
+      onClose={handleClose}
       size="xl"
       className={`${styles.modalTheme} ${styles.publishModal}`}
       title={<span className={styles.titleWithIcon}><Share2 aria-hidden="true" /> Publicar</span>}
@@ -215,7 +267,9 @@ export function PublishModal({
       closeLabel="Fechar publicação"
       footer={
         <div className={styles.footerActions}>
-          <Button variant="ghost" size="lg" onClick={onClose} disabled={isPublishing}>Cancelar</Button>
+          <Button variant="ghost" size="lg" onClick={handleClose}>
+            {isPublishing ? "Cancelar envio" : "Cancelar"}
+          </Button>
           <Button
             size="lg"
             onClick={handlePublish}

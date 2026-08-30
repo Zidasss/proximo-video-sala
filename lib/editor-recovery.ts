@@ -54,6 +54,7 @@ function openRecoveryDatabase() {
 export async function saveEditorRecovery<T>(
   project: T,
   assets: EditorRecoveryAsset[],
+  retainedAssetIds: readonly string[],
 ) {
   const database = await openRecoveryDatabase();
   try {
@@ -62,6 +63,11 @@ export async function saveEditorRecovery<T>(
       "readwrite",
     );
     const assetStore = transaction.objectStore(ASSET_STORE);
+    const retained = new Set(retainedAssetIds);
+    const existingAssetIds = await requestResult(assetStore.getAllKeys());
+    existingAssetIds.forEach((id) => {
+      if (!retained.has(String(id))) assetStore.delete(id);
+    });
     assets.forEach((asset) => assetStore.put(asset));
     transaction.objectStore(PROJECT_STORE).put({
       id: CURRENT_PROJECT_ID,
@@ -92,7 +98,9 @@ export async function loadEditorRecoveryAsset(id: string) {
   const database = await openRecoveryDatabase();
   try {
     const transaction = database.transaction(ASSET_STORE, "readonly");
-    const result = await requestResult(transaction.objectStore(ASSET_STORE).get(id));
+    const result = await requestResult(
+      transaction.objectStore(ASSET_STORE).get(id),
+    );
     return (result || null) as EditorRecoveryAsset | null;
   } finally {
     database.close();
@@ -113,4 +121,3 @@ export async function clearEditorRecovery() {
     database.close();
   }
 }
-

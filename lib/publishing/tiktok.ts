@@ -56,6 +56,7 @@ interface PublishTikTokOptions {
   visibility?: "public" | "unlisted" | "private";
   videoUrl?: string;
   videoBuffer?: Buffer;
+  videoContentType?: string;
   /** Manda para os rascunhos do app em vez de publicar direto. */
   postAsDraft?: boolean;
   coverTimestampMs?: number;
@@ -162,10 +163,9 @@ function resolvePrivacyLevel(
 async function loadVideoBytes(videoUrl?: string, videoBuffer?: Buffer): Promise<Uint8Array> {
   if (videoBuffer) {
     return new Uint8Array(
-      videoBuffer.buffer.slice(
-        videoBuffer.byteOffset,
-        videoBuffer.byteOffset + videoBuffer.byteLength
-      )
+      videoBuffer.buffer,
+      videoBuffer.byteOffset,
+      videoBuffer.byteLength,
     );
   }
   if (!videoUrl) throw new Error("Nenhum vídeo fornecido para o TikTok.");
@@ -182,7 +182,8 @@ async function uploadVideo(
   uploadUrl: string,
   bytes: Uint8Array,
   chunkSize: number,
-  totalChunks: number
+  totalChunks: number,
+  contentType: string,
 ): Promise<void> {
   const total = bytes.byteLength;
 
@@ -195,7 +196,7 @@ async function uploadVideo(
     const res = await fetch(uploadUrl, {
       method: "PUT",
       headers: {
-        "Content-Type": "video/mp4",
+        "Content-Type": contentType,
         "Content-Length": String(chunk.byteLength),
         "Content-Range": `bytes ${start}-${end - 1}/${total}`,
       },
@@ -260,6 +261,7 @@ export async function publishToTikTok(
       visibility = "public",
       videoUrl,
       videoBuffer,
+      videoContentType = "video/mp4",
       postAsDraft = false,
       coverTimestampMs = 1000,
     } = options;
@@ -325,7 +327,13 @@ export async function publishToTikTok(
     }
 
     // 3. Transfere o arquivo.
-    await uploadVideo(uploadUrl, bytes, chunkSize, totalChunks);
+    await uploadVideo(
+      uploadUrl,
+      bytes,
+      chunkSize,
+      totalChunks,
+      videoContentType,
+    );
 
     // 4. Rascunho fica aguardando o usuário finalizar dentro do app.
     if (postAsDraft) {

@@ -35,6 +35,7 @@ interface PublishYouTubeOptions {
   visibility?: "public" | "unlisted" | "private";
   videoUrl?: string;
   videoBuffer?: Buffer;
+  videoContentType?: string;
   categoryId?: string;
   madeForKids?: boolean;
   notifySubscribers?: boolean;
@@ -93,10 +94,9 @@ async function loadVideoBytes(
 ): Promise<Uint8Array> {
   if (videoBuffer) {
     return new Uint8Array(
-      videoBuffer.buffer.slice(
-        videoBuffer.byteOffset,
-        videoBuffer.byteOffset + videoBuffer.byteLength
-      )
+      videoBuffer.buffer,
+      videoBuffer.byteOffset,
+      videoBuffer.byteLength,
     );
   }
 
@@ -118,7 +118,8 @@ async function loadVideoBytes(
  */
 async function uploadInChunks(
   uploadUrl: string,
-  bytes: Uint8Array
+  bytes: Uint8Array,
+  contentType: string,
 ): Promise<VideoResource> {
   const total = bytes.byteLength;
   let offset = 0;
@@ -130,7 +131,7 @@ async function uploadInChunks(
     const res = await fetch(uploadUrl, {
       method: "PUT",
       headers: {
-        "Content-Type": "video/mp4",
+        "Content-Type": contentType,
         "Content-Length": String(chunk.byteLength),
         "Content-Range": `bytes ${offset}-${end - 1}/${total}`,
       },
@@ -169,6 +170,7 @@ export async function publishToYouTubeShorts(
       visibility = "public",
       videoUrl,
       videoBuffer,
+      videoContentType = "video/mp4",
       categoryId = process.env.YOUTUBE_CATEGORY_ID || "22", // People & Blogs
       madeForKids = false,
       notifySubscribers = true,
@@ -231,7 +233,7 @@ export async function publishToYouTubeShorts(
         headers: {
           Authorization: `Bearer ${token}`,
           "Content-Type": "application/json; charset=UTF-8",
-          "X-Upload-Content-Type": "video/mp4",
+          "X-Upload-Content-Type": videoContentType,
           "X-Upload-Content-Length": String(bytes.byteLength),
         },
         body: JSON.stringify(metadata),
@@ -259,7 +261,7 @@ export async function publishToYouTubeShorts(
       throw new Error("O YouTube não retornou a URL de upload resumível.");
     }
 
-    const result = await uploadInChunks(uploadUrl, bytes);
+    const result = await uploadInChunks(uploadUrl, bytes, videoContentType);
     const videoId = result?.id;
 
     if (!videoId) {

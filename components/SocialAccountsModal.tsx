@@ -95,6 +95,8 @@ export function SocialAccountsModal({ isOpen, onClose }: SocialAccountsModalProp
     setError("");
     setActionLoading(platform);
     const returnTo = typeof window !== "undefined" ? window.location.pathname : "/";
+    // OAuth exige navegação completa para seguir o redirecionamento externo.
+    // eslint-disable-next-line @next/next/no-location-assign-relative-destination
     window.location.assign(`/api/auth/connect/${platform}?next=${encodeURIComponent(returnTo)}`);
   };
 

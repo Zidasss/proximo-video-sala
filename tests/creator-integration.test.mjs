@@ -4,8 +4,16 @@ import test from "node:test";
 
 const root = new URL("../", import.meta.url);
 
+async function readProductionSource() {
+  const [page, editor] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("components/editor/ClipEditor.tsx", root), "utf8"),
+  ]);
+  return `${page}\n${editor}`;
+}
+
 test("integrates creator formats, licensed audio and visual effects into the real editor", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const page = await readProductionSource();
   assert.match(page, /<QuickCreate/);
   assert.match(page, /<AudioLibrary/);
   assert.match(page, /<EffectsGallery/);
@@ -13,21 +21,28 @@ test("integrates creator formats, licensed audio and visual effects into the rea
   assert.match(page, /payload\.revoke\(\)/);
   assert.match(page, /feed-portrait/);
   assert.match(page, /selectedSocialPreset\.safeArea\.insetPercent/);
-  assert.match(page, /version: 6/);
+  assert.match(page, /PROJECT_FILE_VERSION = 7/);
   assert.match(page, /visualEffectIntensity/);
   assert.match(page, /editorTimelineDuration \|\| duration \|\| trackLength/);
-  assert.match(page, /audioTimelineStart: montageItem\?\.timelineStart \|\| 0/);
-  assert.match(page, /audioTimelineTime = activeRange\.audioTimelineStart \+ localTime/);
-  assert.match(page, /APP_VERSION = "v0\.23\.0"/);
+  assert.match(page, /montageItem\?\.timelineStart \?\? primaryClipStart/);
+  assert.match(
+    page,
+    /audioTimelineTime = activeRange\.audioTimelineStart \+ localTime/,
+  );
+  assert.match(page, /timelineTime = sourceTimeToTimelineTime/);
+  assert.match(page, /APP_VERSION = "v0\.24\.0"/);
   assert.match(page, /editor-tool-rail/);
   assert.match(page, /export-settings-popover/);
   assert.match(page, /radar-thumbnail/);
 });
 
 test("keeps the KLIPAPP creator hub readable on desktop and mobile", async () => {
-  const page = await readFile(new URL("app/page.tsx", root), "utf8");
+  const page = await readProductionSource();
   const css = await readFile(new URL("app/globals.css", root), "utf8");
-  const designSystem = await readFile(new URL("app/styles/klipapp.css", root), "utf8");
+  const designSystem = await readFile(
+    new URL("app/styles/klipapp.css", root),
+    "utf8",
+  );
   assert.match(css, /\.studio-hub-backdrop/);
   assert.match(css, /\.studio-quick-actions/);
   assert.match(css, /max-height: 93dvh/);

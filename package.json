@@ -12,7 +12,7 @@
     "build": "next build",
     "start": "next start",
     "build:sites": "vinext build",
-    "test": "tsx --test tests/publishing.test.mjs tests/rendered-html.test.mjs tests/social-presets.test.tsx tests/audio-library.test.mjs tests/effects-gallery.test.mjs tests/creator-integration.test.mjs tests/social-apis.test.mjs tests/legal-pages.test.mjs tests/editor-captions.test.mjs tests/editor-timeline.test.mjs tests/editor-transitions.test.mjs tests/editor-text-layers.test.mjs tests/radar-project-validation.test.mjs tests/upload-policy.test.mjs",
+    "test": "tsx --test tests/publishing.test.mjs tests/rendered-html.test.mjs tests/social-presets.test.tsx tests/audio-library.test.mjs tests/effects-gallery.test.mjs tests/creator-integration.test.mjs tests/social-apis.test.mjs tests/legal-pages.test.mjs tests/editor-captions.test.mjs tests/local-transcription.test.mjs tests/editor-timeline.test.mjs tests/editor-transitions.test.mjs tests/editor-text-layers.test.mjs tests/radar-project-validation.test.mjs tests/upload-policy.test.mjs",
     "test:e2e": "playwright test",
     "lint": "eslint . --ignore-pattern dist --ignore-pattern .next",
     "db:generate": "drizzle-kit generate"

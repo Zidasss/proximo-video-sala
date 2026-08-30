@@ -4733,6 +4733,50 @@ html[data-klip-theme] .clip-editor-v2 .caption-language-control select {
   color: var(--pure-text);
 }
 
+html[data-klip-theme] .clip-editor-v2 .caption-engine-switch {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--pure-border);
+  border-radius: 10px;
+  background: var(--pure-surface-2);
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-engine-switch button {
+  display: grid;
+  place-items: center;
+  gap: 2px;
+  min-width: 0;
+  min-height: 44px;
+  padding: 6px 8px;
+  border: 1px solid transparent !important;
+  border-radius: 7px !important;
+  background: transparent !important;
+  box-shadow: none !important;
+  color: var(--pure-text-2) !important;
+  font-size: 11px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-engine-switch button.active {
+  border-color: color-mix(in srgb, var(--pure-blue) 28%, var(--pure-border)) !important;
+  background: var(--pure-surface) !important;
+  box-shadow: var(--pure-shadow-xs) !important;
+  color: var(--pure-blue) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-engine-switch button small {
+  color: inherit;
+  font-size: 9px;
+  font-weight: 500;
+  opacity: .78;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-engine-switch.compact button {
+  min-height: 34px;
+  padding: 4px 7px;
+}
+
 html[data-klip-theme] .clip-editor-v2 .caption-progress {
   display: grid;
   gap: 7px;
@@ -5262,12 +5306,12 @@ html[data-klip-theme] .clip-editor-v2 .tool-text-panel .visual-presets button {
   }
 }
 
-/* 0.23 cascade lock: later compatibility fixes must not change the premium
-   measurements above. Keep this short and limited to shell geometry. */
+/* Shell geometry lock. These values intentionally remain roomy enough for the
+   longest Portuguese labels and for timeline controls at browser zoom. */
 @media (min-width: 1081px) {
   html[data-klip-theme] .clip-editor-v2 {
     --pure-header-h: 54px;
-    --pure-rail-w: 58px;
+    --pure-rail-w: 76px;
     --pure-panel-w: clamp(292px, 18vw, 324px);
     --pure-inspector-w: clamp(276px, 17vw, 304px);
   }
@@ -5292,7 +5336,7 @@ html[data-klip-theme] .clip-editor-v2 .tool-text-panel .visual-presets button {
 @media (min-width: 761px) and (max-width: 1080px) {
   html[data-klip-theme] .clip-editor-v2 {
     --pure-header-h: 54px;
-    --pure-rail-w: 58px;
+    --pure-rail-w: 72px;
     --pure-panel-w: clamp(270px, 29vw, 304px);
   }
 
@@ -5312,21 +5356,71 @@ html[data-klip-theme] .clip-editor-v2 .tool-text-panel .visual-presets button {
 }
 
 html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
-  min-height: 200px;
+  min-height: 220px;
+  padding: 12px 14px 14px;
 }
 
 html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
-  flex-basis: 48px;
-  min-height: 48px;
+  position: relative;
+  top: auto !important;
+  flex-basis: 58px;
+  min-height: 58px;
+  padding: 10px 6px 8px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top > div:first-child {
+  padding-left: 2px;
 }
 
 html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport {
-  padding-bottom: 8px;
-  scrollbar-gutter: stable both-edges;
+  padding: 8px 8px 12px;
+  scrollbar-gutter: stable;
+}
+
+html[data-klip-theme] .clip-editor-v2 .cut-marker,
+html[data-klip-theme="light"] .clip-editor-v2 .cut-marker {
+  z-index: 70;
+  border-color: var(--pure-blue) !important;
+  background: var(--pure-blue) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pure-blue) 22%, transparent) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .cut-marker::before,
+html[data-klip-theme] .clip-editor-v2 .cut-marker:is(:hover, :focus-visible)::before {
+  background: var(--pure-blue) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .start-marker span {
+  right: auto !important;
+  left: 7px !important;
+  transform: none !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .end-marker span {
+  right: 7px !important;
+  left: auto !important;
+  transform: none !important;
 }
 
 html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip,
 html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
   border-color: #0071e3 !important;
   box-shadow: 0 0 0 1px #fff, 0 0 0 3px #0071e3 !important;
+}
+
+@media (max-width: 760px) {
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+    min-height: 240px;
+    padding: 8px 8px calc(10px + env(safe-area-inset-bottom));
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+    flex-basis: 52px;
+    min-height: 52px;
+    padding: 8px 4px 6px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport {
+    padding: 7px 6px 10px;
+  }
 }

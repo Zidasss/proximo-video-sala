@@ -296,6 +296,14 @@ test("ships compact editing, reliable audio detection, automatic captions and re
     new URL("app/api/transcribe/route.ts", root),
     "utf8",
   );
+  const localTranscription = await readFile(
+    new URL("lib/editor/local-transcription.ts", root),
+    "utf8",
+  );
+  const localWorker = await readFile(
+    new URL("public/workers/local-transcription.js", root),
+    "utf8",
+  );
   const css = await readFile(new URL("app/styles/klip-pure.css", root), "utf8");
   assert.match(page, /type BaseAudioState/);
   assert.match(page, /probePlayableAudio/);
@@ -303,12 +311,17 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /function generateAutomaticCaptions/);
   assert.match(page, /createTranscriptionAudioPlan/);
   assert.match(page, /extractTranscriptionAudioChunk/);
+  assert.match(page, /extractLocalTranscriptionPcmChunk/);
+  assert.match(page, /createLocalTranscriptionSession/);
   assert.match(page, /buildCaptionTranscriptionJobs/);
   assert.match(page, /requestTranscriptionChunk/);
   assert.match(page, /TRANSCRIPTION_CHUNK_SECONDS/);
-  assert.match(page, /Legenda automática com IA/);
-  assert.match(page, /somente áudio compacto é enviado/);
+  assert.match(page, /Whisper local · sem chave de API/);
+  assert.match(page, /Neste dispositivo/);
+  assert.match(page, /Sem API/);
+  assert.match(page, /somente áudio compacto/i);
   assert.match(page, /blob\.size <= MAX_IN_MEMORY_AUDIO_BYTES/);
+  assert.match(page, /VERY_LARGE_WAVEFORM_BYTES/);
   assert.doesNotMatch(page, /Templates e aparência/);
   assert.doesNotMatch(page, /Este arquivo ultrapassa 24 MB/);
   assert.match(page, /Detectar idioma e gerar legendas/);
@@ -350,9 +363,22 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(css, /\.timeline-safe-area-help/);
   assert.match(css, /\.caption-detected-language/);
   assert.match(css, /--pure-rail-w: 76px/);
+  const geometryLock = css.slice(css.indexOf("Shell geometry lock"));
+  assert.doesNotMatch(geometryLock, /--pure-rail-w: 58px/);
+  assert.match(css, /\.caption-engine-switch/);
   assert.match(css, /\.start-marker span/);
   assert.match(css, /\.end-marker span/);
   assert.match(css, /\.caption-service-explainer/);
+  assert.match(localTranscription, /workers\/local-transcription\.js/);
+  assert.match(localTranscription, /LocalTranscriptionSession/);
+  assert.match(localTranscription, /worker \?\?= new Worker/);
+  assert.match(localTranscription, /parseFloat32Wave/);
+  assert.match(localWorker, /@huggingface\/transformers@4\.2\.0/);
+  assert.match(localWorker, /onnx-community\/whisper-tiny/);
+  assert.match(localWorker, /useBrowserCache = true/);
+  assert.match(localWorker, /navigator\.gpu\.requestAdapter\(\)/);
+  assert.match(localTranscription, /fallback-wasm/);
+  assert.match(localTranscription, /preferWebGpu/);
 });
 
 test("keeps a crash-safe local editor recovery with its media blobs", async () => {

@@ -16,6 +16,11 @@ import {
   mergeCaptionSourceRanges,
 } from "../../lib/editor/captions";
 import {
+  createLocalTranscriptionSession,
+  friendlyLocalTranscriptionError,
+  parseFloat32Wave,
+} from "../../lib/editor/local-transcription";
+import {
   scaleTextLayerSize,
   sanitizeTextLayers,
   type TextEffect,
@@ -218,6 +223,11 @@ async function buildAudioWaveform(
 async function buildContainerAudioWaveform(
   blob: Blob,
   bars: number,
+  onTrack?: (track: {
+    present: boolean;
+    codec: string;
+    decodable: boolean;
+  }) => void,
 ): Promise<{ values: number[]; codec: string; decodable: boolean }> {
   const { ALL_FORMATS, AudioSampleSink, BlobSource, Input } =
     await import("mediabunny");
@@ -225,15 +235,21 @@ async function buildContainerAudioWaveform(
     formats: ALL_FORMATS,
     source: new BlobSource(blob),
   });
-  if (!(await input.canRead()))
+  if (!(await input.canRead())) {
+    onTrack?.({ present: false, codec: "desconhecido", decodable: false });
     return { values: [], codec: "desconhecido", decodable: false };
+  }
   const track = await input.getPrimaryAudioTrack();
-  if (!track) return { values: [], codec: "sem áudio", decodable: false };
+  if (!track) {
+    onTrack?.({ present: false, codec: "sem áudio", decodable: false });
+    return { values: [], codec: "sem áudio", decodable: false };
+  }
   const codec =
     (await track.getCodecParameterString()) ||
     (await track.getCodec()) ||
     "desconhecido";
   const decodable = await track.canDecode();
+  onTrack?.({ present: true, codec, decodable });
   if (!decodable) return { values: [], codec, decodable };
 
   const duration =
@@ -244,7 +260,7 @@ async function buildContainerAudioWaveform(
   // Sparse sampling avoids decoding a long recording into one giant AudioBuffer.
   // AudioContext frequently rejects an MP4 container even when its AAC track is
   // playable; Mediabunny demuxes the audio track before asking WebCodecs to decode.
-  const count = Math.max(160, Math.min(720, Math.round(bars)));
+  const count = Math.max(96, Math.min(720, Math.round(bars)));
   const sink = new AudioSampleSink(track);
   const values: number[] = [];
   const timestamps = Array.from({ length: count }, (_, index) =>
@@ -273,10 +289,13 @@ async function buildContainerAudioWaveform(
 
 const TRANSCRIPTION_AUDIO_BITRATE = 32_000;
 const TRANSCRIPTION_CHUNK_SECONDS = 8 * 60;
+const LOCAL_TRANSCRIPTION_CHUNK_SECONDS = 90;
 const TRANSCRIPTION_CHUNK_OVERLAP_SECONDS = 0.4;
 const TRANSCRIPTION_UPLOAD_LIMIT = 3.75 * 1024 * 1024;
 const MAX_IN_MEMORY_AUDIO_BYTES = 96 * 1024 * 1024;
 const MAX_RECOVERY_ASSET_BYTES = 512 * 1024 * 1024;
+const LARGE_WAVEFORM_BYTES = 512 * 1024 * 1024;
+const VERY_LARGE_WAVEFORM_BYTES = 2 * 1024 * 1024 * 1024;
 
 type TranscriptionAudioPlan = {
   duration: number;
@@ -285,11 +304,8 @@ type TranscriptionAudioPlan = {
   mimeType: "audio/webm" | "audio/mp4";
 };
 
-async function createTranscriptionAudioPlan(
-  blob: Blob,
-): Promise<TranscriptionAudioPlan> {
-  const { ALL_FORMATS, BlobSource, Input, Quality, canEncodeAudio } =
-    await import("mediabunny");
+async function inspectTranscriptionAudio(blob: Blob) {
+  const { ALL_FORMATS, BlobSource, Input } = await import("mediabunny");
   const input = new Input({
     formats: ALL_FORMATS,
     source: new BlobSource(blob),
@@ -313,6 +329,15 @@ async function createTranscriptionAudioPlan(
     (await track.getDurationFromMetadata()) || (await track.computeDuration());
   if (!Number.isFinite(duration) || duration <= 0)
     throw new Error("Não foi possível determinar a duração do áudio.");
+  return { duration };
+}
+
+async function createTranscriptionAudioPlan(
+  blob: Blob,
+  inspected?: { duration: number },
+): Promise<TranscriptionAudioPlan> {
+  const { Quality, canEncodeAudio } = await import("mediabunny");
+  const { duration } = inspected || (await inspectTranscriptionAudio(blob));
 
   const quality = new Quality({
     bitrate: TRANSCRIPTION_AUDIO_BITRATE,
@@ -409,6 +434,52 @@ async function extractTranscriptionAudioChunk(
       "Um bloco de áudio ficou maior que o limite de envio. Tente novamente com qualidade de áudio reduzida.",
     );
   return chunk;
+}
+
+async function extractLocalTranscriptionPcmChunk(
+  blob: Blob,
+  start: number,
+  end: number,
+  onProgress?: (progress: number) => void,
+) {
+  const {
+    ALL_FORMATS,
+    BlobSource,
+    BufferTarget,
+    Conversion,
+    Input,
+    Output,
+    WavOutputFormat,
+  } = await import("mediabunny");
+  const input = new Input({
+    formats: ALL_FORMATS,
+    source: new BlobSource(blob),
+  });
+  const target = new BufferTarget();
+  const output = new Output({ format: new WavOutputFormat(), target });
+  const conversion = await Conversion.init({
+    input,
+    output,
+    tracks: "primary",
+    trim: { start, end },
+    video: { discard: true },
+    audio: {
+      codec: "pcm-f32",
+      numberOfChannels: 1,
+      sampleRate: 16_000,
+      forceTranscode: true,
+    },
+    showWarnings: false,
+  });
+  if (!conversion.isValid)
+    throw new Error(
+      "Não foi possível preparar o áudio PCM para a transcrição local.",
+    );
+  conversion.onProgress = (progress) => onProgress?.(progress);
+  await conversion.execute();
+  if (!target.buffer?.byteLength)
+    throw new Error("A extração local retornou um trecho de áudio vazio.");
+  return parseFloat32Wave(target.buffer);
 }
 
 async function waitBeforeTranscriptionRetry(signal: AbortSignal) {
@@ -540,6 +611,7 @@ type EditorAutosaveStatus =
   | "idle";
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type StudioPanel = "formats" | "audio" | "effects";
+type CaptionEngine = "local" | "cloud";
 type EditorTool =
   | "media"
   | "text"
@@ -679,6 +751,7 @@ export default function ClipEditor({
     [waveform, setWaveform] = useState<number[]>([]),
     [baseAudioState, setBaseAudioState] = useState<BaseAudioState>("idle"),
     [baseAudioCodec, setBaseAudioCodec] = useState(""),
+    [captionEngine, setCaptionEngine] = useState<CaptionEngine>("local"),
     [transcribing, setTranscribing] = useState(false),
     [transcriptionProgress, setTranscriptionProgress] = useState(0),
     [transcriptionBlock, setTranscriptionBlock] = useState({
@@ -688,6 +761,8 @@ export default function ClipEditor({
     [transcriptionPhase, setTranscriptionPhase] = useState<
       | "idle"
       | "preparing"
+      | "loading-model"
+      | "local-transcribing"
       | "uploading"
       | "transcribing"
       | "translating"
@@ -784,7 +859,12 @@ export default function ClipEditor({
         : "Detectar idioma e gerar legendas";
   const transcriptionPhaseLabel = {
     idle: "",
-    preparing: "Extraindo e compactando o áudio neste dispositivo…",
+    preparing:
+      captionEngine === "local"
+        ? "Preparando somente o áudio neste dispositivo…"
+        : "Extraindo e compactando o áudio neste dispositivo…",
+    "loading-model": "Carregando o Whisper local no navegador…",
+    "local-transcribing": "Whisper transcrevendo neste dispositivo…",
     uploading: "Enviando somente este bloco de áudio…",
     transcribing:
       captionTargetLanguage === "original"
@@ -908,11 +988,15 @@ export default function ClipEditor({
     (total, range) => total + range.end - range.start,
     0,
   );
+  const captionChunkSeconds =
+    captionEngine === "local"
+      ? LOCAL_TRANSCRIPTION_CHUNK_SECONDS
+      : TRANSCRIPTION_CHUNK_SECONDS;
   const captionEstimatedBlocks = baseDuration
     ? buildCaptionTranscriptionJobs(
         captionTimelineSourceRanges,
         baseDuration,
-        TRANSCRIPTION_CHUNK_SECONDS,
+        captionChunkSeconds,
         TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
       ).length
     : 0;
@@ -1558,6 +1642,8 @@ export default function ClipEditor({
   useEffect(() => {
     if (!clip) return;
     let cancelled = false;
+    let waveformReady = false;
+    let audioTrackConfirmed = false;
     queueMicrotask(() => {
       if (cancelled) return;
       setBaseAudioState("checking");
@@ -1572,7 +1658,8 @@ export default function ClipEditor({
       probe.preload = "metadata";
       probe.src = clip.url;
       const finish = (state: BaseAudioState) => {
-        if (!cancelled) setBaseAudioState(state);
+        if (!cancelled && !waveformReady && !audioTrackConfirmed)
+          setBaseAudioState(state);
         probe.removeAttribute("src");
         probe.load();
       };
@@ -1585,6 +1672,9 @@ export default function ClipEditor({
       probe.onerror = () => finish("none");
       probe.load();
     };
+    // Playback only needs metadata and can confirm the audio track immediately.
+    // The waveform is a separate, heavier background job for large containers.
+    probePlayableAudio();
     void (async () => {
       try {
         let blob: Blob;
@@ -1595,8 +1685,26 @@ export default function ClipEditor({
           blob = await response.blob();
         }
         let values: number[] = [];
-        const extracted = await buildContainerAudioWaveform(blob, 720);
-        if (!cancelled) setBaseAudioCodec(extracted.codec);
+        const waveformBars =
+          blob.size >= VERY_LARGE_WAVEFORM_BYTES
+            ? 120
+            : blob.size >= LARGE_WAVEFORM_BYTES
+              ? 280
+              : 720;
+        const extracted = await buildContainerAudioWaveform(
+          blob,
+          waveformBars,
+          (track) => {
+            if (cancelled) return;
+            setBaseAudioCodec(track.codec);
+            if (track.present) {
+              audioTrackConfirmed = true;
+              setBaseAudioState("detected");
+            } else if (!waveformReady) {
+              setBaseAudioState("none");
+            }
+          },
+        );
         values = extracted.values;
         if (!values.length && blob.size <= MAX_IN_MEMORY_AUDIO_BYTES) {
           try {
@@ -1607,12 +1715,12 @@ export default function ClipEditor({
           }
         }
         if (!cancelled) {
+          waveformReady = values.length > 0;
           setWaveform(values);
           if (values.length) setBaseAudioState("waveform");
-          else probePlayableAudio();
         }
       } catch {
-        probePlayableAudio();
+        // The metadata probe already established whether playback audio exists.
       }
     })();
     return () => {
@@ -2860,9 +2968,13 @@ export default function ClipEditor({
     setTranscriptionBlock({ current: 0, total: 0 });
     setNotice("Lendo a faixa de áudio sem enviar o vídeo…");
     const abortController = new AbortController();
+    const localTranscriptionSession =
+      captionEngine === "local"
+        ? createLocalTranscriptionSession(abortController.signal)
+        : null;
     transcriptionAbort.current = abortController;
     try {
-      if (!navigator.onLine)
+      if (captionEngine === "cloud" && !navigator.onLine)
         throw new Error(
           "Você está sem conexão. Reconecte-se para gerar as legendas.",
         );
@@ -2880,7 +2992,11 @@ export default function ClipEditor({
       }
       if (!source.size)
         throw new Error("O vídeo não contém dados que possam ser transcritos.");
-      const plan = await createTranscriptionAudioPlan(source);
+      const inspectedAudio = await inspectTranscriptionAudio(source);
+      const cloudPlan =
+        captionEngine === "cloud"
+          ? await createTranscriptionAudioPlan(source, inspectedAudio)
+          : null;
       const sourceRanges = captionTimelineSourceRanges.some(
         (range) => range.sourceEnd - range.sourceStart >= 0.04,
       )
@@ -2888,14 +3004,14 @@ export default function ClipEditor({
         : [
             {
               sourceStart: 0,
-              sourceEnd: plan.duration,
+              sourceEnd: inspectedAudio.duration,
               timelineStart: 0,
             },
           ];
       const transcriptionJobs = buildCaptionTranscriptionJobs(
         sourceRanges,
-        plan.duration,
-        TRANSCRIPTION_CHUNK_SECONDS,
+        inspectedAudio.duration,
+        captionChunkSeconds,
         TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
       );
       if (!transcriptionJobs.length)
@@ -2921,90 +3037,152 @@ export default function ClipEditor({
         setTranscriptionPhase("preparing");
         setNotice(
           totalChunks === 1
-            ? "Extraindo e compactando somente o áudio…"
-            : `Extraindo áudio — bloco ${index + 1} de ${totalChunks}…`,
+            ? "Preparando somente o áudio…"
+            : `Preparando áudio — bloco ${index + 1} de ${totalChunks}…`,
         );
-        const audioChunk = await extractTranscriptionAudioChunk(
-          source,
-          plan,
-          extractionStart,
-          logicalEnd,
-          (progress) =>
-            setTranscriptionProgress(
-              Math.round(
-                chunkBaseProgress + progress * chunkProgressSpan * 0.42,
-              ),
-            ),
-        );
-        if (abortController.signal.aborted)
-          throw new DOMException("Transcrição cancelada.", "AbortError");
+        let chunkSegments: Array<{
+          start: number;
+          end: number;
+          text: string;
+        }> = [];
 
-        setTranscriptionPhase("transcribing");
-        setNotice(
-          totalChunks === 1
-            ? "Áudio compacto pronto; aguardando a transcrição por IA…"
-            : `Bloco ${index + 1} de ${totalChunks}: áudio compacto pronto; aguardando a IA…`,
-        );
-        setTranscriptionProgress(
-          Math.round(chunkBaseProgress + chunkProgressSpan * 0.5),
-        );
-        const form = new FormData();
-        form.append(
-          "file",
-          new File(
-            [audioChunk],
-            `klip-audio-${String(index + 1).padStart(3, "0")}${plan.extension}`,
-            { type: plan.mimeType },
-          ),
-        );
-        form.append("targetLanguage", captionTargetLanguage);
-        if (detectedLanguage) form.append("language", detectedLanguage);
-        form.append("chunkIndex", String(index));
-        form.append("chunkCount", String(totalChunks));
-        const response = await requestTranscriptionChunk(
-          form,
-          abortController.signal,
-          (message) =>
-            setNotice(`Bloco ${index + 1} de ${totalChunks}: ${message}`),
-        );
-        const responseText = await response.text();
-        let result: {
-          error?: string;
-          segments?: Array<{ start: number; end: number; text: string }>;
-          detectedLanguage?: string;
-          translationWarning?: string;
-          translated?: boolean;
-        } = {};
-        try {
-          result = responseText ? JSON.parse(responseText) : {};
-        } catch {
-          throw new Error(
-            "O serviço de legendas retornou uma resposta inválida. Tente novamente.",
+        if (captionEngine === "local") {
+          const pcm = await extractLocalTranscriptionPcmChunk(
+            source,
+            extractionStart,
+            logicalEnd,
+            (progress) =>
+              setTranscriptionProgress(
+                Math.round(
+                  chunkBaseProgress + progress * chunkProgressSpan * 0.34,
+                ),
+              ),
           );
-        }
-        if (response.status === 422 && totalChunks > 1) {
+          if (abortController.signal.aborted)
+            throw new DOMException("Transcrição cancelada.", "AbortError");
+          setTranscriptionPhase("loading-model");
+          if (!localTranscriptionSession)
+            throw new Error("A sessão do Whisper local não foi iniciada.");
+          const localResult = await localTranscriptionSession.transcribe(pcm, {
+            targetLanguage:
+              captionTargetLanguage === "en" ? "en" : "original",
+            onProgress: (status) => {
+              if (status.phase === "loading-runtime") {
+                setTranscriptionPhase("loading-model");
+                setNotice(
+                  `Bloco ${index + 1} de ${totalChunks}: preparando o Whisper local…`,
+                );
+              } else if (status.phase === "loading-model") {
+                setTranscriptionPhase("loading-model");
+                setTranscriptionProgress(
+                  Math.round(
+                    chunkBaseProgress +
+                      chunkProgressSpan * (0.34 + (status.progress / 100) * 0.18),
+                  ),
+                );
+                setNotice(
+                  `Bloco ${index + 1} de ${totalChunks}: carregando o modelo local · ${Math.round(status.progress)}%…`,
+                );
+              } else if (status.phase === "fallback-wasm") {
+                setNotice(
+                  `Bloco ${index + 1} de ${totalChunks}: GPU indisponível; continuando localmente pela CPU…`,
+                );
+              } else {
+                setTranscriptionPhase("local-transcribing");
+                setTranscriptionProgress(
+                  Math.round(chunkBaseProgress + chunkProgressSpan * 0.56),
+                );
+                setNotice(
+                  `Bloco ${index + 1} de ${totalChunks}: Whisper transcrevendo neste dispositivo…`,
+                );
+              }
+            },
+          });
+          chunkSegments = localResult.segments;
+        } else {
+          if (!cloudPlan)
+            throw new Error("O plano de transcrição em nuvem não foi preparado.");
+          const audioChunk = await extractTranscriptionAudioChunk(
+            source,
+            cloudPlan,
+            extractionStart,
+            logicalEnd,
+            (progress) =>
+              setTranscriptionProgress(
+                Math.round(
+                  chunkBaseProgress + progress * chunkProgressSpan * 0.42,
+                ),
+              ),
+          );
+          if (abortController.signal.aborted)
+            throw new DOMException("Transcrição cancelada.", "AbortError");
+          setTranscriptionPhase("transcribing");
           setNotice(
-            `Bloco ${index + 1} sem fala detectável — seguindo para o próximo…`,
+            totalChunks === 1
+              ? "Áudio compacto pronto; aguardando a transcrição em nuvem…"
+              : `Bloco ${index + 1} de ${totalChunks}: aguardando a transcrição em nuvem…`,
           );
           setTranscriptionProgress(
-            Math.round(chunkBaseProgress + chunkProgressSpan),
+            Math.round(chunkBaseProgress + chunkProgressSpan * 0.5),
           );
-          continue;
+          const form = new FormData();
+          form.append(
+            "file",
+            new File(
+              [audioChunk],
+              `klip-audio-${String(index + 1).padStart(3, "0")}${cloudPlan.extension}`,
+              { type: cloudPlan.mimeType },
+            ),
+          );
+          form.append("targetLanguage", captionTargetLanguage);
+          if (detectedLanguage) form.append("language", detectedLanguage);
+          form.append("chunkIndex", String(index));
+          form.append("chunkCount", String(totalChunks));
+          const response = await requestTranscriptionChunk(
+            form,
+            abortController.signal,
+            (message) =>
+              setNotice(`Bloco ${index + 1} de ${totalChunks}: ${message}`),
+          );
+          const responseText = await response.text();
+          let result: {
+            error?: string;
+            segments?: Array<{ start: number; end: number; text: string }>;
+            detectedLanguage?: string;
+            translationWarning?: string;
+          } = {};
+          try {
+            result = responseText ? JSON.parse(responseText) : {};
+          } catch {
+            throw new Error(
+              "O serviço de legendas retornou uma resposta inválida. Tente novamente.",
+            );
+          }
+          if (response.status === 422 && totalChunks > 1) {
+            setNotice(
+              `Bloco ${index + 1} sem fala detectável — seguindo para o próximo…`,
+            );
+            setTranscriptionProgress(
+              Math.round(chunkBaseProgress + chunkProgressSpan),
+            );
+            continue;
+          }
+          if (!response.ok)
+            throw new Error(
+              `${result.error || "Falha na transcrição."}${totalChunks > 1 ? ` (bloco ${index + 1} de ${totalChunks})` : ""}`,
+            );
+          if (
+            !detectedLanguage &&
+            result.detectedLanguage &&
+            result.detectedLanguage !== "unknown"
+          )
+            detectedLanguage = result.detectedLanguage;
+          if (result.translationWarning)
+            translationWarnings.add(result.translationWarning);
+          chunkSegments = result.segments || [];
         }
-        if (!response.ok)
-          throw new Error(
-            `${result.error || "Falha na transcrição."}${totalChunks > 1 ? ` (bloco ${index + 1} de ${totalChunks})` : ""}`,
-          );
-        if (
-          !detectedLanguage &&
-          result.detectedLanguage &&
-          result.detectedLanguage !== "unknown"
-        )
-          detectedLanguage = result.detectedLanguage;
-        if (result.translationWarning)
-          translationWarnings.add(result.translationWarning);
 
-        for (const segment of result.segments || []) {
+        for (const segment of chunkSegments) {
           const absoluteStart = extractionStart + Number(segment.start || 0);
           const absoluteEnd = extractionStart + Number(segment.end || 0);
           const midpoint = (absoluteStart + absoluteEnd) / 2;
@@ -3045,6 +3223,8 @@ export default function ClipEditor({
       const message =
         error instanceof DOMException && error.name === "AbortError"
           ? "Transcrição cancelada. Nenhuma legenda foi alterada."
+          : captionEngine === "local"
+            ? friendlyLocalTranscriptionError(error)
           : error instanceof TypeError ||
               (error instanceof Error && /failed to fetch/i.test(error.message))
             ? "A conexão com o serviço de legendas falhou depois de duas tentativas. O vídeo e as legendas existentes não foram alterados."
@@ -3053,6 +3233,7 @@ export default function ClipEditor({
               : "Não foi possível gerar as legendas deste vídeo.";
       setNotice(message);
     } finally {
+      localTranscriptionSession?.dispose();
       if (transcriptionAbort.current === abortController)
         transcriptionAbort.current = null;
       setTranscribing(false);
@@ -6894,18 +7075,53 @@ export default function ClipEditor({
 
             {activeTool === "captions" && (
               <section className="editor-tool-section tool-captions-panel">
+                <div
+                  className="caption-engine-switch"
+                  role="group"
+                  aria-label="Onde gerar as legendas"
+                >
+                  <button
+                    type="button"
+                    className={captionEngine === "local" ? "active" : ""}
+                    aria-pressed={captionEngine === "local"}
+                    disabled={transcribing}
+                    onClick={() => {
+                      setCaptionEngine("local");
+                      if (captionTargetLanguage === "es")
+                        setCaptionTargetLanguage("original");
+                    }}
+                  >
+                    Neste dispositivo
+                    <small>Sem API</small>
+                  </button>
+                  <button
+                    type="button"
+                    className={captionEngine === "cloud" ? "active" : ""}
+                    aria-pressed={captionEngine === "cloud"}
+                    disabled={transcribing}
+                    onClick={() => setCaptionEngine("cloud")}
+                  >
+                    Nuvem
+                    <small>Mais rápida</small>
+                  </button>
+                </div>
                 <div className="caption-service-explainer">
-                  <b>Legenda automática com IA</b>
+                  <b>
+                    {captionEngine === "local"
+                      ? "Whisper local · sem chave de API"
+                      : "Legenda automática em nuvem"}
+                  </b>
                   <span>
-                    O KLIP extrai e compacta o áudio aqui no navegador. O vídeo
-                    não é enviado; somente cada bloco de áudio vai para a
-                    transcrição.
+                    {captionEngine === "local"
+                      ? "O áudio e o texto não saem deste dispositivo. No primeiro uso, o navegador baixa e armazena o modelo local."
+                      : "O KLIP extrai e compacta o áudio aqui. O vídeo não é enviado; somente cada bloco de áudio vai para a transcrição."}
                   </span>
                   {captionSourceSeconds > 0 && (
                     <small>
                       Trecho usado na timeline: {time(captionSourceSeconds)} ·{" "}
                       {captionEstimatedBlocks} bloco
-                      {captionEstimatedBlocks === 1 ? "" : "s"} de até 8 min,
+                      {captionEstimatedBlocks === 1 ? "" : "s"} de até{" "}
+                      {captionEngine === "local" ? "1 min 30 s" : "8 min"},
                       processado{captionEstimatedBlocks === 1 ? "" : "s"} em
                       sequência.
                     </small>
@@ -6926,7 +7142,9 @@ export default function ClipEditor({
                       Áudio original · detectar idioma
                     </option>
                     <option value="en">Traduzir para inglês</option>
-                    <option value="es">Traduzir para espanhol</option>
+                    {captionEngine === "cloud" && (
+                      <option value="es">Traduzir para espanhol</option>
+                    )}
                   </select>
                 </label>
                 {detectedCaptionLanguageName && (
@@ -8879,10 +9097,42 @@ export default function ClipEditor({
                   <span>LEGENDAS</span>
                   <b>{selected ? "Texto selecionado" : "Nenhuma legenda"}</b>
                 </header>
+                <div
+                  className="caption-engine-switch compact"
+                  role="group"
+                  aria-label="Onde gerar as legendas"
+                >
+                  <button
+                    type="button"
+                    className={captionEngine === "local" ? "active" : ""}
+                    aria-pressed={captionEngine === "local"}
+                    disabled={transcribing}
+                    onClick={() => {
+                      setCaptionEngine("local");
+                      if (captionTargetLanguage === "es")
+                        setCaptionTargetLanguage("original");
+                    }}
+                  >
+                    Local
+                  </button>
+                  <button
+                    type="button"
+                    className={captionEngine === "cloud" ? "active" : ""}
+                    aria-pressed={captionEngine === "cloud"}
+                    disabled={transcribing}
+                    onClick={() => setCaptionEngine("cloud")}
+                  >
+                    Nuvem
+                  </button>
+                </div>
                 <div className="caption-service-explainer compact">
-                  <b>Automática · IA</b>
+                  <b>
+                    {captionEngine === "local" ? "Whisper local" : "Nuvem"}
+                  </b>
                   <span>
-                    Extração local; somente áudio compacto é enviado em blocos.
+                    {captionEngine === "local"
+                      ? "Sem envio de áudio e sem chave de API."
+                      : "Somente áudio compacto é enviado em blocos."}
                   </span>
                 </div>
                 <button

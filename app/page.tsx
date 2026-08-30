@@ -3800,41 +3800,16 @@ export default function Home() {
                         ))}
                       </select>
                     </label>
-                    <label
-                      className="menu-field"
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        cursor: "pointer",
-                        marginTop: "4px",
-                        background: "rgba(255,255,255,0.04)",
-                        padding: "8px 10px",
-                        borderRadius: "10px",
-                        border: "1px solid rgba(255,255,255,0.08)",
-                      }}
-                    >
+                    <label className="menu-field screen-audio-option">
                       <input
                         type="checkbox"
                         aria-label="Compartilhar som da tela"
                         checked={shareScreenAudio}
                         onChange={(e) => setShareScreenAudio(e.target.checked)}
-                        style={{
-                          width: "16px",
-                          height: "16px",
-                          accentColor: "#6366f1",
-                          cursor: "pointer",
-                        }}
                       />
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          display: "block",
-                          color: "#f4f4f5",
-                        }}
-                      >
+                      <span>
                         Compartilhar som da tela
-                        <small style={{ fontSize: "10px", color: "#a1a1aa" }}>
+                        <small>
                           Inclui áudio do sistema / aba / vídeo ao transmitir
                           tela
                         </small>
@@ -3855,24 +3830,13 @@ export default function Home() {
                         </button>
                       </div>
                     )}
-                    <div className="setting-actions">
+                    <div className="setting-actions setting-actions-primary">
                       <label className="background-upload">
                         <ImagePlus aria-hidden="true" size={14} /> Escolher
                         imagem
                         <input
                           type="file"
-                          accept="image/*,video/mp4,.mp4"
-                          onChange={(event) =>
-                            chooseBackground(event.target.files?.[0])
-                          }
-                        />
-                      </label>
-                      <label className="background-upload animated-background-upload">
-                        <Sparkles aria-hidden="true" size={14} /> Subir GIF ou
-                        MP4 animado
-                        <input
-                          type="file"
-                          accept="image/gif,.gif,video/mp4,.mp4"
+                          accept="image/png,image/jpeg,image/webp"
                           onChange={(event) =>
                             chooseBackground(event.target.files?.[0])
                           }
@@ -3886,24 +3850,51 @@ export default function Home() {
                       >
                         <Blend aria-hidden="true" size={14} /> Desfocar
                       </button>
-                      <button
+                      <details
                         className={
-                          backgroundMode === "remove" ? "format on" : "format"
-                        }
-                        onClick={toggleBackgroundRemoval}
-                      >
-                        <Layers2 aria-hidden="true" size={14} /> Remover fundo
-                      </button>
-                      <button
-                        className={
+                          backgroundMode === "remove" ||
                           mattingQuality === "premium"
-                            ? "format on premium"
-                            : "format premium"
+                            ? "camera-effects-more has-active-effect"
+                            : "camera-effects-more"
                         }
-                        onClick={togglePremiumMatting}
                       >
-                        <Sparkles aria-hidden="true" size={14} /> IA Premium
-                      </button>
+                        <summary>
+                          <Sparkles aria-hidden="true" size={14} /> Mais efeitos
+                        </summary>
+                        <div className="camera-effects-list">
+                          <label className="background-upload animated-background-upload">
+                            <Film aria-hidden="true" size={14} /> Fundo animado
+                            <input
+                              type="file"
+                              accept="image/gif,.gif,video/mp4,.mp4"
+                              onChange={(event) =>
+                                chooseBackground(event.target.files?.[0])
+                              }
+                            />
+                          </label>
+                          <button
+                            className={
+                              backgroundMode === "remove"
+                                ? "format on"
+                                : "format"
+                            }
+                            onClick={toggleBackgroundRemoval}
+                          >
+                            <Layers2 aria-hidden="true" size={14} /> Remover
+                            fundo
+                          </button>
+                          <button
+                            className={
+                              mattingQuality === "premium"
+                                ? "format on premium"
+                                : "format premium"
+                            }
+                            onClick={togglePremiumMatting}
+                          >
+                            <Sparkles aria-hidden="true" size={14} /> IA Premium
+                          </button>
+                        </div>
+                      </details>
                     </div>
                     <p className="matting-note">
                       {mattingQuality === "premium"

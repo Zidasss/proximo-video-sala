@@ -3410,6 +3410,58 @@ body {
   border-color: #c9b7ff;
   color: #180d29;
 }
+.setting-actions-primary {
+  align-items: flex-start;
+}
+.setting-actions-primary > .background-upload,
+.setting-actions-primary > .format,
+.camera-effects-more > summary {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 7px;
+}
+.camera-effects-more {
+  flex: 1 1 100%;
+  border: 1px solid #566057;
+  border-radius: 10px;
+  overflow: hidden;
+}
+.camera-effects-more > summary {
+  padding: 0 12px;
+  color: #f4f0e8;
+  font-size: 13px;
+  font-weight: 750;
+  cursor: pointer;
+  list-style: none;
+}
+.camera-effects-more > summary::-webkit-details-marker {
+  display: none;
+}
+.camera-effects-more > summary::after {
+  content: "⌄";
+  margin-left: auto;
+}
+.camera-effects-more[open] > summary::after {
+  transform: rotate(180deg);
+}
+.camera-effects-list {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+  padding: 8px;
+  border-top: 1px solid #566057;
+}
+.camera-effects-list > :where(.background-upload, .format) {
+  min-height: 42px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  margin: 0;
+  text-align: center;
+}
 .matting-note {
   margin: 9px 0 0;
   color: #aaa0b2;
@@ -4210,6 +4262,36 @@ body {
   font-weight: 750;
   cursor: pointer;
 }
+.screen-audio-option {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  margin-top: 4px;
+  padding: 9px 10px;
+  border: 1px solid #ffffff14;
+  border-radius: 10px;
+  background: #ffffff08;
+  cursor: pointer;
+}
+.screen-audio-option input {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  accent-color: #7868ff;
+  cursor: pointer;
+}
+.screen-audio-option span {
+  display: grid;
+  gap: 2px;
+  color: #f4f4f5;
+  font-size: 12px;
+  font-weight: 700;
+}
+.screen-audio-option small {
+  color: #a1a1aa;
+  font-size: 10px;
+  font-weight: 500;
+}
 .resenha-layout-options button.selected {
   border-color: var(--ka-brand, #2d6cdf);
   background: color-mix(in srgb, var(--ka-brand, #2d6cdf) 13%, var(--ka-surface, #fff));
@@ -4845,6 +4927,10 @@ body {
   align-items: start;
   justify-content: space-between;
   gap: 16px;
+  padding: 0;
+  border: 0;
+  background: transparent;
+  color: inherit;
 }
 .screen-share-dialog > header div {
   display: grid;
@@ -4986,6 +5072,9 @@ body {
   }
   .screen-share-choice i {
     display: none;
+  }
+  .camera-effects-list {
+    grid-template-columns: 1fr;
   }
 }
 .preview-title {

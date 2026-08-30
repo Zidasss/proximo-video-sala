@@ -871,6 +871,32 @@ html[data-klip-theme] .setting-actions .format.premium.on {
   color: #fff !important;
 }
 
+html[data-klip-theme] :where(.background-upload, .camera-effects-more) {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text-secondary) !important;
+  box-shadow: var(--ka-shadow-xs);
+}
+html[data-klip-theme] :where(.background-upload, .camera-effects-more > summary):hover {
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .camera-effects-more[open] > summary {
+  background: var(--ka-surface-3) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .camera-effects-more.has-active-effect {
+  border-color: color-mix(in srgb, var(--ka-brand) 48%, var(--ka-border)) !important;
+}
+html[data-klip-theme] .camera-effects-list {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface) !important;
+}
+html[data-klip-theme] .animated-background-upload {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text-secondary) !important;
+}
+
 html[data-klip-theme] .stage {
   background: var(--ka-bg);
 }
@@ -1015,16 +1041,28 @@ html[data-klip-theme] .mic-meter i {
 html[data-klip-theme] .mic-tuning small { color: var(--ka-text-muted) !important; }
 
 html[data-klip-theme] .audio-profile-warning {
-  border-color: color-mix(in srgb, var(--ka-warning) 52%, var(--ka-border)) !important;
-  background: color-mix(in srgb, var(--ka-warning) 10%, var(--ka-surface-2)) !important;
-  color: var(--ka-warning) !important;
+  border-color: color-mix(in srgb, var(--ka-signal) 38%, var(--ka-border)) !important;
+  background: color-mix(in srgb, var(--ka-signal) 7%, var(--ka-surface-2)) !important;
+  color: var(--ka-text) !important;
 }
 html[data-klip-theme] .audio-profile-warning p { color: var(--ka-text-secondary) !important; }
 html[data-klip-theme] .audio-profile-warning button {
-  border-color: var(--ka-warning) !important;
-  background: var(--ka-warning) !important;
-  color: var(--ka-bg) !important;
+  border-color: color-mix(in srgb, var(--ka-brand) 44%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+  color: var(--ka-brand) !important;
 }
+html[data-klip-theme] .audio-profile-warning button:hover {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+html[data-klip-theme] .screen-audio-option {
+  border-color: var(--ka-border-subtle) !important;
+  background: var(--ka-surface-2) !important;
+}
+html[data-klip-theme] .screen-audio-option input { accent-color: var(--ka-brand) !important; }
+html[data-klip-theme] .screen-audio-option span { color: var(--ka-text) !important; }
+html[data-klip-theme] .screen-audio-option small { color: var(--ka-text-muted) !important; }
 
 html[data-klip-theme] .connection-grid > div {
   border-color: var(--ka-border-subtle) !important;
@@ -1096,7 +1134,15 @@ html[data-klip-theme] .screen-share-dialog {
   color: var(--ka-text) !important;
   box-shadow: var(--ka-shadow-lg) !important;
 }
+html[data-klip-theme] .screen-share-dialog > header {
+  padding: 0 !important;
+  border: 0 !important;
+  background: transparent !important;
+  color: var(--ka-text) !important;
+  box-shadow: none !important;
+}
 html[data-klip-theme] .screen-share-dialog > header small { color: var(--ka-brand) !important; }
+html[data-klip-theme] .screen-share-dialog > header b { color: var(--ka-text) !important; }
 html[data-klip-theme] .screen-share-dialog > header button,
 html[data-klip-theme] .screen-share-choice {
   border-color: var(--ka-border) !important;
@@ -1111,11 +1157,11 @@ html[data-klip-theme] .screen-share-choice:hover {
   background: var(--ka-brand-soft) !important;
 }
 html[data-klip-theme] .screen-share-choice.with-audio {
-  border-color: color-mix(in srgb, var(--ka-signal) 54%, var(--ka-border)) !important;
-  background: var(--ka-signal-soft) !important;
+  border-color: color-mix(in srgb, var(--ka-brand) 48%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
 }
 html[data-klip-theme] .screen-share-choice > span { background: var(--ka-canvas) !important; }
-html[data-klip-theme] .screen-share-choice i { background: var(--ka-signal) !important; color: var(--ka-bg) !important; }
+html[data-klip-theme] .screen-share-choice i { background: var(--ka-brand) !important; color: #fff !important; }
 
 /* Offline recording studio. Media tiles remain black by design. */
 html[data-klip-theme] .offline-studio {

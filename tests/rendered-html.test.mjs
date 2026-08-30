@@ -439,3 +439,18 @@ test("keeps a crash-safe local editor recovery with its media blobs", async () =
   assert.match(recovery, /retained\.has\(String\(id\)\)/);
   assert.match(page, /navigator\.storage\?\.persist/);
 });
+
+test("keeps recorder controls compact and theme-safe", async () => {
+  const [page, theme] = await Promise.all([
+    readFile(new URL("app/page.tsx", root), "utf8"),
+    readFile(new URL("app/styles/klipapp.css", root), "utf8"),
+  ]);
+  assert.match(page, /screen-audio-option/);
+  assert.match(page, /camera-effects-more/);
+  assert.match(page, /Mais efeitos/);
+  assert.match(page, /Fundo animado/);
+  assert.match(theme, /\.screen-share-dialog > header \{/);
+  assert.match(theme, /background: transparent !important/);
+  assert.match(theme, /\.screen-audio-option span \{ color: var\(--ka-text\) !important/);
+  assert.match(theme, /\.audio-profile-warning button \{[\s\S]*?var\(--ka-brand-soft\)/);
+});

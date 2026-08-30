@@ -18,6 +18,8 @@ test("ships compact caption navigation and manual participant styling", async ()
   assert.match(editor, /const speakerName =/);
   assert.match(editor, /captionSpeakerName/);
   assert.match(editor, /renameCaptionSpeaker/);
+  assert.match(editor, /applyCaptionPositionToAll/);
+  assert.match(editor, /Aplicar posição a todas as legendas/);
 });
 
 async function readProductionSource() {

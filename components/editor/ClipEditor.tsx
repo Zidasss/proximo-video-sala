@@ -2206,6 +2206,18 @@ export default function ClipEditor({
       items.map((layer) => (layer.id === id ? { ...layer, ...patch } : layer)),
     );
   };
+  const applyCaptionPositionToAll = (source: TextLayer) => {
+    if (!isCaptionLayer(source)) return;
+    remember();
+    setLayers((items) =>
+      items.map((layer) =>
+        isCaptionLayer(layer)
+          ? { ...layer, x: source.x, y: source.y }
+          : layer,
+      ),
+    );
+    setNotice("Posição aplicada a todas as legendas.");
+  };
   const assignCaptionSpeaker = (
     id: string,
     speaker: TextLayer["captionSpeaker"],
@@ -8244,6 +8256,15 @@ export default function ClipEditor({
                           }
                         />
                       </label>
+                      {isCaptionLayer(selected) && (
+                        <button
+                          type="button"
+                          className="pure-secondary"
+                          onClick={() => applyCaptionPositionToAll(selected)}
+                        >
+                          Aplicar posição a todas as legendas
+                        </button>
+                      )}
                       <div className="effect-grid">
                         <label>
                           Início (s)
@@ -9595,6 +9616,46 @@ export default function ClipEditor({
                           <AlignRight aria-hidden="true" size={15} />
                         </button>
                       </div>
+                    </details>
+                    <details open>
+                      <summary>Posição no vídeo</summary>
+                      <label>
+                        Horizontal <output>{Math.round(selected.x)}%</output>
+                        <input
+                          aria-label="Posição horizontal da legenda"
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={selected.x}
+                          onChange={(event) =>
+                            updateLayer(selected.id, {
+                              x: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <label>
+                        Vertical <output>{Math.round(selected.y)}%</output>
+                        <input
+                          aria-label="Posição vertical da legenda"
+                          type="range"
+                          min="0"
+                          max="100"
+                          value={selected.y}
+                          onChange={(event) =>
+                            updateLayer(selected.id, {
+                              y: Number(event.target.value),
+                            })
+                          }
+                        />
+                      </label>
+                      <button
+                        type="button"
+                        className="pure-secondary"
+                        onClick={() => applyCaptionPositionToAll(selected)}
+                      >
+                        Aplicar posição a todas as legendas
+                      </button>
                     </details>
                     <details open>
                       <summary>Animação</summary>

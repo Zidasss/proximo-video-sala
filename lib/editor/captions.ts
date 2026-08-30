@@ -33,6 +33,111 @@ function cleanText(value: string) {
   return value.replace(/\s+/g, " ").trim();
 }
 
+function comparableWord(value: string) {
+  return value
+    .toLocaleLowerCase("pt-BR")
+    .normalize("NFD")
+    .replace(/\p{M}/gu, "")
+    .replace(/[^\p{L}\p{N}]+/gu, "");
+}
+
+function sameWords(first: readonly string[], second: readonly string[]) {
+  return (
+    first.length === second.length &&
+    first.every(
+      (word, index) => comparableWord(word) === comparableWord(second[index]),
+    )
+  );
+}
+
+/** Removes obvious Whisper loops without attempting to rewrite spoken words. */
+export function removeRepeatedCaptionText(value: string) {
+  const words = cleanText(value).split(" ").filter(Boolean);
+  let changed = true;
+  while (changed) {
+    changed = false;
+    const largestRun = Math.min(16, Math.floor(words.length / 2));
+    for (let run = largestRun; run >= 3 && !changed; run -= 1) {
+      for (let index = 0; index + run * 2 <= words.length; index += 1) {
+        if (
+          sameWords(
+            words.slice(index, index + run),
+            words.slice(index + run, index + run * 2),
+          )
+        ) {
+          words.splice(index + run, run);
+          changed = true;
+          break;
+        }
+      }
+    }
+  }
+  return words.join(" ");
+}
+
+/** Consolidates exact duplicates and word overlap produced at chunk borders. */
+export function consolidateCaptionSegments(
+  segments: readonly CaptionSegment[],
+): CaptionSegment[] {
+  const consolidated: CaptionSegment[] = [];
+  const normalized = segments
+    .map((segment) => ({
+      start: Math.max(0, finite(segment.start)),
+      end: Math.max(0, finite(segment.end)),
+      text: removeRepeatedCaptionText(segment.text),
+    }))
+    .filter((segment) => segment.text && segment.end > segment.start)
+    .sort((first, second) => first.start - second.start || first.end - second.end);
+
+  for (const segment of normalized) {
+    const previous = consolidated.at(-1);
+    if (!previous) {
+      consolidated.push({ ...segment });
+      continue;
+    }
+
+    const previousWords = cleanText(previous.text).split(" ");
+    const currentWords = cleanText(segment.text).split(" ");
+    const exactDuplicate = sameWords(previousWords, currentWords);
+    if (exactDuplicate && segment.start <= previous.end + 1.25) {
+      previous.end = Math.max(previous.end, segment.end);
+      continue;
+    }
+
+    if (segment.start <= previous.end + 0.25) {
+      const largestOverlap = Math.min(
+        16,
+        previousWords.length,
+        currentWords.length,
+      );
+      let overlap = 0;
+      for (let size = largestOverlap; size >= 3; size -= 1) {
+        if (
+          sameWords(
+            previousWords.slice(previousWords.length - size),
+            currentWords.slice(0, size),
+          )
+        ) {
+          overlap = size;
+          break;
+        }
+      }
+      if (overlap) {
+        const remainder = currentWords.slice(overlap).join(" ");
+        if (!remainder) {
+          previous.end = Math.max(previous.end, segment.end);
+          continue;
+        }
+        consolidated.push({ ...segment, text: remainder });
+        continue;
+      }
+    }
+
+    consolidated.push({ ...segment });
+  }
+  return consolidated;
+}
+
 function finite(value: number) {
   return Number.isFinite(value) ? value : 0;
 }
@@ -218,13 +323,14 @@ export function mapCaptionsToTimeline(
       : Number.POSITIVE_INFINITY;
   const mapped: CaptionSegment[] = [];
 
+  const consolidatedSegments = consolidateCaptionSegments(segments);
   for (const range of ranges) {
     const sourceStart = Math.max(0, finite(range.sourceStart));
     const sourceEnd = Math.max(sourceStart, finite(range.sourceEnd));
     const timelineStart = Math.max(0, finite(range.timelineStart));
     if (sourceEnd <= sourceStart || timelineStart >= limit) continue;
 
-    for (const segment of segments) {
+    for (const segment of consolidatedSegments) {
       const text = cleanText(segment.text);
       const sourceSegmentStart = Math.max(0, finite(segment.start));
       const sourceSegmentEnd = Math.max(

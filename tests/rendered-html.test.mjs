@@ -361,7 +361,7 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /captionTargetLanguage === "pt" \? "pt" : detectedLanguage/);
   assert.doesNotMatch(page, /form\.append\("language", "pt"\)/);
   assert.match(css, /\.caption-clip\s*\{[\s\S]*?position:\s*absolute/);
-  assert.match(localTranscription, /local-transcription\.js\?v=pt-quality-3/);
+  assert.match(localTranscription, /local-transcription\.js\?v=pt-quality-4/);
   assert.match(transcription, /\/v1\/audio\/transcriptions/);
   assert.match(transcription, /whisper-1/);
   assert.match(transcription, /timestamp_granularities\[\]/);
@@ -400,7 +400,7 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(localTranscription, /worker \?\?= new Worker/);
   assert.match(localTranscription, /parseFloat32Wave/);
   assert.match(localWorker, /\/_klip-ai\/runtime/);
-  assert.match(localWorker, /onnx-community\/whisper-base/);
+  assert.match(localWorker, /onnx-community\/whisper-small/);
   assert.match(localWorker, /chunk_length_s: 30/);
   assert.match(localWorker, /stride_length_s: 5/);
   assert.match(localWorker, /useBrowserCache = true/);

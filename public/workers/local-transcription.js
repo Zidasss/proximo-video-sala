@@ -4,7 +4,7 @@ const TRANSFORMERS_MODULE_URL = new URL(
 ).href;
 const MODEL_HOST = "https://huggingface.co/";
 const ONNX_WASM_PATH = new URL("/_klip-ai/ort/", self.location.origin).href;
-const MODEL_ID = "onnx-community/whisper-base";
+const MODEL_ID = "onnx-community/whisper-small";
 const SAMPLE_RATE = 16_000;
 const nativeFetch = self.fetch.bind(self);
 const CPU_MODEL_DTYPE = {

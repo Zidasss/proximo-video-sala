@@ -2,10 +2,36 @@ import assert from "node:assert/strict";
 import test from "node:test";
 import {
   buildCaptionTranscriptionJobs,
+  consolidateCaptionSegments,
   mapCaptionsToTimeline,
   mergeCaptionSourceRanges,
+  removeRepeatedCaptionText,
   segmentCaption,
 } from "../lib/editor/captions.ts";
+
+test("removes long consecutive Whisper loops without changing short emphasis", () => {
+  assert.equal(
+    removeRepeatedCaptionText(
+      "Esse vídeo ficou muito bom esse vídeo ficou muito bom para publicar.",
+    ),
+    "Esse vídeo ficou muito bom para publicar.",
+  );
+  assert.equal(removeRepeatedCaptionText("Não, não faça isso."), "Não, não faça isso.");
+});
+
+test("consolidates duplicate and overlapping phrases at transcription borders", () => {
+  assert.deepEqual(
+    consolidateCaptionSegments([
+      { start: 0, end: 2, text: "Agora vamos editar este vídeo" },
+      { start: 1.9, end: 4, text: "editar este vídeo com mais cuidado" },
+      { start: 4.05, end: 5, text: "com mais cuidado" },
+    ]),
+    [
+      { start: 0, end: 2, text: "Agora vamos editar este vídeo" },
+      { start: 1.9, end: 5, text: "com mais cuidado" },
+    ],
+  );
+});
 
 test("merges duplicated timeline sources before sending audio for transcription", () => {
   const ranges = mergeCaptionSourceRanges(

@@ -7323,7 +7323,7 @@ export default function ClipEditor({
                   </b>
                   <span>
                     {captionEngine === "local"
-                      ? "O áudio e o texto não saem deste dispositivo. No primeiro uso, o navegador baixa e armazena o modelo local de maior precisão."
+                      ? "O áudio e o texto não saem deste dispositivo. No primeiro uso, o navegador baixa e armazena o modelo local de alta precisão."
                       : "O KLIP extrai e compacta o áudio aqui. O vídeo não é enviado; somente cada bloco de áudio vai para a transcrição."}
                   </span>
                   {captionSourceSeconds > 0 && (

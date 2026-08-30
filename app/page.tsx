@@ -54,6 +54,7 @@ import {
   Sun,
   User,
   UserPlus,
+  Users,
   Video,
   VideoOff,
   Volume2,
@@ -312,6 +313,8 @@ export default function Home() {
     [verticalCameraMode, setVerticalCameraMode] =
       useState<VerticalCameraMode>("auto"),
     [resenhaMode, setResenhaMode] = useState(false),
+    [resenhaLayout, setResenhaLayout] = useState<"solo" | "duo">("duo"),
+    [recordingFinishedPrompt, setRecordingFinishedPrompt] = useState(false),
     [previewOpen, setPreviewOpen] = useState(false),
     [topOrder, setTopOrder] = useState<"mine-first" | "friend-first">(
       "mine-first",
@@ -1760,9 +1763,10 @@ export default function Home() {
         screenPosition,
         tiktokTop,
         resenhaMode,
+        resenhaLayout,
         resenhaMineSize,
       });
-  }, [mode, topOrder, screenPosition, tiktokTop, resenhaMode, resenhaMineSize]);
+  }, [mode, topOrder, screenPosition, tiktokTop, resenhaMode, resenhaLayout, resenhaMineSize]);
   useEffect(() => {
     if (!recording) return;
     const timer = window.setInterval(
@@ -1791,6 +1795,7 @@ export default function Home() {
     screenPosition,
     tiktokTop,
     resenhaMode,
+    resenhaLayout,
     resenhaMineSize,
     sharing,
     remoteSharing,
@@ -2050,6 +2055,7 @@ export default function Home() {
           screenPosition,
           tiktokTop,
           resenhaMode,
+          resenhaLayout,
           resenhaMineSize,
         });
     };
@@ -2068,6 +2074,7 @@ export default function Home() {
         screenPosition?: string;
         tiktokTop?: number;
         resenhaMode?: boolean;
+        resenhaLayout?: "solo" | "duo";
         resenhaMineSize?: number;
       };
       if (data.kind === "name" && data.name) setFriend(data.name);
@@ -2091,6 +2098,8 @@ export default function Home() {
         setScreenPosition(data.screenPosition as "top" | "bottom");
         setTiktokTop(data.tiktokTop);
         setResenhaMode(Boolean(data.resenhaMode));
+        if (data.resenhaLayout === "solo" || data.resenhaLayout === "duo")
+          setResenhaLayout(data.resenhaLayout);
         if (typeof data.resenhaMineSize === "number")
           setResenhaMineSize(
             mode === "guest" ? 1 - data.resenhaMineSize : data.resenhaMineSize,
@@ -2657,10 +2666,28 @@ export default function Home() {
       setVertical(true);
       setVerticalCameraMode("auto");
       setPreviewOpen(true);
-      setNotice("Modo Resenha ativo: duas câmeras empilhadas em 9:16.");
+      setNotice(
+        resenhaLayout === "solo"
+          ? "Modo Resenha solo ativo: câmera em cima e vídeo embaixo, sem faixas."
+          : "Modo Resenha ativo: duas câmeras empilhadas em 9:16.",
+      );
     } else {
       setNotice("Modo Resenha desativado.");
     }
+  }
+  function selectResenhaLayout(next: "solo" | "duo") {
+    setResenhaLayout(next);
+    setResenhaMode(true);
+    setVertical(true);
+    setVerticalCameraMode("auto");
+    setScreenPosition("bottom");
+    setPreviewOpen(true);
+    if (next === "solo") setResenhaMineSize(0.36);
+    setNotice(
+      next === "solo"
+        ? "Resenha para 1 pessoa: câmera em cima e vídeo embaixo, preenchendo todo o quadro."
+        : "Resenha para 2 pessoas: duas câmeras empilhadas.",
+    );
   }
   function selectVerticalCameraMode(next: VerticalCameraMode) {
     setVerticalCameraMode(next);
@@ -2790,6 +2817,23 @@ export default function Home() {
             : speakingRef.current.mine;
         cover(selectedVideo, 0, 0, canvas.width, canvas.height);
         bezel(0, 0, canvas.width, canvas.height, selectedSpeaking);
+      } else if (vertical && resenhaMode && resenhaLayout === "solo") {
+        if (screenVideo) {
+          const cameraHeight =
+            canvas.height * Math.min(0.58, Math.max(0.24, resenhaMineSize));
+          cover(mine.current, 0, 0, canvas.width, cameraHeight);
+          cover(
+            screenVideo,
+            0,
+            cameraHeight,
+            canvas.width,
+            canvas.height - cameraHeight,
+          );
+          bezel(0, 0, canvas.width, cameraHeight, speakingRef.current.mine);
+        } else {
+          cover(mine.current, 0, 0, canvas.width, canvas.height);
+          bezel(0, 0, canvas.width, canvas.height, speakingRef.current.mine);
+        }
       } else if (!hasFriendVideo && vertical && !screenVideo) {
         // A recording in a solo room is a proper one-person composition, not a two-up layout with a black half.
         cover(mine.current, 0, 0, canvas.width, canvas.height);
@@ -2980,8 +3024,8 @@ export default function Home() {
       void recordingAudio?.close();
       connection.current?.send({ kind: "recording", active: false });
       if (finishedClip) {
-        setEditorReturnToCall(true);
-        setEditorOpen(true);
+        setRecordingFinishedPrompt(true);
+        setNotice("Gravação salva. Escolha se deseja abrir o editor.");
       }
     };
     rec.start(1000);
@@ -3122,6 +3166,26 @@ export default function Home() {
           canvas.width,
           canvas.height,
         );
+      } else if (vertical && resenhaMode && resenhaLayout === "solo") {
+        const screenVideo = sharing
+          ? screen.current
+          : remoteSharing
+            ? remoteScreen.current
+            : null;
+        if (screenVideo) {
+          const cameraHeight =
+            canvas.height * Math.min(0.58, Math.max(0.24, resenhaMineSize));
+          cover(mine.current, 0, 0, canvas.width, cameraHeight);
+          cover(
+            screenVideo,
+            0,
+            cameraHeight,
+            canvas.width,
+            canvas.height - cameraHeight,
+          );
+        } else {
+          cover(mine.current, 0, 0, canvas.width, canvas.height);
+        }
       } else if (vertical && resenhaMode) {
         const screenVideo = sharing
             ? screen.current
@@ -4259,13 +4323,34 @@ export default function Home() {
                       )}
                     </button>
                     <small className="resenha-note">
-                      Duas câmeras empilhadas em 9:16. Se você compartilhar a
-                      tela, ela também entra na prévia e na gravação.
+                      {resenhaLayout === "solo"
+                        ? "Uma câmera em cima e o vídeo compartilhado embaixo, ocupando todo o quadro sem faixa preta."
+                        : "Duas câmeras empilhadas em 9:16. Se você compartilhar a tela, ela também entra na prévia e na gravação."}
                     </small>
                     {resenhaMode && (
                       <div className="resenha-controls">
+                        <div
+                          className="resenha-layout-options"
+                          role="group"
+                          aria-label="Quantidade de pessoas no Modo Resenha"
+                        >
+                          <button
+                            type="button"
+                            className={resenhaLayout === "solo" ? "selected" : ""}
+                            onClick={() => selectResenhaLayout("solo")}
+                          >
+                            <User aria-hidden="true" size={14} /> 1 pessoa
+                          </button>
+                          <button
+                            type="button"
+                            className={resenhaLayout === "duo" ? "selected" : ""}
+                            onClick={() => selectResenhaLayout("duo")}
+                          >
+                            <Users aria-hidden="true" size={14} /> 2 pessoas
+                          </button>
+                        </div>
                         <label className="preview-slider">
-                          Minha câmera · {Math.round(resenhaMineSize * 100)}%
+                          {resenhaLayout === "solo" ? "Altura da câmera" : "Minha câmera"} · {Math.round(resenhaMineSize * 100)}%
                           <input
                             type="range"
                             min="0.25"
@@ -4529,7 +4614,8 @@ export default function Home() {
                 ) : (
                   <video ref={previewMine} autoPlay muted playsInline />
                 )}
-                {verticalCameraMode === "auto" && (
+                {verticalCameraMode === "auto" &&
+                  !(resenhaMode && resenhaLayout === "solo") && (
                   /* eslint-disable-next-line jsx-a11y/media-has-caption -- Prévia WebRTC ao vivo não possui uma faixa VTT estática. */
                   <video ref={previewFriend} autoPlay playsInline />
                 )}
@@ -4549,7 +4635,7 @@ export default function Home() {
                   (verticalCameraMode !== "auto"
                     ? "solo-camera-preview"
                     : resenhaMode
-                      ? `resenha-preview screen-${screenPosition}`
+                      ? `${resenhaLayout === "solo" ? "resenha-solo-preview" : "resenha-preview"} screen-${screenPosition}`
                       : "screen-" + screenPosition)
                 }
               >
@@ -4567,6 +4653,31 @@ export default function Home() {
                         : `${name} (você)`}
                     </span>
                   </div>
+                ) : resenhaMode && resenhaLayout === "solo" ? (
+                  <>
+                    <div
+                      className="resenha-solo-camera"
+                      style={{
+                        height: screenActive
+                          ? `${Math.min(58, Math.max(24, resenhaMineSize * 100))}%`
+                          : "100%",
+                      }}
+                    >
+                      <video ref={previewMine} autoPlay muted playsInline />
+                      <span>{name} (você)</span>
+                    </div>
+                    {screenActive && (
+                      <div
+                        className="preview-screen resenha-solo-video"
+                        style={{
+                          height: `${100 - Math.min(58, Math.max(24, resenhaMineSize * 100))}%`,
+                        }}
+                      >
+                        {/* eslint-disable-next-line jsx-a11y/media-has-caption -- Compartilhamento ao vivo não possui uma faixa VTT estática. */}
+                        <video ref={previewScreen} autoPlay playsInline />
+                      </div>
+                    )}
+                  </>
                 ) : (
                   <>
                     <div
@@ -4667,7 +4778,7 @@ export default function Home() {
               )}
               {resenhaMode && verticalCameraMode === "auto" && (
                 <label className="preview-slider">
-                  Minha câmera · {Math.round(resenhaMineSize * 100)}%
+                  {resenhaLayout === "solo" ? "Altura da câmera" : "Minha câmera"} · {Math.round(resenhaMineSize * 100)}%
                   <input
                     type="range"
                     min="0.25"
@@ -4685,7 +4796,9 @@ export default function Home() {
                 {verticalCameraMode !== "auto"
                   ? "Uma câmera ocupa todo o quadro. Esta composição será usada exatamente assim na gravação."
                   : resenhaMode
-                    ? "Ajuste o tamanho da sua câmera e arraste para trocar a ordem. A tela compartilhada também será gravada exatamente como aparece aqui."
+                    ? resenhaLayout === "solo"
+                      ? "A câmera fica em cima e o vídeo compartilhado embaixo, sem barras ou espaço vazio entre eles."
+                      : "Ajuste o tamanho da sua câmera e arraste para trocar a ordem. A tela compartilhada também será gravada exatamente como aparece aqui."
                     : "Arraste uma câmera sobre a outra para trocar de lado. O tamanho da prévia será usado na gravação."}
               </small>
             </>
@@ -4722,6 +4835,50 @@ export default function Home() {
             <button onClick={send}>Enviar</button>
           </div>
         </aside>
+      )}
+      {recordingFinishedPrompt && editorClip && (
+        <div className="screen-share-backdrop recording-finished-backdrop">
+          <section
+            className="screen-share-dialog recording-finished-dialog"
+            role="dialog"
+            aria-modal="true"
+            aria-labelledby="recording-finished-title"
+          >
+            <header>
+              <div>
+                <small>GRAVAÇÃO SALVA</small>
+                <b id="recording-finished-title">Quer abrir no editor?</b>
+              </div>
+            </header>
+            <p>
+              O arquivo já foi salvo no seu dispositivo. Você pode editar agora
+              ou continuar na sala sem abrir o editor.
+            </p>
+            <div className="recording-finished-actions">
+              <button
+                type="button"
+                className="recording-stay-button"
+                onClick={() => {
+                  setRecordingFinishedPrompt(false);
+                  setNotice("Gravação salva. Você continua na sala.");
+                }}
+              >
+                Continuar na sala
+              </button>
+              <button
+                type="button"
+                className="recording-editor-button"
+                onClick={() => {
+                  setRecordingFinishedPrompt(false);
+                  setEditorReturnToCall(true);
+                  setEditorOpen(true);
+                }}
+              >
+                <Clapperboard aria-hidden="true" size={17} /> Abrir no editor
+              </button>
+            </div>
+          </section>
+        </div>
       )}
       {shareScreenDialogOpen && !sharing && (
         <div

@@ -83,10 +83,14 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
     /TikTok solo ativo: somente a sua câmera será gravada em 9:16/,
   );
   assert.match(page, /resenhaMineSize/);
-  assert.match(
-    page,
-    /Minha câmera · \{Math\.round\(resenhaMineSize \* 100\)\}%/,
-  );
+  assert.match(page, /resenhaLayout === "solo"/);
+  assert.match(page, /Quantidade de pessoas no Modo Resenha/);
+  assert.match(page, /1 pessoa/);
+  assert.match(page, /câmera em cima e vídeo embaixo/i);
+  assert.match(page, /className="preview-screen resenha-solo-video"/);
+  assert.match(page, /setRecordingFinishedPrompt\(true\)/);
+  assert.match(page, /Quer abrir no editor\?/);
+  assert.match(page, /Continuar na sala/);
   assert.match(
     page,
     /A tela compartilhada também será gravada exatamente como aparece aqui/,

@@ -15,7 +15,7 @@ export type LocalTranscriptionProgress = {
 };
 
 type LocalTranscriptionOptions = {
-  targetLanguage: "original" | "en";
+  targetLanguage: "original" | "pt" | "en";
   signal: AbortSignal;
   onProgress?: (progress: LocalTranscriptionProgress) => void;
 };

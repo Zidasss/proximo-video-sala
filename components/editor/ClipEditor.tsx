@@ -796,8 +796,18 @@ export default function ClipEditor({
     [transcriptionElapsedSeconds, setTranscriptionElapsedSeconds] = useState(0),
     [captionListExpanded, setCaptionListExpanded] = useState(false),
     [captionSpeakerStyles, setCaptionSpeakerStyles] = useState({
-      P1: { color: "#ffffff", size: 52, effect: "pop" as TextEffect },
-      P2: { color: "#72d6ff", size: 52, effect: "slide" as TextEffect },
+      P1: {
+        name: "P1",
+        color: "#ffffff",
+        size: 52,
+        effect: "pop" as TextEffect,
+      },
+      P2: {
+        name: "P2",
+        color: "#72d6ff",
+        size: 52,
+        effect: "slide" as TextEffect,
+      },
     }),
     [transcriptionBlock, setTranscriptionBlock] = useState({
       current: 0,
@@ -815,8 +825,8 @@ export default function ClipEditor({
     >("idle"),
     [detectedCaptionLanguage, setDetectedCaptionLanguage] = useState(""),
     [captionTargetLanguage, setCaptionTargetLanguage] = useState<
-      "original" | "en" | "es"
-    >("original"),
+      "original" | "pt" | "en" | "es"
+    >("pt"),
     [timelineThumbnails, setTimelineThumbnails] = useState<string[]>([]),
     [snapEnabled, setSnapEnabled] = useState(true),
     [markers, setMarkers] = useState<number[]>([]),
@@ -898,8 +908,10 @@ export default function ClipEditor({
       : "";
   const automaticCaptionButtonLabel = transcribing
     ? `${transcriptionBlock.total ? `Bloco ${transcriptionBlock.current}/${transcriptionBlock.total} · ` : ""}${Math.round(transcriptionProgress)}%`
-    : captionTargetLanguage !== "original"
+    : captionTargetLanguage === "en" || captionTargetLanguage === "es"
       ? "Transcrever e traduzir"
+      : captionTargetLanguage === "pt"
+        ? "Gerar legendas em português"
       : detectedCaptionLanguageName
         ? `Gerar legenda · ${detectedCaptionLanguageName}`
         : "Detectar idioma e gerar legendas";
@@ -913,7 +925,7 @@ export default function ClipEditor({
     "local-transcribing": "Whisper transcrevendo neste dispositivo…",
     uploading: "Enviando somente este bloco de áudio…",
     transcribing:
-      captionTargetLanguage === "original"
+      captionTargetLanguage === "original" || captionTargetLanguage === "pt"
         ? "Enviando o bloco e aguardando a transcrição por IA…"
         : "Enviando o bloco e aguardando transcrição e tradução por IA…",
     translating: "Finalizando a tradução e preservando os tempos…",
@@ -946,6 +958,7 @@ export default function ClipEditor({
           color: savedP1Style.color,
           size: savedP1Style.size,
           effect: savedP1Style.effect,
+          name: savedP1Style.captionSpeakerName || "P1",
         }
       : captionSpeakerStyles.P1,
     P2: savedP2Style
@@ -953,6 +966,7 @@ export default function ClipEditor({
           color: savedP2Style.color,
           size: savedP2Style.size,
           effect: savedP2Style.effect,
+          name: savedP2Style.captionSpeakerName || "P2",
         }
       : captionSpeakerStyles.P2,
   };
@@ -2203,7 +2217,15 @@ export default function ClipEditor({
           ? {
               ...layer,
               captionSpeaker: speaker,
-              ...(speaker ? effectiveCaptionSpeakerStyles[speaker] : {}),
+              ...(speaker
+                ? {
+                    captionSpeakerName:
+                      effectiveCaptionSpeakerStyles[speaker].name,
+                    color: effectiveCaptionSpeakerStyles[speaker].color,
+                    size: effectiveCaptionSpeakerStyles[speaker].size,
+                    effect: effectiveCaptionSpeakerStyles[speaker].effect,
+                  }
+                : { captionSpeakerName: undefined }),
             }
           : layer,
       ),
@@ -2221,6 +2243,20 @@ export default function ClipEditor({
     setLayers((items) =>
       items.map((layer) =>
         layer.captionSpeaker === speaker ? { ...layer, ...patch } : layer,
+      ),
+    );
+  };
+  const renameCaptionSpeaker = (speaker: "P1" | "P2", name: string) => {
+    const normalizedName = name.slice(0, 40);
+    setCaptionSpeakerStyles((styles) => ({
+      ...styles,
+      [speaker]: { ...styles[speaker], name: normalizedName || speaker },
+    }));
+    setLayers((items) =>
+      items.map((layer) =>
+        layer.captionSpeaker === speaker
+          ? { ...layer, captionSpeakerName: normalizedName || speaker }
+          : layer,
       ),
     );
   };
@@ -2398,7 +2434,9 @@ export default function ClipEditor({
   const effectProgress = (layer: TextLayer, at: number) =>
     Math.max(0, Math.min(1, (at - layer.start) / 0.45));
   const visibleText = (layer: TextLayer, at: number) => {
-    const prefix = layer.captionSpeaker ? `${layer.captionSpeaker}: ` : "";
+    const speakerName =
+      layer.captionSpeakerName?.trim() || layer.captionSpeaker || "";
+    const prefix = speakerName ? `${speakerName}: ` : "";
     if (layer.effect !== "typewriter") return `${prefix}${layer.text}`;
     const progress = Math.max(0, Math.min(1, (at - layer.start) / 1.6));
     return `${prefix}${layer.text.slice(0, Math.ceil(layer.text.length * progress))}`;
@@ -3217,7 +3255,11 @@ export default function ClipEditor({
             throw new Error("A sessão do Whisper local não foi iniciada.");
           const localResult = await localTranscriptionSession.transcribe(pcm, {
             targetLanguage:
-              captionTargetLanguage === "en" ? "en" : "original",
+              captionTargetLanguage === "en"
+                ? "en"
+                : captionTargetLanguage === "pt"
+                  ? "pt"
+                  : "original",
             onProgress: (status) => {
               if (status.phase === "loading-runtime") {
                 setTranscriptionPhase("loading-model");
@@ -3288,7 +3330,10 @@ export default function ClipEditor({
             ),
           );
           form.append("targetLanguage", captionTargetLanguage);
-          if (detectedLanguage) form.append("language", detectedLanguage);
+          const transcriptionLanguage =
+            captionTargetLanguage === "pt" ? "pt" : detectedLanguage;
+          if (transcriptionLanguage)
+            form.append("language", transcriptionLanguage);
           form.append("chunkIndex", String(index));
           form.append("chunkCount", String(totalChunks));
           const response = await requestTranscriptionChunk(
@@ -7281,19 +7326,24 @@ export default function ClipEditor({
                   )}
                 </div>
                 <label className="caption-language-control">
-                  <span>Idioma de saída</span>
+                  <span>Idioma das legendas</span>
                   <select
                     value={captionTargetLanguage}
                     onChange={(event) =>
                       setCaptionTargetLanguage(
-                        event.target.value as "original" | "en" | "es",
+                        event.target.value as
+                          | "original"
+                          | "pt"
+                          | "en"
+                          | "es",
                       )
                     }
                     disabled={transcribing}
                   >
                     <option value="original">
-                      Áudio original · detectar idioma
+                      Mesmo idioma do áudio · automático
                     </option>
+                    <option value="pt">Português (Brasil) · sem tradução</option>
                     <option value="en">Traduzir para inglês</option>
                     {captionEngine === "cloud" && (
                       <option value="es">Traduzir para espanhol</option>
@@ -7379,6 +7429,18 @@ export default function ClipEditor({
                         <div className="caption-speaker-style" key={speaker}>
                           <b>{speaker}</b>
                           <label>
+                            Nome
+                            <input
+                              type="text"
+                              maxLength={40}
+                              value={effectiveCaptionSpeakerStyles[speaker].name}
+                              onChange={(event) =>
+                                renameCaptionSpeaker(speaker, event.target.value)
+                              }
+                              placeholder={speaker}
+                            />
+                          </label>
+                          <label>
                             Cor
                             <input
                               type="color"
@@ -7461,7 +7523,14 @@ export default function ClipEditor({
                             }}
                           >
                             <span>
-                              {layer.captionSpeaker && <b>{layer.captionSpeaker}:</b>} {layer.text}
+                              {layer.captionSpeaker && (
+                                <b>
+                                  {layer.captionSpeakerName ||
+                                    layer.captionSpeaker}
+                                  :
+                                </b>
+                              )}{" "}
+                              {layer.text}
                             </span>
                             <small>{time(layer.start)}–{time(layer.end)}</small>
                           </button>

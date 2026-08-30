@@ -15,7 +15,9 @@ test("ships compact caption navigation and manual participant styling", async ()
   assert.match(editor, /assignCaptionSpeaker/);
   assert.match(editor, /applyCaptionSpeakerStyle/);
   assert.match(editor, /O Whisper local não separa vozes/);
-  assert.match(editor, /const prefix = layer\.captionSpeaker/);
+  assert.match(editor, /const speakerName =/);
+  assert.match(editor, /captionSpeakerName/);
+  assert.match(editor, /renameCaptionSpeaker/);
 });
 
 async function readProductionSource() {
@@ -353,7 +355,8 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /Título central/);
   assert.match(page, /Legenda legível/);
   assert.match(page, /automaticCaptionButtonLabel/);
-  assert.match(page, /Áudio original · detectar idioma/);
+  assert.match(page, /Português \(Brasil\) · sem tradução/);
+  assert.match(page, /captionTargetLanguage === "pt" \? "pt" : detectedLanguage/);
   assert.doesNotMatch(page, /form\.append\("language", "pt"\)/);
   assert.match(transcription, /\/v1\/audio\/transcriptions/);
   assert.match(transcription, /whisper-1/);

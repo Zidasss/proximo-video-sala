@@ -182,6 +182,7 @@ async function transcribe(message) {
       chunk_length_s: 28,
       stride_length_s: 4,
       task: message.targetLanguage === "en" ? "translate" : "transcribe",
+      ...(message.targetLanguage === "pt" ? { language: "portuguese" } : {}),
     });
     const segments = normalizeOutput(output, audio.length / SAMPLE_RATE);
     send({ type: "result", segments, device });

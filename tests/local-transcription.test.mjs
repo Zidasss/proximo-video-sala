@@ -69,6 +69,7 @@ test("loads the Whisper runtime and ONNX engine through the KLIP origin", async 
   assert.match(workerSource, /encoder_model: "q8"/);
   assert.match(workerSource, /decoder_model_merged: "q4"/);
   assert.match(workerSource, /env\.fetch = fetchWithRetry/);
+  assert.match(workerSource, /language: "portuguese"/);
   assert.doesNotMatch(workerSource, /TRANSFORMERS_MODULE_URL\s*=\s*["']https:/);
 });
 

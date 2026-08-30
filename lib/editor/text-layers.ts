@@ -19,6 +19,7 @@ export type TextLayer = {
   kind?: "text" | "caption";
   captionOrigin?: "generated" | "imported" | "manual";
   captionSpeaker?: "P1" | "P2";
+  captionSpeakerName?: string;
 };
 
 const TEXT_EFFECTS = [
@@ -104,6 +105,9 @@ export function sanitizeTextLayers(
     const captionSpeaker = ["P1", "P2"].includes(String(item.captionSpeaker))
       ? (item.captionSpeaker as TextLayer["captionSpeaker"])
       : undefined;
+    const captionSpeakerName = captionSpeaker
+      ? safeString(item.captionSpeakerName).trim().slice(0, 40)
+      : "";
 
     return [
       {
@@ -127,6 +131,7 @@ export function sanitizeTextLayers(
         ...(kind ? { kind } : {}),
         ...(captionOrigin ? { captionOrigin } : {}),
         ...(captionSpeaker ? { captionSpeaker } : {}),
+        ...(captionSpeakerName ? { captionSpeakerName } : {}),
       },
     ];
   });

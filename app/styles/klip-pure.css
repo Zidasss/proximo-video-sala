@@ -2957,10 +2957,18 @@ html[data-klip-theme] .clip-editor-v2 .caption-speaker-settings > small {
 
 html[data-klip-theme] .clip-editor-v2 .caption-speaker-style {
   display: grid;
-  grid-template-columns: 24px 48px minmax(72px, 1fr) 82px;
+  grid-template-columns: 24px minmax(76px, 1fr) 48px;
   align-items: end;
   gap: 6px;
   margin-top: 7px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-style label:nth-of-type(3) {
+  grid-column: 2;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-speaker-style label:nth-of-type(4) {
+  grid-column: 3;
 }
 
 html[data-klip-theme] .clip-editor-v2 .caption-speaker-style label {

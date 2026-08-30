@@ -20,6 +20,7 @@ import {
   friendlyLocalTranscriptionError,
   parseFloat32Wave,
 } from "../../lib/editor/local-transcription";
+import { mergePcmChunkIntoWaveform } from "../../lib/editor/audio-waveform";
 import {
   scaleTextLayerSize,
   sanitizeTextLayers,
@@ -762,6 +763,7 @@ export default function ClipEditor({
     [captionEngine, setCaptionEngine] = useState<CaptionEngine>("local"),
     [transcribing, setTranscribing] = useState(false),
     [transcriptionProgress, setTranscriptionProgress] = useState(0),
+    [transcriptionElapsedSeconds, setTranscriptionElapsedSeconds] = useState(0),
     [transcriptionBlock, setTranscriptionBlock] = useState({
       current: 0,
       total: 0,
@@ -824,6 +826,7 @@ export default function ClipEditor({
   const exportInProgress = useRef(false);
   const transcriptionResetTimer = useRef<number | null>(null);
   const transcriptionAbort = useRef<AbortController | null>(null);
+  const transcriptionStartedAt = useRef(0);
   const selected =
     layers.find((layer) => layer.id === selectedId) ??
     (!selectedIllustrationId && !selectedAudioId ? layers[0] : undefined);
@@ -881,6 +884,7 @@ export default function ClipEditor({
     translating: "Finalizando a tradução e preservando os tempos…",
     finalizing: "Criando a faixa de legendas…",
   }[transcriptionPhase];
+  const transcriptionElapsedLabel = `${Math.floor(transcriptionElapsedSeconds / 60)}:${String(transcriptionElapsedSeconds % 60).padStart(2, "0")}`;
   const soloAudioActive = audioTracks.some(
     (track) => track.solo && !track.muted,
   );
@@ -1649,6 +1653,17 @@ export default function ClipEditor({
       if ((!isPlaying || !active) && !element.paused) element.pause();
     });
   }, [audioTracks, current, isPlaying, soloAudioActive]);
+
+  useEffect(() => {
+    if (!transcribing) return;
+    const updateElapsed = () =>
+      setTranscriptionElapsedSeconds(
+        Math.max(0, Math.floor((Date.now() - transcriptionStartedAt.current) / 1000)),
+      );
+    updateElapsed();
+    const timer = window.setInterval(updateElapsed, 1000);
+    return () => window.clearInterval(timer);
+  }, [transcribing]);
 
   useEffect(() => {
     if (!clip) return;
@@ -2981,10 +2996,12 @@ export default function ClipEditor({
     }
     setDetectedCaptionLanguage("");
     setTranscribing(true);
+    transcriptionStartedAt.current = Date.now();
+    setTranscriptionElapsedSeconds(0);
     setTranscriptionPhase("preparing");
     setTranscriptionProgress(2);
     setTranscriptionBlock({ current: 0, total: 0 });
-    setNotice("Lendo a faixa de áudio sem enviar o vídeo…");
+    setNotice("Abrindo o arquivo e localizando a faixa de áudio, sem enviar o vídeo…");
     const abortController = new AbortController();
     const localTranscriptionSession =
       captionEngine === "local"
@@ -3011,6 +3028,10 @@ export default function ClipEditor({
       if (!source.size)
         throw new Error("O vídeo não contém dados que possam ser transcritos.");
       const inspectedAudio = await inspectTranscriptionAudio(source);
+      setTranscriptionProgress(4);
+      setNotice(
+        `Faixa de áudio encontrada · ${Math.ceil(inspectedAudio.duration / 60)} min. Organizando os blocos locais…`,
+      );
       const cloudPlan =
         captionEngine === "cloud"
           ? await createTranscriptionAudioPlan(source, inspectedAudio)
@@ -3076,6 +3097,16 @@ export default function ClipEditor({
                 ),
               ),
           );
+          setWaveform((currentWaveform) =>
+            mergePcmChunkIntoWaveform(
+              currentWaveform,
+              pcm,
+              extractionStart,
+              logicalEnd,
+              inspectedAudio.duration,
+            ),
+          );
+          setBaseAudioState("waveform");
           if (abortController.signal.aborted)
             throw new DOMException("Transcrição cancelada.", "AbortError");
           setTranscriptionPhase("loading-model");
@@ -7188,7 +7219,7 @@ export default function ClipEditor({
                   )}
                   <b>
                     {transcribing
-                      ? "Cancelar transcrição"
+                      ? `Cancelar · ${Math.round(transcriptionProgress)}%`
                       : automaticCaptionButtonLabel}
                   </b>
                 </button>
@@ -7202,6 +7233,10 @@ export default function ClipEditor({
                     aria-valuenow={Math.round(transcriptionProgress)}
                   >
                     <i style={{ width: `${transcriptionProgress}%` }} />
+                    <strong className="caption-progress-status">
+                      <b>{Math.round(transcriptionProgress)}%</b>
+                      <small>{transcriptionElapsedLabel} decorridos</small>
+                    </strong>
                     <span>
                       {transcriptionBlock.total
                         ? `Bloco ${transcriptionBlock.current} de ${transcriptionBlock.total} · `
@@ -9174,7 +9209,7 @@ export default function ClipEditor({
                     <Captions aria-hidden="true" size={15} />
                   )}
                   {transcribing
-                    ? "Cancelar transcrição"
+                    ? `Cancelar · ${Math.round(transcriptionProgress)}%`
                     : automaticCaptionButtonLabel}
                 </button>
                 {transcribing && (
@@ -9187,6 +9222,10 @@ export default function ClipEditor({
                     aria-valuenow={Math.round(transcriptionProgress)}
                   >
                     <i style={{ width: `${transcriptionProgress}%` }} />
+                    <strong className="caption-progress-status">
+                      <b>{Math.round(transcriptionProgress)}%</b>
+                      <small>{transcriptionElapsedLabel} decorridos</small>
+                    </strong>
                     <span>
                       {transcriptionBlock.total
                         ? `Bloco ${transcriptionBlock.current} de ${transcriptionBlock.total} · `
@@ -10004,7 +10043,7 @@ export default function ClipEditor({
                                 <i
                                   key={point}
                                   style={{
-                                    height: `${Math.max(12, value * 100)}%`,
+                                    height: `${Math.max(value > 0 ? 12 : 2, value * 100)}%`,
                                   }}
                                 />
                               ))
@@ -10018,7 +10057,9 @@ export default function ClipEditor({
                       timelineWaveform.map((value, index) => (
                         <i
                           key={index}
-                          style={{ height: `${Math.max(12, value * 100)}%` }}
+                          style={{
+                            height: `${Math.max(value > 0 ? 12 : 2, value * 100)}%`,
+                          }}
                         />
                       ))
                     ) : baseAudioState === "detected" ? (

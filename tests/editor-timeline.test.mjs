@@ -4,6 +4,7 @@ import {
   sourceTimeToTimelineTime,
   timelineTimeToSourceTime,
 } from "../lib/editor/timeline.ts";
+import { mergePcmChunkIntoWaveform } from "../lib/editor/audio-waveform.ts";
 import { readFile } from "node:fs/promises";
 
 test("preview and export share timeline time after trim and move", () => {
@@ -69,4 +70,28 @@ test("codec audio state stays transparent instead of becoming a solid bar", asyn
 
   assert.match(css, /waveform-track > i\.codec-audio-indicator/);
   assert.match(css, /background: transparent !important/);
+});
+
+test("builds the missing large-video waveform from extracted PCM chunks", () => {
+  const first = mergePcmChunkIntoWaveform(
+    [],
+    new Float32Array([0, 0.25, 1, 0.25]),
+    0,
+    10,
+    20,
+    96,
+  );
+  assert.equal(first.length, 96);
+  assert.ok(first.slice(0, 48).some((value) => value > 0));
+  assert.ok(first.slice(48).every((value) => value === 0));
+
+  const complete = mergePcmChunkIntoWaveform(
+    first,
+    new Float32Array([0.1, 0.5, 0.2, 0.8]),
+    10,
+    20,
+    20,
+    96,
+  );
+  assert.ok(complete.every((value) => value > 0));
 });

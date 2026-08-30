@@ -4851,6 +4851,27 @@ html[data-klip-theme] .clip-editor-v2 .caption-progress > span {
   font-size: 10px;
 }
 
+html[data-klip-theme] .clip-editor-v2 .caption-progress-status {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 8px;
+  color: var(--pure-text);
+  font-size: 11px;
+  line-height: 1.2;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-progress-status > b {
+  color: var(--pure-blue);
+  font-size: 13px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-progress-status > small {
+  color: var(--pure-text-3);
+  font-size: 9px;
+  font-weight: 600;
+}
+
 html[data-klip-theme] .clip-editor-v2 .codec-audio-indicator {
   position: absolute;
   inset: 5px 8px;

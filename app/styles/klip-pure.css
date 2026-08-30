@@ -5504,6 +5504,16 @@ html[data-klip-theme] .clip-editor-v2 .waveform-track > i.codec-audio-indicator 
   opacity: 1 !important;
 }
 
+/* A sparse waveform from a very large container still represents equal time
+   slices. Keep those slices as calm columns instead of oversized pills. */
+html[data-klip-theme] .clip-editor-v2 .waveform-track > i:not(.montage-audio-waveform):not(.codec-audio-indicator) {
+  border-radius: 1px !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .waveform-track:has(> i:not(.codec-audio-indicator)) {
+  gap: 0 !important;
+}
+
 html[data-klip-theme] .clip-editor-v2 .studio-background-play {
   justify-self: start;
   display: inline-flex;

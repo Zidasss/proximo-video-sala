@@ -313,7 +313,19 @@ type TranscriptionAudioPlan = {
   mimeType: "audio/webm" | "audio/mp4";
 };
 
-async function inspectTranscriptionAudio(blob: Blob) {
+type TranscriptionMediaInput = import("mediabunny").Input;
+
+function clampAudioTimestampRounding(
+  sample: import("mediabunny").AudioSample,
+) {
+  // Container timescales can turn an exact trim boundary into a microscopic
+  // negative float (for example -1e-13). It is zero, not invalid media.
+  if (sample.timestamp < 0 && sample.timestamp > -0.000_001)
+    sample.setTimestamp(0);
+  return sample;
+}
+
+async function inspectTranscriptionAudio(blob: Blob, durationHint = 0) {
   const { ALL_FORMATS, BlobSource, Input } = await import("mediabunny");
   const input = new Input({
     formats: ALL_FORMATS,
@@ -334,11 +346,21 @@ async function inspectTranscriptionAudio(blob: Blob) {
       `O áudio usa o codec ${codec}, que este navegador não consegue extrair. Tente o Chrome atualizado ou converta somente o áudio para AAC/Opus.`,
     );
   }
+  const metadataDuration = await track.getDurationFromMetadata();
+  const trustedDurationHint =
+    Number.isFinite(durationHint) && durationHint > 0 ? durationHint : 0;
+  // computeDuration may scan the packet table of a multi-gigabyte MP4. The
+  // editor already obtained the source duration from media metadata, so reuse
+  // that value when the container does not expose a fast duration.
   const duration =
-    (await track.getDurationFromMetadata()) || (await track.computeDuration());
+    (typeof metadataDuration === "number" &&
+    Number.isFinite(metadataDuration) &&
+    metadataDuration > 0
+      ? metadataDuration
+      : trustedDurationHint) || (await track.computeDuration());
   if (!Number.isFinite(duration) || duration <= 0)
     throw new Error("Não foi possível determinar a duração do áudio.");
-  return { duration };
+  return { duration, input };
 }
 
 async function createTranscriptionAudioPlan(
@@ -389,6 +411,7 @@ async function extractTranscriptionAudioChunk(
   start: number,
   end: number,
   onProgress?: (progress: number) => void,
+  reusableInput?: TranscriptionMediaInput,
 ): Promise<Blob> {
   const {
     ALL_FORMATS,
@@ -401,10 +424,12 @@ async function extractTranscriptionAudioChunk(
     Quality,
     WebMOutputFormat,
   } = await import("mediabunny");
-  const input = new Input({
-    formats: ALL_FORMATS,
-    source: new BlobSource(blob),
-  });
+  const input =
+    reusableInput ||
+    new Input({
+      formats: ALL_FORMATS,
+      source: new BlobSource(blob),
+    });
   const target = new BufferTarget();
   const format =
     plan.codec === "opus"
@@ -426,6 +451,7 @@ async function extractTranscriptionAudioChunk(
         bitrateMode: "constant",
       }),
       forceTranscode: true,
+      process: clampAudioTimestampRounding,
     },
     showWarnings: false,
   });
@@ -450,6 +476,7 @@ async function extractLocalTranscriptionPcmChunk(
   start: number,
   end: number,
   onProgress?: (progress: number) => void,
+  reusableInput?: TranscriptionMediaInput,
 ) {
   const {
     ALL_FORMATS,
@@ -460,10 +487,12 @@ async function extractLocalTranscriptionPcmChunk(
     Output,
     WavOutputFormat,
   } = await import("mediabunny");
-  const input = new Input({
-    formats: ALL_FORMATS,
-    source: new BlobSource(blob),
-  });
+  const input =
+    reusableInput ||
+    new Input({
+      formats: ALL_FORMATS,
+      source: new BlobSource(blob),
+    });
   const target = new BufferTarget();
   const output = new Output({ format: new WavOutputFormat(), target });
   const conversion = await Conversion.init({
@@ -477,6 +506,7 @@ async function extractLocalTranscriptionPcmChunk(
       numberOfChannels: 1,
       sampleRate: 16_000,
       forceTranscode: true,
+      process: clampAudioTimestampRounding,
     },
     showWarnings: false,
   });
@@ -3027,7 +3057,10 @@ export default function ClipEditor({
       }
       if (!source.size)
         throw new Error("O vídeo não contém dados que possam ser transcritos.");
-      const inspectedAudio = await inspectTranscriptionAudio(source);
+      const inspectedAudio = await inspectTranscriptionAudio(
+        source,
+        baseDuration || duration,
+      );
       setTranscriptionProgress(4);
       setNotice(
         `Faixa de áudio encontrada · ${Math.ceil(inspectedAudio.duration / 60)} min. Organizando os blocos locais…`,
@@ -3096,6 +3129,7 @@ export default function ClipEditor({
                   chunkBaseProgress + progress * chunkProgressSpan * 0.34,
                 ),
               ),
+            inspectedAudio.input,
           );
           setWaveform((currentWaveform) =>
             mergePcmChunkIntoWaveform(
@@ -3162,6 +3196,7 @@ export default function ClipEditor({
                   chunkBaseProgress + progress * chunkProgressSpan * 0.42,
                 ),
               ),
+            inspectedAudio.input,
           );
           if (abortController.signal.aborted)
             throw new DOMException("Transcrição cancelada.", "AbortError");

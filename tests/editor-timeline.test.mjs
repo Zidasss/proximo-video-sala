@@ -95,3 +95,15 @@ test("builds the missing large-video waveform from extracted PCM chunks", () => 
   );
   assert.ok(complete.every((value) => value > 0));
 });
+
+test("reuses source metadata for huge caption jobs and clamps float noise", async () => {
+  const editorSource = await readFile(
+    new URL("../components/editor/ClipEditor.tsx", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(editorSource, /inspectTranscriptionAudio\(\s*source,\s*baseDuration \|\| duration/);
+  assert.match(editorSource, /inspectedAudio\.input/);
+  assert.match(editorSource, /sample\.timestamp > -0\.000_001/);
+  assert.match(editorSource, /process: clampAudioTimestampRounding/);
+});

@@ -49,6 +49,15 @@ test("explains how to recover the local model download on a network failure", ()
   );
 });
 
+test("does not expose a raw muxer timestamp error to the editor", () => {
+  assert.match(
+    friendlyLocalTranscriptionError(
+      new Error("Timestamps must be non-negative (got -1.13e-13s)."),
+    ),
+    /tempo de áudio inválido/,
+  );
+});
+
 test("loads the Whisper runtime and ONNX engine through the KLIP origin", async () => {
   const workerSource = await import("node:fs/promises").then(({ readFile }) =>
     readFile(new URL("../public/workers/local-transcription.js", import.meta.url), "utf8"),

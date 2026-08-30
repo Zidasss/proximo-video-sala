@@ -5476,3 +5476,79 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
     padding: 7px 6px 10px;
   }
 }
+
+/* Contextual effects drawer and honest codec-only audio state. */
+html[data-klip-theme] .clip-editor-v2 .waveform-track > i.codec-audio-indicator {
+  background: transparent !important;
+  opacity: 1 !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-background-play {
+  justify-self: start;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  margin-top: 5px;
+  padding: 0 10px;
+  border: 1px solid color-mix(in srgb, var(--pure-blue) 34%, var(--pure-border)) !important;
+  border-radius: 8px !important;
+  background: var(--pure-blue-soft) !important;
+  color: var(--pure-blue-ink) !important;
+  font-size: 11px;
+  font-weight: 650;
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-backdrop-effects {
+    place-items: stretch end;
+    padding: calc(var(--pure-header-h) + 10px) 12px calc(var(--pure-timeline-h) + 12px) 0;
+    background: transparent !important;
+    backdrop-filter: none;
+    pointer-events: none;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-backdrop-effects .studio-hub-effects {
+    pointer-events: auto;
+    width: clamp(380px, 29vw, 460px);
+    height: 100%;
+    max-height: none;
+    border-color: var(--pure-border-strong) !important;
+    border-radius: 14px !important;
+    background: color-mix(in srgb, var(--pure-surface) 96%, transparent) !important;
+    box-shadow: -16px 18px 48px rgb(18 24 40 / 16%) !important;
+    backdrop-filter: blur(10px);
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-hub-header {
+    padding: 12px 14px 10px !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-hub-header b {
+    font-size: 19px !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-hub-header small {
+    max-width: 330px;
+    font-size: 10.5px !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-hub-tabs {
+    padding: 7px 14px !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-hub-content {
+    padding: 10px 14px 14px !important;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-effect-controls {
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: 8px 10px;
+    padding: 10px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .studio-hub-effects .studio-effect-controls > input {
+    grid-column: 1 / -1;
+    grid-row: 2;
+  }
+}

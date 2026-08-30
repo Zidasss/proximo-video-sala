@@ -60,3 +60,13 @@ test("audio waveform uses the same horizontal zoom as the video timeline", async
   assert.match(css, /min-width: 0 !important/);
   assert.match(css, /max-width: none !important/);
 });
+
+test("codec audio state stays transparent instead of becoming a solid bar", async () => {
+  const css = await readFile(
+    new URL("../app/styles/klip-pure.css", import.meta.url),
+    "utf8",
+  );
+
+  assert.match(css, /waveform-track > i\.codec-audio-indicator/);
+  assert.match(css, /background: transparent !important/);
+});

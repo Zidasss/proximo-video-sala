@@ -1573,6 +1573,9 @@ export default function ClipEditor({
         closeStudioPanel();
         return;
       }
+      // Effects use a contextual drawer: the editor and its playback controls
+      // remain available behind it, so focus must not be trapped as in a modal.
+      if (studioPanel === "effects") return;
       if (event.key !== "Tab" || !dialog) return;
       const focusable = Array.from(
         dialog.querySelectorAll<HTMLElement>(focusableSelector),
@@ -10550,7 +10553,7 @@ export default function ClipEditor({
       )}
       {studioPanel && (
         <div
-          className="studio-hub-backdrop"
+          className={`studio-hub-backdrop ${studioPanel === "effects" ? "studio-hub-backdrop-effects" : ""}`}
           onPointerDown={(event) => {
             if (event.target === event.currentTarget) closeStudioPanel();
           }}
@@ -10559,7 +10562,7 @@ export default function ClipEditor({
             ref={studioDialog}
             className={`studio-hub studio-hub-${studioPanel}`}
             role="dialog"
-            aria-modal="true"
+            aria-modal={studioPanel !== "effects"}
             aria-label="Ferramentas de criação do KLIPAPP Studio"
           >
             <header className="studio-hub-header">
@@ -10581,6 +10584,25 @@ export default function ClipEditor({
                       ? "Músicas e efeitos KLIPAPP Original, com licença comercial clara."
                       : "Passe o mouse ou toque para conferir antes de aplicar."}
                 </small>
+                {studioPanel === "effects" && clip && (
+                  <button
+                    type="button"
+                    className="studio-background-play"
+                    onClick={() => void togglePreviewPlayback()}
+                    aria-label={
+                      isPlaying
+                        ? "Pausar vídeo durante a escolha de efeitos"
+                        : "Reproduzir vídeo durante a escolha de efeitos"
+                    }
+                  >
+                    {isPlaying ? (
+                      <Pause aria-hidden="true" size={14} fill="currentColor" />
+                    ) : (
+                      <Play aria-hidden="true" size={14} fill="currentColor" />
+                    )}
+                    {isPlaying ? "Pausar vídeo" : "Reproduzir vídeo"}
+                  </button>
+                )}
               </div>
               <button
                 type="button"
@@ -10718,6 +10740,7 @@ export default function ClipEditor({
                     </button>
                   </div>
                   <EffectsGallery
+                    className="studio-effects-gallery"
                     media={
                       clip
                         ? { src: clip.url, type: "video", alt: clip.name }

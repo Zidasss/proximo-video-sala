@@ -260,8 +260,10 @@ test("ships the local KLIPAPP Radar review flow without replacing the source", a
   assert.match(page, /KLIP RADAR/);
   assert.match(page, /Nada altera o arquivo original/);
   assert.match(radar, /export async function analyzeClipForRadar/);
-  assert.match(radar, /Mapeando ritmo e intensidade/);
-  assert.match(radar, /decodeAudioData/);
+  assert.match(radar, /samplesAtTimestamps/);
+  assert.match(radar, /createRadarSamplingPlan/);
+  assert.doesNotMatch(radar, /\.arrayBuffer\(\)/);
+  assert.doesNotMatch(radar, /decodeAudioData/);
   assert.match(radar, /sugestões estimadas para conferir/);
   assert.match(css, /\.radar-panel/);
   assert.match(css, /\.radar-cut/);
@@ -301,8 +303,13 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(page, /function generateAutomaticCaptions/);
   assert.match(page, /createTranscriptionAudioPlan/);
   assert.match(page, /extractTranscriptionAudioChunk/);
+  assert.match(page, /buildCaptionTranscriptionJobs/);
+  assert.match(page, /requestTranscriptionChunk/);
   assert.match(page, /TRANSCRIPTION_CHUNK_SECONDS/);
+  assert.match(page, /Legenda automática com IA/);
   assert.match(page, /somente áudio compacto é enviado/);
+  assert.match(page, /blob\.size <= MAX_IN_MEMORY_AUDIO_BYTES/);
+  assert.doesNotMatch(page, /Templates e aparência/);
   assert.doesNotMatch(page, /Este arquivo ultrapassa 24 MB/);
   assert.match(page, /Detectar idioma e gerar legendas/);
   assert.match(page, /Transcrever e traduzir/);
@@ -342,6 +349,10 @@ test("ships compact editing, reliable audio detection, automatic captions and re
   assert.match(css, /@media \(min-width: 761px\) and \(max-width: 1080px\)/);
   assert.match(css, /\.timeline-safe-area-help/);
   assert.match(css, /\.caption-detected-language/);
+  assert.match(css, /--pure-rail-w: 76px/);
+  assert.match(css, /\.start-marker span/);
+  assert.match(css, /\.end-marker span/);
+  assert.match(css, /\.caption-service-explainer/);
 });
 
 test("keeps a crash-safe local editor recovery with its media blobs", async () => {

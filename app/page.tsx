@@ -120,7 +120,12 @@ type SavedCall = {
   audioInputId?: string;
   startedAt: number;
 };
-type EditorClip = { url: string; name: string; autoAnalyze?: boolean };
+type EditorClip = {
+  url: string;
+  name: string;
+  autoAnalyze?: boolean;
+  source?: Blob;
+};
 type AppUser = {
   id: string;
   email: string;
@@ -2688,6 +2693,7 @@ export default function Home() {
         url: editorUrl,
         name: `Gravação ${label}`,
         autoAnalyze,
+        source: blob,
       };
     const link = document.createElement("a");
     setEditorClip(nextClip);

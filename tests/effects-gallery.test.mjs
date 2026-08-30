@@ -134,4 +134,7 @@ test("ships current-media previews with accessible and mobile controls", async (
   assert.match(css, /@media \(prefers-reduced-motion: reduce\)/);
   assert.match(css, /\[data-effect="glitch"\]/);
   assert.match(css, /\[data-effect="vhs"\]/);
+  assert.match(css, /html\[data-klip-theme="dark"\]/);
+  assert.match(css, /--effects-accent: #1558b0/);
+  assert.doesNotMatch(css, /--effects-accent: #ff7664/);
 });

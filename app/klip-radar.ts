@@ -2,6 +2,7 @@ import {
   normalizeOptionalTransitionKind,
   type AppliedTransitionKind,
 } from "../lib/editor/transitions.ts";
+import type { AudioSample } from "mediabunny";
 
 export type RadarMode = "reels" | "shorts" | "highlights";
 
@@ -84,6 +85,85 @@ export function sanitizeRadarSuggestions(
 }
 
 type VoiceRun = { start: number; end: number; energy: number };
+
+const MAX_RADAR_AUDIO_SAMPLES = 18_000;
+
+export type RadarSamplingPlan = {
+  blockSeconds: number;
+  sampleCount: number;
+};
+
+/**
+ * Keeps long recordings bounded. A four-hour source is sampled sparsely
+ * instead of being decoded into a multi-gigabyte AudioBuffer.
+ */
+export function createRadarSamplingPlan(
+  mediaDuration: number,
+  maximumSamples = MAX_RADAR_AUDIO_SAMPLES,
+): RadarSamplingPlan {
+  const duration = Math.max(
+    0.1,
+    Number.isFinite(mediaDuration) ? mediaDuration : 0.1,
+  );
+  const safeMaximum = Math.max(100, Math.floor(maximumSamples));
+  const sampleCount = Math.max(
+    1,
+    Math.min(safeMaximum, Math.ceil(duration / 0.1)),
+  );
+  return {
+    blockSeconds: Math.max(0.1, duration / sampleCount),
+    sampleCount,
+  };
+}
+
+function audioSampleEnergy(sample: AudioSample) {
+  let sum = 0;
+  let points = 0;
+  const channels = Math.max(1, Math.min(2, sample.numberOfChannels));
+  for (let channel = 0; channel < channels; channel += 1) {
+    const options = {
+      planeIndex: channel,
+      format: "f32-planar" as const,
+    };
+    const values = new Float32Array(sample.allocationSize(options) / 4);
+    sample.copyTo(values, options);
+    const stride = Math.max(1, Math.floor(values.length / 192));
+    for (let index = 0; index < values.length; index += stride) {
+      const value = values[index] || 0;
+      sum += value * value;
+      points += 1;
+    }
+  }
+  return Math.sqrt(sum / Math.max(1, points));
+}
+
+function radarSampleTimestamps(
+  duration: number,
+  plan: RadarSamplingPlan,
+) {
+  return Array.from({ length: plan.sampleCount }, (_, index) =>
+    Math.max(
+      0,
+      Math.min(duration - 0.001, (index + 0.5) * plan.blockSeconds),
+    ),
+  );
+}
+
+async function radarSourceBlob(source: string | Blob) {
+  if (typeof source !== "string") return source;
+  const response = await fetch(source);
+  if (!response.ok)
+    throw new Error("O KLIP não conseguiu abrir o arquivo para análise local.");
+  return response.blob();
+}
+
+function formatRadarSourceSize(bytes: number) {
+  if (bytes >= 1024 ** 3)
+    return `${(bytes / 1024 ** 3).toLocaleString("pt-BR", {
+      maximumFractionDigits: 1,
+    })} GB`;
+  return `${Math.max(1, Math.round(bytes / 1024 ** 2)).toLocaleString("pt-BR")} MB`;
+}
 
 const profileFor = (mode: RadarMode) =>
   mode === "reels"
@@ -296,79 +376,90 @@ export function buildSuggestions(
 }
 
 export async function analyzeClipForRadar(
-  url: string,
+  source: string | Blob,
   mediaDuration: number,
   mode: RadarMode,
   wanted: number,
   onProgress: (progress: number, status: string) => void,
 ) {
-  onProgress(8, "Abrindo o áudio da gravação…");
-  const response = await fetch(url),
-    buffer = await response.arrayBuffer(),
-    context = new AudioContext();
+  onProgress(5, "Abrindo somente a faixa de áudio…");
+  const blob = await radarSourceBlob(source);
   try {
-    onProgress(22, "Decodificando vozes e pausas…");
-    const decoded = await context.decodeAudioData(buffer),
-      blockSeconds = 0.1,
-      blockSize = Math.max(1, Math.floor(decoded.sampleRate * blockSeconds)),
-      levels: number[] = [],
-      channels = Array.from({ length: decoded.numberOfChannels }, (_, index) =>
-        decoded.getChannelData(index),
-      );
-    for (let offset = 0; offset < decoded.length; offset += blockSize) {
-      let sum = 0,
-        samples = 0;
-      for (
-        let point = offset;
-        point < Math.min(decoded.length, offset + blockSize);
-        point += 4
-      ) {
-        let mixed = 0;
-        channels.forEach((channel) => {
-          mixed += channel[point] || 0;
-        });
-        mixed /= Math.max(1, channels.length);
-        sum += mixed * mixed;
-        samples += 1;
+    const { ALL_FORMATS, AudioSampleSink, BlobSource, Input } =
+      await import("mediabunny");
+    const input = new Input({
+      formats: ALL_FORMATS,
+      source: new BlobSource(blob),
+    });
+    if (!(await input.canRead()))
+      throw new Error("O contêiner deste vídeo não pôde ser lido.");
+    const track = await input.getPrimaryAudioTrack();
+    if (!track) throw new Error("Este vídeo não possui uma faixa de áudio.");
+    if (!(await track.canDecode()))
+      throw new Error("O navegador não consegue decodificar este áudio.");
+    const metadataDuration = await track.getDurationFromMetadata();
+    const measuredDuration =
+      metadataDuration ||
+      (Number.isFinite(mediaDuration) && mediaDuration > 0
+        ? mediaDuration
+        : await track.computeDuration());
+    const duration =
+      Number.isFinite(measuredDuration) && measuredDuration > 0
+        ? measuredDuration
+        : mediaDuration;
+    const plan = createRadarSamplingPlan(duration);
+    const levels: number[] = [];
+    const sink = new AudioSampleSink(track);
+    onProgress(
+      12,
+      `Amostrando o áudio sem carregar ${formatRadarSourceSize(blob.size)} na memória…`,
+    );
+    for await (const sample of sink.samplesAtTimestamps(
+      radarSampleTimestamps(duration, plan),
+    )) {
+      if (!sample) levels.push(0);
+      else {
+        try {
+          levels.push(audioSampleEnergy(sample));
+        } finally {
+          sample.close();
+        }
       }
-      levels.push(Math.sqrt(sum / Math.max(1, samples)));
-      if (levels.length % 160 === 0) {
-        const ratio = offset / Math.max(1, decoded.length);
+      if (levels.length % 128 === 0 || levels.length === plan.sampleCount) {
+        const ratio = levels.length / Math.max(1, plan.sampleCount);
         onProgress(
-          25 + Math.round(ratio * 48),
-          "Mapeando ritmo e intensidade…",
+          14 + Math.round(ratio * 66),
+          `Mapeando vozes e pausas · ${levels.length.toLocaleString("pt-BR")}/${plan.sampleCount.toLocaleString("pt-BR")} amostras…`,
         );
-        await new Promise<void>((resolve) => window.setTimeout(resolve, 0));
+        await new Promise<void>((resolve) => setTimeout(resolve, 0));
       }
     }
-    onProgress(82, "Montando possíveis Klips…");
+    onProgress(84, "Montando possíveis Klips…");
     const suggestions = buildSuggestions(
       levels,
-      blockSeconds,
-      Number.isFinite(decoded.duration) && decoded.duration > 0
-        ? decoded.duration
-        : mediaDuration,
+      plan.blockSeconds,
+      duration,
       mode,
       wanted,
     );
     onProgress(100, `${suggestions.length} sugestões prontas para conferir.`);
     return suggestions;
-  } catch {
-    // Alguns contêineres MP4/WebM podem tocar normalmente no navegador, mas
-    // não serem aceitos pelo decodeAudioData. Nesse caso o Radar ainda oferece
-    // blocos de revisão pela duração, claramente marcados como estimativas.
-    onProgress(84, "O áudio não pôde ser lido; criando pontos de revisão…");
-    const blocks = Math.max(1, Math.ceil(mediaDuration / 0.1)),
-      suggestions = buildSuggestions(
-        Array.from({ length: blocks }, () => 0),
-        0.1,
-        mediaDuration,
-        mode,
-        wanted,
-      );
+  } catch (error) {
+    // Unsupported codecs still receive clearly-labelled review points. The
+    // fallback is bounded too, so even a day-long recording stays cheap.
+    const plan = createRadarSamplingPlan(mediaDuration);
+    onProgress(
+      84,
+      `${error instanceof Error ? error.message : "O áudio não pôde ser lido."} Criando pontos de revisão…`,
+    );
+    const suggestions = buildSuggestions(
+      Array.from({ length: plan.sampleCount }, () => 0),
+      plan.blockSeconds,
+      mediaDuration,
+      mode,
+      wanted,
+    );
     onProgress(100, `${suggestions.length} sugestões estimadas para conferir.`);
     return suggestions;
-  } finally {
-    await context.close();
   }
 }

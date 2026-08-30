@@ -10,7 +10,11 @@ import {
   saveEditorRecovery,
   type EditorRecoveryAsset,
 } from "../../lib/editor-recovery";
-import { mapCaptionsToTimeline } from "../../lib/editor/captions";
+import {
+  buildCaptionTranscriptionJobs,
+  mapCaptionsToTimeline,
+  mergeCaptionSourceRanges,
+} from "../../lib/editor/captions";
 import {
   scaleTextLayerSize,
   sanitizeTextLayers,
@@ -54,8 +58,6 @@ import {
   Languages,
   Magnet,
   Maximize2,
-  MessageSquare,
-  Mic,
   Minus,
   Moon,
   MoreHorizontal,
@@ -79,7 +81,6 @@ import {
   Trash2,
   Type,
   Undo2,
-  Video,
   Volume2,
   WandSparkles,
   X,
@@ -142,7 +143,12 @@ export type KlipAppTheme = "dark" | "light";
 // Inspector label contract: Horizontal · {Math.round(selectedIllustration.x)}%
 // Drag payloads: application/x-klip-transition", "flash"; application/x-klip-transition", "noise"; application/x-klip-transition", "wipe".
 
-export type EditorClip = { url: string; name: string; autoAnalyze?: boolean };
+export type EditorClip = {
+  url: string;
+  name: string;
+  autoAnalyze?: boolean;
+  source?: Blob;
+};
 const PROJECT_FILE_VERSION = 7;
 const MAX_PROJECT_FILE_BYTES = 5 * 1024 * 1024;
 type IllustrationLayer = {
@@ -241,9 +247,10 @@ async function buildContainerAudioWaveform(
   const count = Math.max(160, Math.min(720, Math.round(bars)));
   const sink = new AudioSampleSink(track);
   const values: number[] = [];
-  for (let index = 0; index < count; index++) {
-    const timestamp = Math.min(duration - 0.001, (index / count) * duration);
-    const sample = await sink.getSample(Math.max(0, timestamp));
+  const timestamps = Array.from({ length: count }, (_, index) =>
+    Math.max(0, Math.min(duration - 0.001, ((index + 0.5) / count) * duration)),
+  );
+  for await (const sample of sink.samplesAtTimestamps(timestamps)) {
     if (!sample) {
       values.push(0.035);
       continue;
@@ -268,6 +275,8 @@ const TRANSCRIPTION_AUDIO_BITRATE = 32_000;
 const TRANSCRIPTION_CHUNK_SECONDS = 8 * 60;
 const TRANSCRIPTION_CHUNK_OVERLAP_SECONDS = 0.4;
 const TRANSCRIPTION_UPLOAD_LIMIT = 3.75 * 1024 * 1024;
+const MAX_IN_MEMORY_AUDIO_BYTES = 96 * 1024 * 1024;
+const MAX_RECOVERY_ASSET_BYTES = 512 * 1024 * 1024;
 
 type TranscriptionAudioPlan = {
   duration: number;
@@ -401,6 +410,56 @@ async function extractTranscriptionAudioChunk(
     );
   return chunk;
 }
+
+async function waitBeforeTranscriptionRetry(signal: AbortSignal) {
+  await new Promise<void>((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, 850);
+    const onAbort = () => {
+      window.clearTimeout(timer);
+      reject(new DOMException("Transcrição cancelada.", "AbortError"));
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
+
+async function requestTranscriptionChunk(
+  form: FormData,
+  signal: AbortSignal,
+  onRetry: (message: string) => void,
+) {
+  for (let attempt = 0; attempt < 2; attempt += 1) {
+    try {
+      const response = await fetch("/api/transcribe", {
+        method: "POST",
+        body: form,
+        signal,
+      });
+      const retryable = response.status === 429 || response.status >= 500;
+      if (attempt === 0 && retryable) {
+        onRetry(
+          response.status === 429
+            ? "O serviço está ocupado; repetindo este bloco uma vez…"
+            : "O serviço oscilou; repetindo este bloco uma vez…",
+        );
+        await waitBeforeTranscriptionRetry(signal);
+        continue;
+      }
+      return response;
+    } catch (error) {
+      if (signal.aborted) throw error;
+      if (attempt === 0 && error instanceof TypeError) {
+        onRetry("A conexão oscilou; repetindo este bloco uma vez…");
+        await waitBeforeTranscriptionRetry(signal);
+        continue;
+      }
+      throw error;
+    }
+  }
+  throw new Error("O serviço de legendas não respondeu após duas tentativas.");
+}
 type EditorSnapshot = {
   layers: TextLayer[];
   illustrations: IllustrationLayer[];
@@ -472,7 +531,13 @@ type EditorRecoveryProject = {
   radarSuggestions: RadarSuggestion[];
   approvedCuts: RadarSuggestion[];
 };
-type EditorAutosaveStatus = "restoring" | "saving" | "saved" | "error" | "idle";
+type EditorAutosaveStatus =
+  | "restoring"
+  | "saving"
+  | "saved"
+  | "limited"
+  | "error"
+  | "idle";
 type VisualPreset = "clean" | "cinematic" | "vivid" | "mono" | "warm";
 type StudioPanel = "formats" | "audio" | "effects";
 type EditorTool =
@@ -616,6 +681,10 @@ export default function ClipEditor({
     [baseAudioCodec, setBaseAudioCodec] = useState(""),
     [transcribing, setTranscribing] = useState(false),
     [transcriptionProgress, setTranscriptionProgress] = useState(0),
+    [transcriptionBlock, setTranscriptionBlock] = useState({
+      current: 0,
+      total: 0,
+    }),
     [transcriptionPhase, setTranscriptionPhase] = useState<
       | "idle"
       | "preparing"
@@ -707,7 +776,7 @@ export default function ClipEditor({
       ? captionLanguageNames[detectedCaptionLanguage] || detectedCaptionLanguage
       : "";
   const automaticCaptionButtonLabel = transcribing
-    ? `Transcrevendo · ${Math.round(transcriptionProgress)}%`
+    ? `${transcriptionBlock.total ? `Bloco ${transcriptionBlock.current}/${transcriptionBlock.total} · ` : ""}${Math.round(transcriptionProgress)}%`
     : captionTargetLanguage !== "original"
       ? "Transcrever e traduzir"
       : detectedCaptionLanguageName
@@ -715,10 +784,13 @@ export default function ClipEditor({
         : "Detectar idioma e gerar legendas";
   const transcriptionPhaseLabel = {
     idle: "",
-    preparing: "Preparando o áudio…",
-    uploading: "Enviando o trecho com segurança…",
-    transcribing: "Detectando o idioma e sincronizando as falas…",
-    translating: "Traduzindo e preservando os tempos…",
+    preparing: "Extraindo e compactando o áudio neste dispositivo…",
+    uploading: "Enviando somente este bloco de áudio…",
+    transcribing:
+      captionTargetLanguage === "original"
+        ? "Enviando o bloco e aguardando a transcrição por IA…"
+        : "Enviando o bloco e aguardando transcrição e tradução por IA…",
+    translating: "Finalizando a tradução e preservando os tempos…",
     finalizing: "Criando a faixa de legendas…",
   }[transcriptionPhase];
   const soloAudioActive = audioTracks.some(
@@ -815,6 +887,35 @@ export default function ClipEditor({
   const primaryClipStart = Math.max(0, primaryTimelineStart);
   const primaryClipEnd =
     primaryClipStart + Math.max(0.05, primarySourceEnd - primarySourceStart);
+  const captionTimelineSourceRanges = hasMontageTimeline
+    ? montageTimelineClips.map((item) => ({
+        sourceStart: item.start,
+        sourceEnd: item.end,
+        timelineStart: item.timelineStart,
+      }))
+    : [
+        {
+          sourceStart: baseDuration > 0 ? primarySourceStart : 0,
+          sourceEnd: baseDuration > 0 ? primarySourceEnd : 0,
+          timelineStart: primaryClipStart,
+        },
+      ];
+  const captionMergedSourceRanges = mergeCaptionSourceRanges(
+    captionTimelineSourceRanges,
+    baseDuration,
+  );
+  const captionSourceSeconds = captionMergedSourceRanges.reduce(
+    (total, range) => total + range.end - range.start,
+    0,
+  );
+  const captionEstimatedBlocks = baseDuration
+    ? buildCaptionTranscriptionJobs(
+        captionTimelineSourceRanges,
+        baseDuration,
+        TRANSCRIPTION_CHUNK_SECONDS,
+        TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
+      ).length
+    : 0;
   const illustrationElements = useRef<
     Map<string, HTMLImageElement | HTMLVideoElement>
   >(new Map());
@@ -929,6 +1030,7 @@ export default function ClipEditor({
   const autosaveQueued = useRef(false);
   const autosaveTimer = useRef<number | null>(null);
   const persistedRecoveryAssets = useRef<Set<string>>(new Set());
+  const largeMediaNoticeShown = useRef(false);
   const recoveryObjectUrls = useRef<Set<string>>(new Set());
   const interactionFrame = useRef<number | null>(null);
   const pendingInteractionUpdate = useRef<(() => void) | null>(null);
@@ -980,7 +1082,11 @@ export default function ClipEditor({
     clip
       ? {
           version: 1,
-          clip,
+          clip: {
+            url: clip.url,
+            name: clip.name,
+            ...(clip.autoAnalyze ? { autoAnalyze: true } : {}),
+          },
           duration,
           sourceDuration,
           current,
@@ -1059,6 +1165,16 @@ export default function ClipEditor({
 
   async function saveRecoveryNow() {
     if (!autosaveReady.current) return;
+    if (clip?.source && clip.source.size > MAX_RECOVERY_ASSET_BYTES) {
+      setAutosaveStatus("limited");
+      if (!largeMediaNoticeShown.current) {
+        largeMediaNoticeShown.current = true;
+        setNotice(
+          "Arquivo grande: o KLIP não copiará o vídeo para o salvamento automático. Use “Salvar projeto” para guardar cortes e ajustes.",
+        );
+      }
+      return;
+    }
     if (autosaveRunning.current) {
       autosaveQueued.current = true;
       return;
@@ -1471,15 +1587,24 @@ export default function ClipEditor({
     };
     void (async () => {
       try {
-        const response = await fetch(clip.url);
-        const blob = await response.blob();
+        let blob: Blob;
+        if (clip.source) blob = clip.source;
+        else {
+          const response = await fetch(clip.url);
+          if (!response.ok) throw new Error("media-load");
+          blob = await response.blob();
+        }
         let values: number[] = [];
-        try {
-          values = await buildAudioWaveform(await blob.arrayBuffer(), 1200);
-        } catch {
-          const extracted = await buildContainerAudioWaveform(blob, 480);
-          if (!cancelled) setBaseAudioCodec(extracted.codec);
-          values = extracted.values;
+        const extracted = await buildContainerAudioWaveform(blob, 720);
+        if (!cancelled) setBaseAudioCodec(extracted.codec);
+        values = extracted.values;
+        if (!values.length && blob.size <= MAX_IN_MEMORY_AUDIO_BYTES) {
+          try {
+            values = await buildAudioWaveform(await blob.arrayBuffer(), 1200);
+          } catch {
+            // Playback probing below provides the final fallback for codecs
+            // unavailable to WebCodecs and AudioContext.
+          }
         }
         if (!cancelled) {
           setWaveform(values);
@@ -2137,12 +2262,15 @@ export default function ClipEditor({
     setSelectedId("");
     setSelectedIllustrationId("");
     setDetectedCaptionLanguage("");
+    setTranscriptionBlock({ current: 0, total: 0 });
     setRadarSuggestions([]);
     setApprovedCuts([]);
     setActiveRadarCutId("");
     setRadarProgress(0);
     setRadarStatus("Pronto para analisar");
     autoRadarAnalyzed.current = false;
+    largeMediaNoticeShown.current = false;
+    setAutosaveStatus("idle");
     setNotice(message);
   }
   async function turnPhotoIntoClip(
@@ -2192,9 +2320,11 @@ export default function ClipEditor({
         stream.getTracks().forEach((track) => track.stop());
         URL.revokeObjectURL(imageUrl);
         if (!chunks.length) return;
+        const generatedBlob = new Blob(chunks, { type: mime });
         const generated = {
-          url: URL.createObjectURL(new Blob(chunks, { type: mime })),
+          url: URL.createObjectURL(generatedBlob),
           name: `${file.name.replace(/\.[^.]+$/, "")} · foto animada`,
+          source: generatedBlob,
         };
         if (target === "scene")
           insertScene(generated.url, generated.name, seconds, false);
@@ -2254,6 +2384,7 @@ export default function ClipEditor({
       {
         url: URL.createObjectURL(file),
         name: file.name.replace(/\.[^.]+$/, ""),
+        source: file,
       },
       "Vídeo carregado. Agora monte as camadas na linha do tempo.",
     );
@@ -2507,55 +2638,19 @@ export default function ClipEditor({
     if (added > 1)
       setNotice(`${added} canais de áudio adicionados à timeline.`);
   }
-  function applyTemplate(
-    template: "podcast" | "react" | "gameplay" | "interview",
-  ) {
-    const length = Math.max(4, end || duration || 12);
-    const base = initialLayer();
-    const title: Record<typeof template, string> = {
-      podcast: "🎙️ Corte do podcast",
-      react: "MINHA REAÇÃO 👀",
-      gameplay: "O CLUTCH MAIS INSANO 🔥",
-      interview: "A pergunta que mudou tudo",
-    };
-    const subtitle: Record<typeof template, string> = {
-      podcast: "Siga para mais episódios",
-      react: "espera até o final",
-      gameplay: "não pisca",
-      interview: "assista até o fim",
-    };
-    const make = (
-      text: string,
-      y: number,
-      size: number,
-      effect: TextEffect,
-    ): TextLayer => ({
-      ...base,
-      id: crypto.randomUUID(),
-      text,
-      y,
-      size,
-      start,
-      end: Math.max(start + 0.5, length),
-      effect,
-      background: true,
-    });
-    remember();
-    setLayers([
-      make(title[template], 18, 72, "bounce"),
-      make(subtitle[template], 80, 48, "pop"),
-    ]);
-    setIllustrations([]);
-    setNotice(
-      `Template ${template} aplicado. Ajuste os textos e as camadas como quiser.`,
-    );
-  }
   async function detectSilence() {
     if (!clip) return;
+    let sourceBlob: Blob | null = clip.source || null;
     try {
       setNotice("Analisando o áudio para sugerir um corte…");
-      const response = await fetch(clip.url);
-      const buffer = await response.arrayBuffer();
+      if (!sourceBlob) {
+        const response = await fetch(clip.url);
+        if (!response.ok) throw new Error("media-load");
+        sourceBlob = await response.blob();
+      }
+      if (sourceBlob.size > MAX_IN_MEMORY_AUDIO_BYTES)
+        throw new Error("large-source");
+      const buffer = await sourceBlob.arrayBuffer();
       const context = new AudioContext();
       const decoded = await context.decodeAudioData(buffer);
       const data = decoded.getChannelData(0),
@@ -2603,7 +2698,13 @@ export default function ClipEditor({
       );
     } catch {
       try {
-        const blob = await fetch(clip.url).then((response) => response.blob());
+        let blob: Blob;
+        if (sourceBlob) blob = sourceBlob;
+        else {
+          const response = await fetch(clip.url);
+          if (!response.ok) throw new Error("media-load");
+          blob = await response.blob();
+        }
         const extracted = await buildContainerAudioWaveform(blob, 480);
         setBaseAudioCodec(extracted.codec);
         if (!extracted.values.length) throw new Error("codec indisponível");
@@ -2714,22 +2815,9 @@ export default function ClipEditor({
     languageLabel = "",
     translationWarning = "",
   ) {
-    const sourceRanges = hasMontageTimeline
-      ? montageTimelineClips.map((item) => ({
-          sourceStart: item.start,
-          sourceEnd: item.end,
-          timelineStart: item.timelineStart,
-        }))
-      : [
-          {
-            sourceStart: primarySourceStart,
-            sourceEnd: primarySourceEnd,
-            timelineStart: primaryClipStart,
-          },
-        ];
     const captions = mapCaptionsToTimeline(
       segments,
-      sourceRanges,
+      captionTimelineSourceRanges,
       editorTimelineDuration || duration,
       { maxCharactersPerLine: 24, maxLines: 2 },
     ).map((item): TextLayer => ({
@@ -2769,6 +2857,7 @@ export default function ClipEditor({
     setTranscribing(true);
     setTranscriptionPhase("preparing");
     setTranscriptionProgress(2);
+    setTranscriptionBlock({ current: 0, total: 0 });
     setNotice("Lendo a faixa de áudio sem enviar o vídeo…");
     const abortController = new AbortController();
     transcriptionAbort.current = abortController;
@@ -2777,19 +2866,42 @@ export default function ClipEditor({
         throw new Error(
           "Você está sem conexão. Reconecte-se para gerar as legendas.",
         );
-      const sourceResponse = await fetch(clip.url, {
-        signal: abortController.signal,
-      });
-      if (!sourceResponse.ok)
-        throw new Error("Não foi possível preparar o vídeo para transcrição.");
-      const source = await sourceResponse.blob();
+      let source: Blob;
+      if (clip.source) source = clip.source;
+      else {
+        const response = await fetch(clip.url, {
+          signal: abortController.signal,
+        });
+        if (!response.ok)
+          throw new Error(
+            "Não foi possível preparar o vídeo para transcrição.",
+          );
+        source = await response.blob();
+      }
       if (!source.size)
         throw new Error("O vídeo não contém dados que possam ser transcritos.");
       const plan = await createTranscriptionAudioPlan(source);
-      const totalChunks = Math.max(
-        1,
-        Math.ceil(plan.duration / TRANSCRIPTION_CHUNK_SECONDS),
+      const sourceRanges = captionTimelineSourceRanges.some(
+        (range) => range.sourceEnd - range.sourceStart >= 0.04,
+      )
+        ? captionTimelineSourceRanges
+        : [
+            {
+              sourceStart: 0,
+              sourceEnd: plan.duration,
+              timelineStart: 0,
+            },
+          ];
+      const transcriptionJobs = buildCaptionTranscriptionJobs(
+        sourceRanges,
+        plan.duration,
+        TRANSCRIPTION_CHUNK_SECONDS,
+        TRANSCRIPTION_CHUNK_OVERLAP_SECONDS,
       );
+      if (!transcriptionJobs.length)
+        throw new Error("O trecho usado na timeline não contém áudio suficiente.");
+      const totalChunks = transcriptionJobs.length;
+      setTranscriptionBlock({ current: 0, total: totalChunks });
       const allSegments: Array<{
         start: number;
         end: number;
@@ -2801,15 +2913,9 @@ export default function ClipEditor({
       for (let index = 0; index < totalChunks; index++) {
         if (abortController.signal.aborted)
           throw new DOMException("Transcrição cancelada.", "AbortError");
-        const logicalStart = index * TRANSCRIPTION_CHUNK_SECONDS;
-        const logicalEnd = Math.min(
-          plan.duration,
-          (index + 1) * TRANSCRIPTION_CHUNK_SECONDS,
-        );
-        const extractionStart = Math.max(
-          0,
-          logicalStart - (index ? TRANSCRIPTION_CHUNK_OVERLAP_SECONDS : 0),
-        );
+        const { logicalStart, logicalEnd, extractionStart } =
+          transcriptionJobs[index];
+        setTranscriptionBlock({ current: index + 1, total: totalChunks });
         const chunkBaseProgress = 5 + (index / totalChunks) * 88;
         const chunkProgressSpan = 88 / totalChunks;
         setTranscriptionPhase("preparing");
@@ -2833,11 +2939,11 @@ export default function ClipEditor({
         if (abortController.signal.aborted)
           throw new DOMException("Transcrição cancelada.", "AbortError");
 
-        setTranscriptionPhase("uploading");
+        setTranscriptionPhase("transcribing");
         setNotice(
           totalChunks === 1
-            ? "Enviando o áudio compacto para transcrição…"
-            : `Transcrevendo bloco ${index + 1} de ${totalChunks}…`,
+            ? "Áudio compacto pronto; aguardando a transcrição por IA…"
+            : `Bloco ${index + 1} de ${totalChunks}: áudio compacto pronto; aguardando a IA…`,
         );
         setTranscriptionProgress(
           Math.round(chunkBaseProgress + chunkProgressSpan * 0.5),
@@ -2855,12 +2961,12 @@ export default function ClipEditor({
         if (detectedLanguage) form.append("language", detectedLanguage);
         form.append("chunkIndex", String(index));
         form.append("chunkCount", String(totalChunks));
-        setTranscriptionPhase("transcribing");
-        const response = await fetch("/api/transcribe", {
-          method: "POST",
-          body: form,
-          signal: abortController.signal,
-        });
+        const response = await requestTranscriptionChunk(
+          form,
+          abortController.signal,
+          (message) =>
+            setNotice(`Bloco ${index + 1} de ${totalChunks}: ${message}`),
+        );
         const responseText = await response.text();
         let result: {
           error?: string;
@@ -2941,7 +3047,7 @@ export default function ClipEditor({
           ? "Transcrição cancelada. Nenhuma legenda foi alterada."
           : error instanceof TypeError ||
               (error instanceof Error && /failed to fetch/i.test(error.message))
-            ? "Não foi possível conectar ao serviço de legendas. Verifique a internet e tente novamente."
+            ? "A conexão com o serviço de legendas falhou depois de duas tentativas. O vídeo e as legendas existentes não foram alterados."
             : error instanceof Error
               ? error.message
               : "Não foi possível gerar as legendas deste vídeo.";
@@ -2953,6 +3059,7 @@ export default function ClipEditor({
       transcriptionResetTimer.current = window.setTimeout(() => {
         setTranscriptionProgress(0);
         setTranscriptionPhase("idle");
+        setTranscriptionBlock({ current: 0, total: 0 });
         transcriptionResetTimer.current = null;
       }, 900);
     }
@@ -3948,7 +4055,7 @@ export default function ClipEditor({
     setRadarStatus("Preparando a análise…");
     try {
       const suggestions = await analyzeClipForRadar(
-        clip.url,
+        clip.source || clip.url,
         sourceDuration || duration,
         radarMode,
         radarCount,
@@ -3963,9 +4070,9 @@ export default function ClipEditor({
           ? `${suggestions.length} possíveis clipes encontrados. Confira antes de aplicar.`
           : "Nenhum bloco claro foi encontrado. Tente o modo Destaques.",
       );
-    } catch {
+    } catch (error) {
       setRadarStatus(
-        "Não foi possível analisar este arquivo. O vídeo original continua intacto.",
+        `${error instanceof Error ? error.message : "Não foi possível analisar este arquivo."} O vídeo original continua intacto.`,
       );
     } finally {
       setRadarAnalyzing(false);
@@ -5723,6 +5830,8 @@ export default function ClipEditor({
       ? "Recuperando projeto…"
       : autosaveStatus === "saving"
         ? "Salvando…"
+        : autosaveStatus === "limited"
+          ? "Arquivo grande · salve o projeto"
         : autosaveStatus === "error"
           ? "Falha no salvamento local"
           : autosaveSavedAt
@@ -6386,51 +6495,37 @@ export default function ClipEditor({
                 {clip && (
                   <>
                     <details className="tool-disclosure" open>
-                      <summary>Templates e aparência</summary>
-                      <div className="template-grid">
-                        <button onClick={() => applyTemplate("podcast")}>
-                          <Mic aria-hidden="true" size={14} /> Podcast
-                        </button>
-                        <button onClick={() => applyTemplate("react")}>
-                          <Eye aria-hidden="true" size={14} /> React
-                        </button>
-                        <button onClick={() => applyTemplate("gameplay")}>
-                          <Video aria-hidden="true" size={14} /> Gameplay
-                        </button>
-                        <button onClick={() => applyTemplate("interview")}>
-                          <MessageSquare aria-hidden="true" size={14} />{" "}
-                          Entrevista
-                        </button>
-                      </div>
-                      {clip && (
-                        <div className="visual-presets">
-                          <b>Cor e filtros</b>
-                          <div>
-                            {(
-                              [
-                                ["clean", "Limpo"],
-                                ["cinematic", "Cinema"],
-                                ["vivid", "Vibrante"],
-                                ["mono", "P&B"],
-                                ["warm", "Quente"],
-                              ] as const
-                            ).map(([key, label]) => (
-                              <button
-                                key={key}
-                                className={
-                                  visualPreset === key ? "selected" : ""
-                                }
-                                onClick={() => {
-                                  remember();
-                                  setVisualPreset(key);
-                                }}
-                              >
-                                {label}
-                              </button>
-                            ))}
-                          </div>
+                      <summary>Cor e filtros</summary>
+                      <div className="visual-presets tool-visual-presets">
+                        <small>
+                          Ajuste a base de cor do vídeo. Nenhum texto ou camada é
+                          criado por estas opções.
+                        </small>
+                        <div>
+                          {(
+                            [
+                              ["clean", "Limpo"],
+                              ["cinematic", "Cinema"],
+                              ["vivid", "Vibrante"],
+                              ["mono", "P&B"],
+                              ["warm", "Quente"],
+                            ] as const
+                          ).map(([key, label]) => (
+                            <button
+                              key={key}
+                              className={
+                                visualPreset === key ? "selected" : ""
+                              }
+                              onClick={() => {
+                                remember();
+                                setVisualPreset(key);
+                              }}
+                            >
+                              {label}
+                            </button>
+                          ))}
                         </div>
-                      )}
+                      </div>
                     </details>
                     <details className="tool-disclosure video-properties" open>
                       <summary>Vídeo e enquadramento</summary>
@@ -6799,6 +6894,23 @@ export default function ClipEditor({
 
             {activeTool === "captions" && (
               <section className="editor-tool-section tool-captions-panel">
+                <div className="caption-service-explainer">
+                  <b>Legenda automática com IA</b>
+                  <span>
+                    O KLIP extrai e compacta o áudio aqui no navegador. O vídeo
+                    não é enviado; somente cada bloco de áudio vai para a
+                    transcrição.
+                  </span>
+                  {captionSourceSeconds > 0 && (
+                    <small>
+                      Trecho usado na timeline: {time(captionSourceSeconds)} ·{" "}
+                      {captionEstimatedBlocks} bloco
+                      {captionEstimatedBlocks === 1 ? "" : "s"} de até 8 min,
+                      processado{captionEstimatedBlocks === 1 ? "" : "s"} em
+                      sequência.
+                    </small>
+                  )}
+                </div>
                 <label className="caption-language-control">
                   <span>Idioma de saída</span>
                   <select
@@ -6854,14 +6966,14 @@ export default function ClipEditor({
                     aria-valuenow={Math.round(transcriptionProgress)}
                   >
                     <i style={{ width: `${transcriptionProgress}%` }} />
-                    <span>{transcriptionPhaseLabel}</span>
+                    <span>
+                      {transcriptionBlock.total
+                        ? `Bloco ${transcriptionBlock.current} de ${transcriptionBlock.total} · `
+                        : ""}
+                      {transcriptionPhaseLabel}
+                    </span>
                   </div>
                 )}
-                <small className="caption-local-processing-note">
-                  Vídeos grandes são processados em blocos. O vídeo permanece
-                  neste dispositivo; somente áudio compacto é enviado para
-                  transcrição.
-                </small>
                 <label className="editor-upload captions-srt-upload">
                   <FileUp aria-hidden="true" size={14} /> Importar arquivo SRT
                   <input
@@ -8767,6 +8879,12 @@ export default function ClipEditor({
                   <span>LEGENDAS</span>
                   <b>{selected ? "Texto selecionado" : "Nenhuma legenda"}</b>
                 </header>
+                <div className="caption-service-explainer compact">
+                  <b>Automática · IA</b>
+                  <span>
+                    Extração local; somente áudio compacto é enviado em blocos.
+                  </span>
+                </div>
                 <button
                   type="button"
                   className="pure-primary automatic-captions"
@@ -8796,7 +8914,12 @@ export default function ClipEditor({
                     aria-valuenow={Math.round(transcriptionProgress)}
                   >
                     <i style={{ width: `${transcriptionProgress}%` }} />
-                    <span>{transcriptionPhaseLabel}</span>
+                    <span>
+                      {transcriptionBlock.total
+                        ? `Bloco ${transcriptionBlock.current} de ${transcriptionBlock.total} · `
+                        : ""}
+                      {transcriptionPhaseLabel}
+                    </span>
                   </div>
                 )}
                 {detectedCaptionLanguageName && !transcribing && (
@@ -10363,7 +10486,10 @@ export default function ClipEditor({
                 <Sparkles aria-hidden="true" size={14} /> KLIP RADAR
               </span>
               <b id="klip-radar-title">Onde estão os melhores momentos?</b>
-              <small>A análise acontece somente neste navegador.</small>
+              <small>
+                Análise heurística local de ritmo, voz e pausas — sem IA e sem
+                upload do vídeo.
+              </small>
             </div>
             <button
               onClick={() => setRadarOpen(false)}

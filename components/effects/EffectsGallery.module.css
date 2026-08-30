@@ -1,9 +1,26 @@
 .gallery {
-  --effects-accent: #ff7664;
-  --effects-ink: #fff8f4;
+  --effects-accent: #1558b0;
+  --effects-accent-soft: #e8f1fc;
+  --effects-ink: #172033;
+  --effects-muted: #566274;
+  --effects-border: #d8dee8;
+  --effects-surface: #ffffff;
+  --effects-surface-2: #f4f6f9;
+  --effects-shadow: 0 8px 22px rgb(28 43 67 / 10%);
   width: 100%;
   color: var(--effects-ink);
   font-family: inherit;
+}
+
+:global(html[data-klip-theme="dark"]) .gallery {
+  --effects-accent: #69adff;
+  --effects-accent-soft: rgb(43 132 235 / 17%);
+  --effects-ink: #f2f5f9;
+  --effects-muted: #aab4c2;
+  --effects-border: rgb(255 255 255 / 11%);
+  --effects-surface: #17191d;
+  --effects-surface-2: #0f1114;
+  --effects-shadow: 0 10px 26px rgb(0 0 0 / 28%);
 }
 
 .header {
@@ -24,7 +41,7 @@
 .header p:not(.eyebrow) {
   max-width: 520px;
   margin: 0;
-  color: #bdb4ae;
+  color: var(--effects-muted);
   font-size: 0.78rem;
   line-height: 1.45;
 }
@@ -44,10 +61,10 @@
   gap: 7px;
   min-height: 30px;
   padding: 0 11px;
-  border: 1px solid rgba(255, 255, 255, 0.09);
+  border: 1px solid var(--effects-border);
   border-radius: 999px;
-  background: rgba(255, 255, 255, 0.045);
-  color: #aaa19b;
+  background: var(--effects-surface-2);
+  color: var(--effects-muted);
   font-size: 0.67rem;
   font-weight: 700;
 }
@@ -56,7 +73,7 @@
   width: 6px;
   height: 6px;
   border-radius: 50%;
-  background: #77706c;
+  background: #7b8797;
 }
 
 .mediaState[data-ready="true"] i {
@@ -73,9 +90,9 @@
   padding: 4px;
   overflow-x: auto;
   scrollbar-width: none;
-  border: 1px solid rgba(255, 255, 255, 0.075);
+  border: 1px solid var(--effects-border);
   border-radius: 13px;
-  background: rgba(7, 8, 8, 0.45);
+  background: var(--effects-surface-2);
 }
 
 .tabs::-webkit-scrollbar {
@@ -88,7 +105,7 @@
   border: 0;
   border-radius: 9px;
   background: transparent;
-  color: #a9a19c;
+  color: var(--effects-muted);
   font: inherit;
   font-size: 0.72rem;
   font-weight: 750;
@@ -98,14 +115,14 @@
 }
 
 .tabs button[aria-selected="true"] {
-  background: #292423;
-  color: #fff8f4;
-  box-shadow: inset 0 0 0 1px rgba(255, 118, 100, 0.23), 0 4px 14px rgba(0, 0, 0, 0.22);
+  background: var(--effects-accent-soft);
+  color: var(--effects-accent);
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--effects-accent) 24%, transparent);
 }
 
 .tabs button:focus-visible,
 .card:focus-visible {
-  outline: 2px solid #ff9b8d;
+  outline: 2px solid var(--effects-accent);
   outline-offset: 2px;
 }
 
@@ -119,27 +136,27 @@
   min-width: 0;
   padding: 0;
   overflow: hidden;
-  border: 1px solid rgba(255, 255, 255, 0.085);
+  border: 1px solid var(--effects-border);
   border-radius: 15px;
-  background: #171515;
+  background: var(--effects-surface);
   color: inherit;
   font: inherit;
   text-align: left;
   cursor: pointer;
-  box-shadow: 0 8px 22px rgba(0, 0, 0, 0.15);
+  box-shadow: var(--effects-shadow);
   transition: transform 180ms ease, border-color 180ms ease, box-shadow 180ms ease;
 }
 
 .card:hover {
   z-index: 1;
-  border-color: rgba(255, 118, 100, 0.38);
+  border-color: color-mix(in srgb, var(--effects-accent) 48%, var(--effects-border));
   transform: translateY(-2px);
-  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 14px 32px color-mix(in srgb, var(--effects-accent) 14%, transparent);
 }
 
 .card[data-selected="true"] {
   border-color: var(--effects-accent);
-  box-shadow: 0 0 0 1px rgba(255, 118, 100, 0.28), 0 13px 30px rgba(0, 0, 0, 0.3);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--effects-accent) 30%, transparent), var(--effects-shadow);
 }
 
 .card:disabled {
@@ -153,8 +170,8 @@
   aspect-ratio: 16 / 10;
   overflow: hidden;
   background:
-    radial-gradient(circle at 66% 24%, rgba(255, 126, 103, 0.24), transparent 33%),
-    linear-gradient(145deg, #332a28, #151616 68%);
+    radial-gradient(circle at 66% 24%, rgb(48 121 208 / 25%), transparent 33%),
+    linear-gradient(145deg, #293342, #11151b 68%);
   isolation: isolate;
 }
 
@@ -276,6 +293,7 @@
   overflow: hidden;
   font-size: 0.78rem;
   font-weight: 820;
+  color: var(--effects-ink);
   letter-spacing: -0.015em;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -283,8 +301,8 @@
 
 .cardCopy small {
   grid-column: 1 / -1;
-  color: #9f9792;
-  font-size: 0.62rem;
+  color: var(--effects-muted);
+  font-size: 0.66rem;
   line-height: 1.38;
 }
 
@@ -294,7 +312,7 @@
   align-items: center;
   justify-content: space-between;
   margin-top: 2px;
-  color: #d9d0cb;
+  color: var(--effects-ink);
   font-size: 0.62rem;
   font-weight: 800;
 }
@@ -311,7 +329,7 @@
 }
 
 .card[data-selected="true"] .applyLabel {
-  color: #ff9d8f;
+  color: var(--effects-accent);
 }
 
 /* Preview movement. The canvas renderer uses the matching deterministic frame data. */

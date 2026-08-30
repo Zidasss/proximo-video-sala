@@ -1,6 +1,16 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { sanitizeRadarSuggestions } from "../app/klip-radar.ts";
+import {
+  createRadarSamplingPlan,
+  sanitizeRadarSuggestions,
+} from "../app/klip-radar.ts";
+
+test("keeps a multi-hour Radar analysis bounded", () => {
+  const plan = createRadarSamplingPlan(4 * 60 * 60 + 28 * 60);
+  assert.equal(plan.sampleCount, 18_000);
+  assert.ok(plan.blockSeconds > 0.89);
+  assert.ok(plan.blockSeconds < 0.9);
+});
 
 test("restores valid Radar cuts and migrates legacy transition metadata", () => {
   const [cut] = sanitizeRadarSuggestions(

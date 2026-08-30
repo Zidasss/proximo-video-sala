@@ -2208,6 +2208,214 @@ html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
   box-shadow: 0 0 0 1px #fff, 0 0 0 3px #0071e3 !important;
 }
 
+/* 0.24 editor detail pass ---------------------------------------------------
+   Final overrides for the visual regressions found at production scale:
+   complete rail labels, safe timeline edges and one blue semantic palette. */
+html[data-klip-theme="light"] .clip-editor-v2 {
+  --pure-blue: #1558b0;
+  --pure-blue-hover: #10498f;
+  --pure-blue-soft: #e8f1fc;
+  --pure-blue-ink: #0a447f;
+}
+
+@media (min-width: 761px) {
+  html[data-klip-theme] .clip-editor-v2 {
+    --pure-rail-w: 76px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail {
+    width: var(--pure-rail-w);
+    padding-inline: 6px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button {
+    width: 100%;
+    padding-inline: 4px;
+  }
+
+  html[data-klip-theme] .clip-editor-v2 .editor-tool-rail button > b {
+    max-width: 100%;
+    overflow: visible;
+    font-size: 10.5px !important;
+    white-space: nowrap;
+    text-overflow: clip;
+  }
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel.multi-timeline {
+  padding: 10px 12px 12px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .pure-timeline-resizer {
+  z-index: 42;
+  top: -7px;
+  height: 16px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-panel .timeline-top {
+  position: relative;
+  z-index: 30;
+  flex-basis: 54px;
+  min-height: 54px;
+  padding: 9px 0 7px;
+  overflow: visible;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-scroll-viewport {
+  padding: 7px 14px 12px;
+  scrollbar-gutter: stable;
+}
+
+html[data-klip-theme] .clip-editor-v2 .cut-marker,
+html[data-klip-theme="light"] .clip-editor-v2 .cut-marker {
+  border-color: var(--pure-blue) !important;
+  background: var(--pure-blue) !important;
+  box-shadow: 0 0 0 2px color-mix(in srgb, var(--pure-blue) 24%, transparent) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .cut-marker::before,
+html[data-klip-theme] .clip-editor-v2 .cut-marker:is(:hover, :focus-visible)::before {
+  background: var(--pure-blue) !important;
+  box-shadow: 0 2px 7px rgb(0 0 0 / 22%) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .cut-marker span {
+  border-color: color-mix(in srgb, var(--pure-blue) 42%, var(--pure-border)) !important;
+  background: var(--pure-surface) !important;
+  box-shadow: var(--pure-shadow-menu) !important;
+  color: var(--pure-text) !important;
+  opacity: 1;
+}
+
+html[data-klip-theme] .clip-editor-v2 .start-marker {
+  transform: none;
+}
+
+html[data-klip-theme] .clip-editor-v2 .start-marker span {
+  left: 0;
+  transform: none;
+}
+
+html[data-klip-theme] .clip-editor-v2 .end-marker {
+  transform: translateX(-100%);
+}
+
+html[data-klip-theme] .clip-editor-v2 .end-marker span {
+  right: 0;
+  left: auto;
+  transform: none;
+}
+
+html[data-klip-theme] .clip-editor-v2 .timeline-clip-meta {
+  color: inherit !important;
+  opacity: .82;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .primary-video-clip .timeline-clip-meta {
+  color: #183b66 !important;
+  opacity: 1;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-service-explainer {
+  display: grid;
+  gap: 5px;
+  padding: 11px;
+  border: 1px solid color-mix(in srgb, var(--pure-blue) 26%, var(--pure-border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--pure-blue-soft) 64%, var(--pure-surface));
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-service-explainer b {
+  color: var(--pure-blue-ink) !important;
+  font-size: 12px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-service-explainer span,
+html[data-klip-theme] .clip-editor-v2 .caption-service-explainer small {
+  color: var(--pure-text-2) !important;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-service-explainer small {
+  padding-top: 4px;
+  border-top: 1px solid color-mix(in srgb, var(--pure-blue) 15%, transparent);
+}
+
+html[data-klip-theme] .clip-editor-v2 .caption-service-explainer.compact {
+  gap: 3px;
+  padding: 8px 9px;
+}
+
+html[data-klip-theme] .clip-editor-v2 .tool-visual-presets > small {
+  display: block;
+  color: var(--pure-text-2) !important;
+  font-size: 10.5px;
+  line-height: 1.45;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header span,
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls span {
+  color: var(--pure-blue-ink) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-header small {
+  color: var(--pure-text-2) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs button,
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls,
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls button {
+  border-color: var(--pure-border) !important;
+  background: var(--pure-surface-2) !important;
+  color: var(--pure-text) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-tabs button.selected {
+  border-color: var(--pure-blue) !important;
+  background: var(--pure-blue-soft) !important;
+  color: var(--pure-blue-ink) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-hub-content {
+  scrollbar-color: var(--pure-border-strong) transparent;
+}
+
+html[data-klip-theme] .clip-editor-v2 .studio-effect-controls input {
+  accent-color: var(--pure-blue) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .radar-config .radar-analyze,
+  .radar-panel > footer .radar-apply
+) {
+  border-color: var(--pure-blue) !important;
+  background: var(--pure-blue) !important;
+  box-shadow: 0 8px 22px color-mix(in srgb, var(--pure-blue) 22%, transparent) !important;
+  color: #ffffff !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 :where(
+  .radar-config .radar-analyze,
+  .radar-panel > footer .radar-apply
+) :where(svg, span) {
+  color: inherit !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-progress > div > i {
+  background: var(--pure-blue) !important;
+}
+
+html[data-klip-theme] .clip-editor-v2 .radar-progress > span {
+  color: var(--pure-text-2) !important;
+}
+
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-lane.selected .timeline-item-clip,
+html[data-klip-theme="light"] .clip-editor-v2 .timeline-item-clip.selected {
+  border-color: var(--pure-blue) !important;
+  box-shadow: 0 0 0 1px #fff, 0 0 0 3px var(--pure-blue) !important;
+}
+
 /* 0.24 workspace system: the canvas keeps the exact export aspect ratio,
    secondary project actions stay contextual, and tablet never inherits the
    obsolete mobile jump bar from the legacy stylesheet. */

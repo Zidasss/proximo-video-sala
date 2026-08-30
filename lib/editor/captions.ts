@@ -8,6 +8,17 @@ import type { TimelineSourceRange } from "./timeline";
 
 export type { TimelineSourceRange } from "./timeline";
 
+export interface CaptionSourceRange {
+  start: number;
+  end: number;
+}
+
+export interface CaptionTranscriptionJob {
+  logicalStart: number;
+  logicalEnd: number;
+  extractionStart: number;
+}
+
 export interface CaptionSegmentationOptions {
   maxCharactersPerLine?: number;
   maxLines?: number;
@@ -24,6 +35,78 @@ function cleanText(value: string) {
 
 function finite(value: number) {
   return Number.isFinite(value) ? value : 0;
+}
+
+/**
+ * Collapses overlapping source ranges before transcription. The same source
+ * can appear more than once on the timeline, but it only needs to be sent to
+ * the transcription service once; mapCaptionsToTimeline duplicates it later.
+ */
+export function mergeCaptionSourceRanges(
+  ranges: readonly TimelineSourceRange[],
+  mediaDuration?: number,
+): CaptionSourceRange[] {
+  const limit =
+    Number.isFinite(mediaDuration) && Number(mediaDuration) > 0
+      ? Number(mediaDuration)
+      : Number.POSITIVE_INFINITY;
+  const normalized = ranges
+    .map((range) => {
+      const start = Math.min(limit, Math.max(0, finite(range.sourceStart)));
+      const end = Math.min(
+        limit,
+        Math.max(start, finite(range.sourceEnd)),
+      );
+      return { start, end };
+    })
+    .filter((range) => range.end - range.start >= 0.04)
+    .sort((first, second) => first.start - second.start || first.end - second.end);
+
+  const merged: CaptionSourceRange[] = [];
+  for (const range of normalized) {
+    const previous = merged.at(-1);
+    if (previous && range.start <= previous.end + 0.02) {
+      previous.end = Math.max(previous.end, range.end);
+      continue;
+    }
+    merged.push({ ...range });
+  }
+  return merged;
+}
+
+/** Builds bounded, sequential audio-only requests for the source actually used. */
+export function buildCaptionTranscriptionJobs(
+  ranges: readonly TimelineSourceRange[],
+  mediaDuration: number,
+  chunkSeconds = 8 * 60,
+  overlapSeconds = 0.4,
+): CaptionTranscriptionJob[] {
+  const safeChunkSeconds = Math.max(10, finite(chunkSeconds) || 8 * 60);
+  const safeOverlapSeconds = Math.max(
+    0,
+    Math.min(safeChunkSeconds / 4, finite(overlapSeconds)),
+  );
+  const jobs: CaptionTranscriptionJob[] = [];
+
+  for (const range of mergeCaptionSourceRanges(ranges, mediaDuration)) {
+    let logicalStart = range.start;
+    let rangeJobIndex = 0;
+    while (logicalStart < range.end - 0.01) {
+      const logicalEnd = Math.min(range.end, logicalStart + safeChunkSeconds);
+      jobs.push({
+        logicalStart,
+        logicalEnd,
+        extractionStart:
+          rangeJobIndex === 0
+            ? logicalStart
+            : Math.max(range.start, logicalStart - safeOverlapSeconds),
+      });
+      logicalStart = logicalEnd;
+      rangeJobIndex += 1;
+    }
+  }
+
+  return jobs;
 }
 
 function splitIntoCards(

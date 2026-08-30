@@ -1,9 +1,46 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 import {
+  buildCaptionTranscriptionJobs,
   mapCaptionsToTimeline,
+  mergeCaptionSourceRanges,
   segmentCaption,
 } from "../lib/editor/captions.ts";
+
+test("merges duplicated timeline sources before sending audio for transcription", () => {
+  const ranges = mergeCaptionSourceRanges(
+    [
+      { sourceStart: 30, sourceEnd: 90, timelineStart: 0 },
+      { sourceStart: 30, sourceEnd: 90, timelineStart: 60 },
+      { sourceStart: 80, sourceEnd: 120, timelineStart: 120 },
+      { sourceStart: 400, sourceEnd: 430, timelineStart: 160 },
+    ],
+    500,
+  );
+
+  assert.deepEqual(ranges, [
+    { start: 30, end: 120 },
+    { start: 400, end: 430 },
+  ]);
+});
+
+test("builds caption jobs only for source ranges used by the timeline", () => {
+  const jobs = buildCaptionTranscriptionJobs(
+    [
+      { sourceStart: 60, sourceEnd: 660, timelineStart: 0 },
+      { sourceStart: 1_200, sourceEnd: 1_260, timelineStart: 600 },
+    ],
+    2_000,
+    480,
+    0.4,
+  );
+
+  assert.deepEqual(jobs, [
+    { logicalStart: 60, logicalEnd: 540, extractionStart: 60 },
+    { logicalStart: 540, logicalEnd: 660, extractionStart: 539.6 },
+    { logicalStart: 1_200, logicalEnd: 1_260, extractionStart: 1_200 },
+  ]);
+});
 
 test("maps source captions to a trimmed and moved primary clip", () => {
   const captions = mapCaptionsToTimeline(

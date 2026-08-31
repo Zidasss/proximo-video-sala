@@ -2744,7 +2744,7 @@ export default function Home() {
     cutRequested.current = true;
     recorder.current.requestData();
   }
-  function record() {
+  async function record() {
     if (recording) {
       recorder.current?.stop();
       return;
@@ -2978,12 +2978,16 @@ export default function Home() {
       });
       const mixedTrack = destination.stream.getAudioTracks()[0];
       if (mixedTrack) output.addTrack(mixedTrack);
-      void recordingAudio.resume();
+      await recordingAudio.resume();
+      if (recordingAudio.state !== "running")
+        throw new Error("AudioContext não foi ativado");
     } catch {
+      void recordingAudio?.close();
       recordingAudio = null;
       setNotice(
-        "O vídeo será gravado; o navegador não liberou a mixagem de áudio.",
+        "Não foi possível ativar o áudio da gravação. Verifique o microfone e tente novamente.",
       );
+      return;
     }
     const mime = mimeForExport(recordingFormat) || mimeForExport("webm")!;
     if (recordingFormat === "mp4" && !mime.startsWith("video/mp4"))

@@ -2959,28 +2959,41 @@ export default function Home() {
       requestAnimationFrame(draw);
     };
     const output = canvas.captureStream(30);
-    // O canvas contém a imagem final; este destino mistura todos os áudios da chamada.
-    // Assim o arquivo salvo preserva microfone, voz do amigo e áudio da tela compartilhada.
+    const audioSources = [
+      local.current,
+      remote.current,
+      displayed.current,
+      remoteDisplayed.current,
+    ].filter(
+      (stream): stream is MediaStream =>
+        Boolean(
+          stream?.getAudioTracks().some((track) => track.readyState === "live"),
+        ),
+    );
     let recordingAudio: AudioContext | null = null;
     try {
-      recordingAudio = new AudioContext();
-      const destination = recordingAudio.createMediaStreamDestination();
-      [
-        local.current,
-        remote.current,
-        displayed.current,
-        remoteDisplayed.current,
-      ].forEach((stream) => {
-        if (!stream?.getAudioTracks().length) return;
-        recordingAudio!
-          .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
-          .connect(destination);
-      });
-      const mixedTrack = destination.stream.getAudioTracks()[0];
-      if (mixedTrack) output.addTrack(mixedTrack);
-      await recordingAudio.resume();
-      if (recordingAudio.state !== "running")
-        throw new Error("AudioContext não foi ativado");
+      if (!audioSources.length) throw new Error("Nenhuma fonte de áudio ativa");
+      if (audioSources.length === 1) {
+        // Para uma única câmera/microfone, preserve a faixa nativa. Passá-la
+        // pelo Web Audio pode produzir um destino silencioso em alguns browsers.
+        output.addTrack(audioSources[0].getAudioTracks()[0].clone());
+      } else {
+        // Em chamadas e compartilhamentos, uma única faixa de saída mistura
+        // microfone, participante remoto e áudio da tela para o MediaRecorder.
+        recordingAudio = new AudioContext();
+        const destination = recordingAudio.createMediaStreamDestination();
+        audioSources.forEach((stream) => {
+          recordingAudio!
+            .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
+            .connect(destination);
+        });
+        const mixedTrack = destination.stream.getAudioTracks()[0];
+        if (!mixedTrack) throw new Error("Faixa de áudio indisponível");
+        output.addTrack(mixedTrack);
+        await recordingAudio.resume();
+        if (recordingAudio.state !== "running")
+          throw new Error("AudioContext não foi ativado");
+      }
     } catch {
       void recordingAudio?.close();
       recordingAudio = null;

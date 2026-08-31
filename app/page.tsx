@@ -308,7 +308,7 @@ export default function Home() {
     [remoteSharing, setRemoteSharing] = useState(false),
     [recording, setRecording] = useState(false),
     [recordSeconds, setRecordSeconds] = useState(0),
-    [recordingFormat, setRecordingFormat] = useState<ExportFormat>("mp4"),
+    [recordingFormat] = useState<ExportFormat>("webm"),
     [vertical, setVertical] = useState(false),
     [verticalCameraMode, setVerticalCameraMode] =
       useState<VerticalCameraMode>("auto"),
@@ -3002,11 +3002,9 @@ export default function Home() {
       );
       return;
     }
-    const mime = mimeForExport(recordingFormat) || mimeForExport("webm")!;
-    if (recordingFormat === "mp4" && !mime.startsWith("video/mp4"))
-      setNotice(
-        "MP4 não é suportado neste navegador; a gravação sairá em WebM.",
-      );
+    // WebM/Opus é o contêiner confiável para MediaRecorder com vídeo de canvas
+    // e microfone. Alguns browsers aceitam MP4, mas finalizam o arquivo sem AAC.
+    const mime = mimeForExport("webm") || mimeForExport(recordingFormat)!;
     const rec = new MediaRecorder(output, {
       mimeType: mime,
       videoBitsPerSecond: quality === "1080" ? 12_000_000 : 6_000_000,
@@ -4405,23 +4403,9 @@ export default function Home() {
                       />
                       <span>Usar formato vertical 9:16</span>
                     </label>
-                    <label className="menu-field">
-                      Formato da gravação
-                      <select
-                        value={recordingFormat}
-                        onChange={(event) =>
-                          setRecordingFormat(event.target.value as ExportFormat)
-                        }
-                      >
-                        <option value="mp4">
-                          MP4 · melhor para redes sociais
-                        </option>
-                        <option value="webm">WebM · alta qualidade web</option>
-                      </select>
-                    </label>
                     <small className="resenha-note">
-                      Se o Chrome não liberar MP4, a KLIPAPP preserva a gravação
-                      em WebM.
+                      Gravação em WebM com áudio Opus para preservar a voz no
+                      arquivo salvo.
                     </small>
                     <button
                       className="open-preview"

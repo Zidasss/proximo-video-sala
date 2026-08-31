@@ -1176,6 +1176,23 @@ html[data-klip-theme] .screen-share-choice {
 html[data-klip-theme] .screen-share-dialog > p,
 html[data-klip-theme] .screen-share-choice small,
 html[data-klip-theme] .screen-share-hint { color: var(--ka-text-secondary) !important; }
+html[data-klip-theme] .recording-stay-button {
+  border-color: var(--ka-border) !important;
+  background: var(--ka-surface-2) !important;
+  color: var(--ka-text) !important;
+}
+html[data-klip-theme] .recording-editor-button {
+  border-color: var(--ka-brand) !important;
+  background: var(--ka-brand) !important;
+  color: #fff !important;
+}
+html[data-klip-theme] .recording-stay-button:hover {
+  border-color: color-mix(in srgb, var(--ka-brand) 48%, var(--ka-border)) !important;
+  background: var(--ka-brand-soft) !important;
+}
+html[data-klip-theme] .recording-editor-button:hover {
+  background: var(--ka-brand-hover) !important;
+}
 html[data-klip-theme] .screen-share-choice:hover {
   border-color: color-mix(in srgb, var(--ka-brand) 48%, var(--ka-border)) !important;
   background: var(--ka-brand-soft) !important;

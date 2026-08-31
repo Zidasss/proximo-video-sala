@@ -2970,33 +2970,18 @@ export default function Home() {
           stream?.getAudioTracks().some((track) => track.readyState === "live"),
         ),
     );
-    let recordingAudio: AudioContext | null = null;
+    const recordingAudioTracks = audioSources.flatMap((stream) =>
+      stream
+        .getAudioTracks()
+        .filter((track) => track.readyState === "live"),
+    );
     try {
-      if (!audioSources.length) throw new Error("Nenhuma fonte de áudio ativa");
-      if (audioSources.length === 1) {
-        // Para uma única câmera/microfone, preserve a faixa nativa. Passá-la
-        // pelo Web Audio pode produzir um destino silencioso em alguns browsers.
-        output.addTrack(audioSources[0].getAudioTracks()[0].clone());
-      } else {
-        // Em chamadas e compartilhamentos, uma única faixa de saída mistura
-        // microfone, participante remoto e áudio da tela para o MediaRecorder.
-        recordingAudio = new AudioContext();
-        const destination = recordingAudio.createMediaStreamDestination();
-        audioSources.forEach((stream) => {
-          recordingAudio!
-            .createMediaStreamSource(new MediaStream(stream.getAudioTracks()))
-            .connect(destination);
-        });
-        const mixedTrack = destination.stream.getAudioTracks()[0];
-        if (!mixedTrack) throw new Error("Faixa de áudio indisponível");
-        output.addTrack(mixedTrack);
-        await recordingAudio.resume();
-        if (recordingAudio.state !== "running")
-          throw new Error("AudioContext não foi ativado");
-      }
+      if (!recordingAudioTracks.length)
+        throw new Error("Nenhuma fonte de áudio ativa");
+      // Não crie outro AudioContext ao gravar. Em especial com fones Bluetooth,
+      // isso pode alternar o dispositivo para o perfil de baixa qualidade.
+      recordingAudioTracks.forEach((track) => output.addTrack(track.clone()));
     } catch {
-      void recordingAudio?.close();
-      recordingAudio = null;
       setNotice(
         "Não foi possível ativar o áudio da gravação. Verifique o microfone e tente novamente.",
       );
@@ -3039,7 +3024,7 @@ export default function Home() {
       cutRequested.current = false;
       setRecording(false);
       setRecordSeconds(0);
-      void recordingAudio?.close();
+      output.getAudioTracks().forEach((track) => track.stop());
       connection.current?.send({ kind: "recording", active: false });
       if (finishedClip) {
         setRecordingFinishedPrompt(true);

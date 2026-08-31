@@ -112,8 +112,9 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /await audio\.resume\(\)/);
   assert.match(page, /async function record\(\)/);
   assert.match(page, /const audioSources = \[/);
-  assert.match(page, /output\.addTrack\(audioSources\[0\]\.getAudioTracks\(\)\[0\]\.clone\(\)\)/);
-  assert.match(page, /await recordingAudio\.resume\(\)/);
+  assert.match(page, /const recordingAudioTracks = audioSources\.flatMap/);
+  assert.match(page, /recordingAudioTracks\.forEach\(\(track\) => output\.addTrack\(track\.clone\(\)\)\)/);
+  assert.match(page, /Não crie outro AudioContext ao gravar/);
   assert.match(page, /useState<ExportFormat>\("webm"\)/);
   assert.match(page, /WebM\/Opus é o contêiner confiável/);
   assert.match(page, /Sala aberta sem mídia/);

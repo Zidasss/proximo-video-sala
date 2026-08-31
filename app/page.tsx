@@ -2252,11 +2252,25 @@ export default function Home() {
                   width: { ideal: 1280 },
                   height: { ideal: 720 },
                   frameRate: { ideal: 30 },
-                },
+            },
             audio: false,
           });
-          mediaWarning =
-            "Sala aberta sem microfone. Libere ou selecione o microfone em Ajustes.";
+          // A câmera pode abrir mesmo quando a solicitação conjunta falha
+          // (placa de captura/driver). Tente o microfone isoladamente antes
+          // de abrir a sala sem áudio.
+          try {
+            const microphone = await navigator.mediaDevices.getUserMedia({
+              video: false,
+              audio: microphoneConstraints(chosenAudio || undefined),
+            });
+            microphone
+              .getAudioTracks()
+              .forEach((track) => stream.addTrack(track));
+            mediaWarning = "Câmera e microfone conectados.";
+          } catch {
+            mediaWarning =
+              "Sala aberta sem microfone. Libere ou selecione o microfone em Ajustes.";
+          }
         } catch {
           try {
             stream = await navigator.mediaDevices.getUserMedia({

@@ -120,6 +120,8 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /Tente o microfone isoladamente antes/);
   assert.match(page, /microphone\s*\.getAudioTracks\(\)/);
   assert.match(page, /stream\.addTrack\(track\)/);
+  assert.match(page, /async function testMicrophone\(\)/);
+  assert.match(page, /await pipeline\.context\.resume\(\)/);
   assert.match(page, /Sala aberta sem mídia/);
   assert.match(
     page,

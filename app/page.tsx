@@ -1985,14 +1985,27 @@ export default function Home() {
       replaceOutgoingAudio(pipeline.output);
     }
   }
-  function testMicrophone() {
+  async function testMicrophone() {
     const pipeline = audioPipeline.current;
     if (!pipeline) {
       setNotice("Entre na sala para testar o microfone escolhido.");
       return;
     }
+    try {
+      await pipeline.context.resume();
+    } catch {
+      setNotice(
+        "O navegador bloqueou o microfone. Libere a permissão no cadeado da página e tente novamente.",
+      );
+      return;
+    }
+    if (pipeline.context.state !== "running") {
+      setNotice(
+        "O microfone não foi ativado pelo navegador. Reabra a sala e selecione o dispositivo em Ajustes.",
+      );
+      return;
+    }
     setMicTesting(true);
-    void pipeline.context.resume();
     const bytes = new Uint8Array(pipeline.analyser.fftSize);
     const started = performance.now();
     const read = () => {

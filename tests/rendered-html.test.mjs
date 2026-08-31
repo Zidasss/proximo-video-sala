@@ -108,6 +108,8 @@ test("keeps the KLIPAPP editor interaction model in the production source", asyn
   assert.match(page, /muted: Boolean\(track\.muted\)/);
   assert.match(page, /solo: Boolean\(track\.solo\)/);
   assert.match(page, /function placeholderCameraStream/);
+  assert.match(page, /async function startRecording\(\)/);
+  assert.match(page, /await audio\.resume\(\)/);
   assert.match(page, /Sala aberta sem mídia/);
   assert.match(
     page,

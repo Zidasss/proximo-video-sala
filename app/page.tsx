@@ -5386,12 +5386,22 @@ function OfflineStudio({ onBack }: { onBack: () => void }) {
     }
     if (recording) frame.current = requestAnimationFrame(draw);
   }
-  function startRecording() {
+  async function startRecording() {
     if (!canvas.current) return;
     chunks.current = [];
     const output = canvas.current.captureStream(fps);
     const audio = new AudioContext();
     audioContext.current = audio;
+    try {
+      await audio.resume();
+    } catch {
+      void audio.close();
+      audioContext.current = null;
+      setNotice(
+        "Não foi possível ativar o áudio para a gravação. Tente novamente.",
+      );
+      return;
+    }
     const destination = audio.createMediaStreamDestination();
     streams.current.forEach((stream, index) => {
       if (
